@@ -56,6 +56,10 @@ For interactive testing:
 pi --no-extensions -e ./construct/index.ts
 ```
 
+## License
+
+MIT
+
 ## Notes
 
 - Package entry point is `construct/index.ts`.
