@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 type JsonObject = Record<string, unknown>;
 
@@ -53,7 +53,7 @@ function isObject(value: unknown): value is JsonObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function getPaths(ctx: ExtensionCommandContext): Promise<ConstructPaths> {
+async function getPaths(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<ConstructPaths> {
 	const cwd = ctx.cwd;
 	const realCwd = await realpath(cwd).catch(() => cwd);
 	const agentDir = join(homedir(), ".pi", "agent");
@@ -139,12 +139,30 @@ function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warnings: s
 }
 
 function deriveId(source: string): string {
-	const withoutProtocol = source
-		.replace(/^npm:/, "")
-		.replace(/^git:/, "")
-		.replace(/^https?:\/\//, "")
-		.replace(/^ssh:\/\//, "");
-	const id = withoutProtocol
+	let candidate = source.trim().replace(/\/+$/, "");
+	if (candidate.startsWith("npm:")) {
+		candidate = candidate.slice(4);
+		const versionAt = candidate.lastIndexOf("@");
+		if (versionAt > 0) candidate = candidate.slice(0, versionAt);
+	} else if (
+		candidate.startsWith("/") ||
+		candidate.startsWith("./") ||
+		candidate.startsWith("../") ||
+		candidate.startsWith("~")
+	) {
+		candidate = candidate.split("/").filter(Boolean).at(-1) ?? candidate;
+	} else {
+		candidate = candidate
+			.replace(/^git:/, "")
+			.replace(/^https?:\/\//, "")
+			.replace(/^ssh:\/\//, "")
+			.replace(/\.git$/, "");
+		const refAt = candidate.lastIndexOf("@");
+		if (refAt > candidate.lastIndexOf("/")) candidate = candidate.slice(0, refAt);
+		const parts = candidate.split(/[/:]/).filter(Boolean);
+		candidate = parts.at(-1) ?? candidate;
+	}
+	const id = candidate
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
@@ -237,6 +255,120 @@ function formatCatalogItem(item: CatalogItem): string {
 	return `- ${item.id}${name}: ${item.source}${description}`;
 }
 
+function timestampForFile(date = new Date()): string {
+	return date.toISOString().replace(/[:.]/g, "-");
+}
+
+async function backupProjectSettingsIfPresent(paths: ConstructPaths): Promise<string | undefined> {
+	if (!existsSync(paths.projectSettingsPath)) return undefined;
+	const backupPath = `${paths.projectSettingsPath}.bak.${timestampForFile()}`;
+	await copyFile(paths.projectSettingsPath, backupPath);
+	return backupPath;
+}
+
+function parseProjectConstruct(construct: JsonReadResult): JsonObject {
+	if (construct.state === "missing") {
+		return { version: 1, managedBy: "the-construct", items: {} };
+	}
+	if (construct.state === "invalid") {
+		throw new Error(`Cannot update invalid Construct metadata: ${construct.error}`);
+	}
+	if (!isObject(construct.data)) {
+		throw new Error("Cannot update Construct metadata because .pi/construct.json is not an object.");
+	}
+	return { ...construct.data };
+}
+
+function upsertConstructItem(
+	construct: JsonObject,
+	itemId: string,
+	declaredSource: string,
+	requestedSource: string,
+	paths: ConstructPaths,
+): JsonObject {
+	const existingItems = isObject(construct.items) ? construct.items : {};
+	const now = new Date().toISOString();
+	const existingItem = isObject(existingItems[itemId]) ? existingItems[itemId] : {};
+	return {
+		...construct,
+		version: 1,
+		managedBy: "the-construct",
+		loadedAt: typeof construct.loadedAt === "string" ? construct.loadedAt : now,
+		targetCwd: paths.realCwd,
+		items: {
+			...existingItems,
+			[itemId]: {
+				...existingItem,
+				kind: "package",
+				source: declaredSource,
+				...(declaredSource === requestedSource ? {} : { requestedSource }),
+				enabled: true,
+				loadedAt: typeof existingItem.loadedAt === "string" ? existingItem.loadedAt : now,
+				updatedAt: now,
+			},
+		},
+	};
+}
+
+function uniqueManagedId(baseId: string, construct: JsonReadResult, source: string): string {
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return baseId;
+	for (const [id, value] of Object.entries(construct.data.items)) {
+		if (isObject(value) && (value.source === source || value.requestedSource === source)) return id;
+	}
+	const existing = new Set(Object.keys(construct.data.items));
+	if (!existing.has(baseId)) return baseId;
+	for (let i = 2; i < 1000; i++) {
+		const candidate = `${baseId}-${i}`;
+		if (!existing.has(candidate)) return candidate;
+	}
+	return `${baseId}-${Date.now()}`;
+}
+
+function chooseDeclaredSource(before: PackageDeclarationSummary[], after: PackageDeclarationSummary[], requestedSource: string): string {
+	if (after.some((pkg) => pkg.source === requestedSource)) return requestedSource;
+	const beforeSources = new Set(before.map((pkg) => pkg.source));
+	const added = after.filter((pkg) => !beforeSources.has(pkg.source));
+	if (added.length > 0) return added.at(-1)?.source ?? requestedSource;
+	return after.at(-1)?.source ?? requestedSource;
+}
+
+function parseLoadFlags(args: string): { dryRun: boolean; query: string } {
+	const tokens = args.split(/\s+/).filter(Boolean);
+	const remaining: string[] = [];
+	let dryRun = false;
+	for (const token of tokens) {
+		if (token === "--dry-run" || token === "-n") dryRun = true;
+		else remaining.push(token);
+	}
+	return { dryRun, query: remaining.join(" ") };
+}
+
+function buildLoadPreview(paths: ConstructPaths, source: string, item: CatalogItem | undefined, warnings: string[], dryRun: boolean): string {
+	return [
+		dryRun ? "Construct load dry-run" : "Construct load",
+		dryRun ? "======================" : "==============",
+		dryRun ? "No files were changed and no package was installed." : "This will install a Pi package project-locally.",
+		"",
+		`Target: ${paths.cwd}`,
+		paths.realCwd === paths.cwd ? undefined : `Canonical target: ${paths.realCwd}`,
+		"Target rule: ctx.cwd (MVP; no git-root guessing)",
+		"",
+		dryRun ? "Would update:" : "Will update:",
+		`- ${paths.projectSettingsPath}`,
+		`- ${paths.projectConstructPath}`,
+		"",
+		item ? `Catalog item: ${item.id}` : "Catalog item: <ad hoc source>",
+		`Package source: ${source}`,
+		"",
+		"Equivalent Pi command:",
+		`pi install ${source} -l --approve`,
+		"",
+		...warnings.map((warning) => `! ${warning}`),
+	]
+		.filter((line): line is string => line !== undefined)
+		.join("\n");
+}
+
 async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<string> {
 	const paths = await getPaths(ctx);
 	const [userSettings, userCatalog, userSkips, projectSettings, projectConstruct] = await Promise.all([
@@ -321,6 +453,81 @@ async function loadCatalog(ctx: ExtensionCommandContext): Promise<{ paths: Const
 	const read = await readJson(paths.userCatalogPath);
 	const { data, warnings } = parseCatalog(read);
 	return { paths, read, catalog: data, warnings };
+}
+
+function readUserSettings(settings: JsonReadResult): JsonObject {
+	if (settings.state === "missing") return { version: 1 };
+	if (settings.state === "invalid") throw new Error(`Cannot update invalid Construct settings: ${settings.error}`);
+	if (!isObject(settings.data)) throw new Error("Cannot update Construct settings because settings.json is not an object.");
+	return { ...settings.data };
+}
+
+async function writeAutoload(paths: ConstructPaths, enabled: boolean): Promise<void> {
+	const settings = readUserSettings(await readJson(paths.userSettingsPath));
+	await writeJson(paths.userSettingsPath, { ...settings, version: 1, autoload: enabled });
+}
+
+async function addSkip(paths: ConstructPaths): Promise<void> {
+	const read = await readJson(paths.userSkipsPath);
+	let root: JsonObject;
+	if (read.state === "missing") root = { version: 1, projects: {} };
+	else if (read.state === "invalid") throw new Error(`Cannot update invalid Construct skips: ${read.error}`);
+	else if (isObject(read.data)) root = { ...read.data };
+	else throw new Error("Cannot update Construct skips because skips.json is not an object.");
+
+	const projects = isObject(root.projects) ? root.projects : {};
+	await writeJson(paths.userSkipsPath, {
+		...root,
+		version: 1,
+		projects: {
+			...projects,
+			[paths.realCwd]: {
+				skippedAt: new Date().toISOString(),
+				reason: "dont-ask",
+			},
+		},
+	});
+}
+
+async function handleAutoload(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const subcommand = args.trim();
+	if (!subcommand || subcommand === "status") {
+		const settings = await readJson(paths.userSettingsPath);
+		const autoload = getAutoload(settings);
+		showText(
+			ctx,
+			[
+				"Construct autoload",
+				"==================",
+				`Autoload: ${autoload.note}`,
+				`Settings: ${describeRead(settings)}`,
+				"",
+				"Autoload means auto-offer only. It never installs packages by itself.",
+				"Use /construct autoload on or /construct autoload off.",
+			].join("\n"),
+		);
+		return;
+	}
+	if (subcommand !== "on" && subcommand !== "off") {
+		showText(ctx, "Usage: /construct autoload on|off");
+		return;
+	}
+	try {
+		await writeAutoload(paths, subcommand === "on");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not update autoload settings.\n${message}`);
+		return;
+	}
+	showText(
+		ctx,
+		[
+			`Construct autoload ${subcommand === "on" ? "enabled" : "disabled"}.`,
+			`Settings: ${paths.userSettingsPath}`,
+			"Autoload means auto-offer only. It will not install anything automatically.",
+		].join("\n"),
+	);
 }
 
 async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -420,9 +627,10 @@ async function resolveLoadSource(args: string, ctx: ExtensionCommandContext): Pr
 	return item ? { source: item.source, item, warnings } : { warnings };
 }
 
-async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<void> {
+async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
-	const resolved = await resolveLoadSource(args, ctx);
+	const flags = parseLoadFlags(args);
+	const resolved = await resolveLoadSource(flags.query, ctx);
 
 	if (!resolved.source) {
 		showText(
@@ -432,6 +640,7 @@ async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<v
 				"",
 				"Try:",
 				"- /construct load npm:@scope/package",
+				"- /construct load --dry-run npm:@scope/package",
 				"- /construct catalog add npm:@scope/package",
 				"- /construct load <catalog-id>",
 			].join("\n"),
@@ -444,29 +653,363 @@ async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<v
 		warnings.push("Source does not look like an npm:, git:, URL, or local path package source. Pi may still reject or accept it.");
 	}
 
+	const preview = buildLoadPreview(paths, resolved.source, resolved.item, warnings, flags.dryRun);
+	if (flags.dryRun) {
+		showText(ctx, preview);
+		return;
+	}
+
+	if (ctx.hasUI) {
+		const ok = await ctx.ui.confirm("Load into this project?", preview);
+		if (!ok) {
+			showText(ctx, "Construct load cancelled. No files were changed by Construct.");
+			return;
+		}
+	}
+
+	const beforePackages = getPackages(await readJson(paths.projectSettingsPath));
+
+	let backupPath: string | undefined;
+	try {
+		backupPath = await backupProjectSettingsIfPresent(paths);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not back up .pi/settings.json; aborting load.\n${message}`);
+		return;
+	}
+
+	showText(ctx, [`Loading package project-locally...`, `Source: ${resolved.source}`, backupPath ? `Backup: ${backupPath}` : "Backup: none (.pi/settings.json did not exist)"].join("\n"));
+
+	const install = await pi.exec("pi", ["install", resolved.source, "-l", "--approve"], { timeout: 120_000 });
+	if (install.code !== 0) {
+		showText(
+			ctx,
+			[
+				"Construct load failed during Pi package install.",
+				`Command: pi install ${resolved.source} -l --approve`,
+				`Exit code: ${install.code}`,
+				backupPath ? `Settings backup: ${backupPath}` : undefined,
+				install.stdout ? `\nstdout:\n${install.stdout}` : undefined,
+				install.stderr ? `\nstderr:\n${install.stderr}` : undefined,
+			]
+				.filter((line): line is string => line !== undefined)
+				.join("\n"),
+		);
+		return;
+	}
+
+	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
+	const declaredSource = chooseDeclaredSource(beforePackages, afterPackages, resolved.source);
+	const constructRead = await readJson(paths.projectConstructPath);
+	const itemId = uniqueManagedId(resolved.item?.id ?? deriveId(resolved.source), constructRead, declaredSource);
+	try {
+		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, resolved.source, paths);
+		await writeJson(paths.projectConstructPath, construct);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(
+			ctx,
+			[
+				"Package installed, but Construct metadata update failed.",
+				`Source: ${resolved.source}`,
+				`Metadata path: ${paths.projectConstructPath}`,
+				backupPath ? `Settings backup: ${backupPath}` : undefined,
+				message,
+			].filter((line): line is string => line !== undefined).join("\n"),
+		);
+		return;
+	}
+
+	let catalogMessage = "";
+	if (!resolved.item && ctx.hasUI) {
+		const add = await ctx.ui.confirm("Add to Construct catalog?", `Add ${resolved.source} to your user catalog for future projects?`);
+		if (add) {
+			const { paths: catalogPaths, catalog } = await loadCatalog(ctx);
+			if (!catalog.items.some((item) => item.source === resolved.source)) {
+				const id = uniqueId(deriveId(resolved.source), catalog.items);
+				await writeJson(catalogPaths.userCatalogPath, {
+					version: 1,
+					items: [...catalog.items, { id, kind: "package", source: resolved.source }].sort((a, b) => a.id.localeCompare(b.id)),
+				});
+				catalogMessage = `\nAdded to user catalog as: ${id}`;
+			}
+		}
+	} else if (!resolved.item) {
+		catalogMessage = `\nTip: run /construct catalog add ${resolved.source} to reuse this source in future projects.`;
+	}
+
+	const summary = [
+		"Construct load complete.",
+		`Source: ${resolved.source}`,
+		declaredSource === resolved.source ? undefined : `Declared package source: ${declaredSource}`,
+		`Managed item: ${itemId}`,
+		`Project settings: ${paths.projectSettingsPath}`,
+		`Construct metadata: ${paths.projectConstructPath}`,
+		backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
+		catalogMessage || undefined,
+		install.stdout ? `\npi install stdout:\n${install.stdout}` : undefined,
+		install.stderr ? `\npi install stderr:\n${install.stderr}` : undefined,
+	]
+		.filter((line): line is string => line !== undefined)
+		.join("\n");
+
+	if (ctx.hasUI) {
+		const reload = await ctx.ui.confirm("Reload Pi resources now?", `${summary}\n\nReload so newly loaded resources are available?`);
+		if (reload) {
+			await ctx.reload();
+			return;
+		}
+	}
+
+	showText(ctx, `${summary}\n\nReload Pi resources with /construct reload or /reload.`);
+}
+function packageSource(entry: unknown): string | undefined {
+	if (typeof entry === "string") return entry;
+	if (isObject(entry) && typeof entry.source === "string") return entry.source;
+	return undefined;
+}
+
+function readSettingsObject(settings: JsonReadResult): JsonObject {
+	if (settings.state === "missing") return {};
+	if (settings.state === "invalid") throw new Error(`Cannot edit invalid .pi/settings.json: ${settings.error}`);
+	if (!isObject(settings.data)) throw new Error("Cannot edit .pi/settings.json because it is not a JSON object.");
+	return { ...settings.data };
+}
+
+async function removePackageDeclaration(paths: ConstructPaths, source: string): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "missing") return { removed: false, settingsMissing: true };
+
+	const settings = readSettingsObject(settingsRead);
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	const nextPackages = packages.filter((entry) => packageSource(entry) !== source);
+	const removed = nextPackages.length !== packages.length;
+	if (!removed) return { removed: false, settingsMissing: false };
+
+	const backupPath = await backupProjectSettingsIfPresent(paths);
+	settings.packages = nextPackages;
+	await writeJson(paths.projectSettingsPath, settings);
+	return { removed: true, backupPath, settingsMissing: false };
+}
+
+function getManagedEntry(construct: JsonReadResult, query: string): { id: string; item: JsonObject } | undefined {
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return undefined;
+	for (const [id, item] of Object.entries(construct.data.items)) {
+		if (!isObject(item)) continue;
+		if (id === query || item.source === query || item.requestedSource === query) return { id, item };
+	}
+	return undefined;
+}
+
+function managedItemChoices(construct: JsonReadResult): string[] {
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
+	return Object.entries(construct.data.items)
+		.filter(([, item]) => isObject(item))
+		.map(([id, item]) => {
+			const source = isObject(item) && typeof item.source === "string" ? item.source : "<no source>";
+			const enabled = isObject(item) && item.enabled === false ? "disabled" : "enabled";
+			return `${id}: ${source} (${enabled})`;
+		});
+}
+
+async function resolveManagedEntry(
+	ctx: ExtensionCommandContext,
+	paths: ConstructPaths,
+	query: string,
+	action: string,
+): Promise<{ construct: JsonReadResult; id?: string; item?: JsonObject }> {
+	const construct = await readJson(paths.projectConstructPath);
+	let resolvedQuery = query.trim();
+	if (!resolvedQuery && ctx.hasUI) {
+		const choices = [...managedItemChoices(construct), "Cancel"];
+		if (choices.length === 1) return { construct };
+		const selected = await ctx.ui.select(`Construct ${action}: choose item`, choices);
+		if (!selected || selected === "Cancel") return { construct };
+		resolvedQuery = selected.split(":", 1)[0];
+	}
+	if (!resolvedQuery) return { construct };
+	const entry = getManagedEntry(construct, resolvedQuery);
+	return entry ? { construct, id: entry.id, item: entry.item } : { construct };
+}
+
+function updateConstructItemEnabled(construct: JsonReadResult, id: string, enabled: boolean): JsonObject {
+	const root = parseProjectConstruct(construct);
+	const items = isObject(root.items) ? root.items : {};
+	const item = isObject(items[id]) ? items[id] : {};
+	return {
+		...root,
+		version: 1,
+		managedBy: "the-construct",
+		items: {
+			...items,
+			[id]: {
+				...item,
+				enabled,
+				updatedAt: new Date().toISOString(),
+			},
+		},
+	};
+}
+
+function removeConstructItem(construct: JsonReadResult, id: string): JsonObject {
+	const root = parseProjectConstruct(construct);
+	const items = isObject(root.items) ? { ...root.items } : {};
+	delete items[id];
+	return {
+		...root,
+		version: 1,
+		managedBy: "the-construct",
+		items,
+	};
+}
+
+async function handleDisable(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const { construct, id, item } = await resolveManagedEntry(ctx, paths, args, "disable");
+	if (!id || !item) {
+		showText(ctx, "No Construct-managed item selected/found to disable.");
+		return;
+	}
+	if (typeof item.source !== "string") {
+		showText(ctx, `Cannot disable ${id}: metadata has no package source.`);
+		return;
+	}
+
+	let removal: { removed: boolean; backupPath?: string; settingsMissing: boolean };
+	try {
+		removal = await removePackageDeclaration(paths, item.source);
+		await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, id, false));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Disable failed for ${id}.\n${message}`);
+		return;
+	}
+
 	showText(
 		ctx,
 		[
-			"Construct load dry-run",
-			"======================",
-			"No files were changed and no package was installed.",
-			"",
-			`Target: ${paths.cwd}`,
-			paths.realCwd === paths.cwd ? undefined : `Canonical target: ${paths.realCwd}`,
-			"Target rule: ctx.cwd (MVP; no git-root guessing)",
-			"",
-			"Would update:",
-			`- ${paths.projectSettingsPath}`,
-			`- ${paths.projectConstructPath}`,
-			"",
-			resolved.item ? `Catalog item: ${resolved.item.id}` : "Catalog item: <ad hoc source>",
-			`Package source: ${resolved.source}`,
-			"",
-			"Equivalent Pi command:",
-			`pi install ${resolved.source} -l --approve`,
-			"",
-			"Next phase will run the Pi command, write Construct metadata, and offer reload.",
-			...warnings.map((warning) => `! ${warning}`),
+			`Disabled Construct item: ${id}`,
+			`Source: ${item.source}`,
+			removal.removed ? `Removed package declaration from: ${paths.projectSettingsPath}` : "Package declaration was not present in .pi/settings.json.",
+			removal.backupPath ? `Settings backup: ${removal.backupPath}` : undefined,
+			removal.settingsMissing ? ".pi/settings.json was missing; only Construct metadata was updated." : undefined,
+			"Reload Pi resources with /construct reload or /reload.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
+	);
+}
+
+async function handleRemove(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const { construct, id, item } = await resolveManagedEntry(ctx, paths, args, "remove");
+	if (!id || !item) {
+		showText(ctx, "No Construct-managed item selected/found to remove.");
+		return;
+	}
+	if (ctx.hasUI) {
+		const ok = await ctx.ui.confirm("Remove Construct item?", `Remove ${id} from this project?\n\nThis removes the package declaration and Construct metadata only. It does not delete caches or files.`);
+		if (!ok) {
+			showText(ctx, "Construct remove cancelled.");
+			return;
+		}
+	}
+
+	let removal: { removed: boolean; backupPath?: string; settingsMissing: boolean } = { removed: false, settingsMissing: false };
+	try {
+		if (typeof item.source === "string") removal = await removePackageDeclaration(paths, item.source);
+		await writeJson(paths.projectConstructPath, removeConstructItem(construct, id));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Remove failed for ${id}.\n${message}`);
+		return;
+	}
+
+	showText(
+		ctx,
+		[
+			`Removed Construct item: ${id}`,
+			typeof item.source === "string" ? `Source: ${item.source}` : undefined,
+			removal.removed ? `Removed package declaration from: ${paths.projectSettingsPath}` : "Package declaration was not present in .pi/settings.json.",
+			removal.backupPath ? `Settings backup: ${removal.backupPath}` : undefined,
+			"No package caches or files were deleted.",
+			"Reload Pi resources with /construct reload or /reload.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
+	);
+}
+
+async function handleEnable(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const { construct, id, item } = await resolveManagedEntry(ctx, paths, args, "enable");
+	if (!id || !item) {
+		showText(ctx, "No Construct-managed item selected/found to enable.");
+		return;
+	}
+	const source = typeof item.requestedSource === "string" ? item.requestedSource : typeof item.source === "string" ? item.source : undefined;
+	if (!source) {
+		showText(ctx, `Cannot enable ${id}: metadata has no package source.`);
+		return;
+	}
+
+	if (ctx.hasUI) {
+		const ok = await ctx.ui.confirm("Enable Construct item?", `Enable ${id} in this project?\n\nEquivalent Pi command:\npi install ${source} -l --approve`);
+		if (!ok) {
+			showText(ctx, "Construct enable cancelled.");
+			return;
+		}
+	}
+
+	const beforePackages = getPackages(await readJson(paths.projectSettingsPath));
+	let backupPath: string | undefined;
+	try {
+		backupPath = await backupProjectSettingsIfPresent(paths);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not back up .pi/settings.json; aborting enable.\n${message}`);
+		return;
+	}
+
+	const install = await pi.exec("pi", ["install", source, "-l", "--approve"], { timeout: 120_000 });
+	if (install.code !== 0) {
+		showText(
+			ctx,
+			[
+				`Enable failed during Pi package install for ${id}.`,
+				`Command: pi install ${source} -l --approve`,
+				`Exit code: ${install.code}`,
+				backupPath ? `Settings backup: ${backupPath}` : undefined,
+				install.stdout ? `\nstdout:\n${install.stdout}` : undefined,
+				install.stderr ? `\nstderr:\n${install.stderr}` : undefined,
+			]
+				.filter((line): line is string => line !== undefined)
+				.join("\n"),
+		);
+		return;
+	}
+
+	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
+	const declaredSource = chooseDeclaredSource(beforePackages, afterPackages, source);
+	try {
+		const constructRoot = upsertConstructItem(parseProjectConstruct(construct), id, declaredSource, source, paths);
+		await writeJson(paths.projectConstructPath, constructRoot);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Package enabled, but Construct metadata update failed for ${id}.\n${message}`);
+		return;
+	}
+
+	showText(
+		ctx,
+		[
+			`Enabled Construct item: ${id}`,
+			`Source: ${source}`,
+			declaredSource === source ? undefined : `Declared package source: ${declaredSource}`,
+			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
+			install.stdout ? `\npi install stdout:\n${install.stdout}` : undefined,
+			install.stderr ? `\npi install stderr:\n${install.stderr}` : undefined,
+			"Reload Pi resources with /construct reload or /reload.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),
@@ -505,14 +1048,53 @@ function planned(ctx: ExtensionCommandContext, subcommand: string): void {
 			"- /construct catalog",
 			"- /construct catalog add <source> [id]",
 			"- /construct catalog remove <id-or-source>",
-			"- /construct load [source-or-catalog-id] (dry-run)",
+			"- /construct load [source-or-catalog-id]",
 			"",
-			"Next phases add actual package load, enable/disable/remove, and autoload auto-offer.",
+			"Next phase adds autoload auto-offer.",
 		].join("\n"),
 	);
 }
 
+async function maybeOfferAutoload(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+	if (ctx.mode !== "tui" || !ctx.hasUI) return;
+	if (!ctx.isProjectTrusted()) return;
+
+	const paths = await getPaths(ctx);
+	if (existsSync(paths.projectConstructPath)) return;
+
+	const [settingsRead, catalogRead, skipsRead] = await Promise.all([
+		readJson(paths.userSettingsPath),
+		readJson(paths.userCatalogPath),
+		readJson(paths.userSkipsPath),
+	]);
+	const autoload = getAutoload(settingsRead);
+	if (!autoload.enabled) return;
+	if (getSkippedHere(skipsRead, paths.cwd, paths.realCwd)) return;
+
+	const catalog = parseCatalog(catalogRead);
+	if (catalog.data.items.length === 0) return;
+
+	const choice = await ctx.ui.select("Load it into the Construct?", ["yes", "not now", "don't ask for this project"]);
+	if (choice === "yes") {
+		pi.sendUserMessage("/construct load");
+		return;
+	}
+	if (choice === "don't ask for this project") {
+		try {
+			await addSkip(paths);
+			ctx.ui.notify("Construct will not auto-offer in this project again.", "info");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`Could not save Construct skip: ${message}`, "error");
+		}
+	}
+}
+
 export default function constructExtension(pi: ExtensionAPI) {
+	pi.on("session_start", async (_event, ctx) => {
+		await maybeOfferAutoload(pi, ctx);
+	});
+
 	pi.registerCommand("construct", {
 		description: "Inspect and manage project-local Pi loadouts",
 		getArgumentCompletions: (prefix) => {
@@ -534,12 +1116,32 @@ export default function constructExtension(pi: ExtensionAPI) {
 			}
 
 			if (command === "load") {
-				await handleLoad(rest, ctx);
+				await handleLoad(rest, pi, ctx);
 				return;
 			}
 
-			if (["enable", "disable", "remove", "autoload", "reload"].includes(command)) {
-				planned(ctx, command);
+			if (command === "enable") {
+				await handleEnable(rest, pi, ctx);
+				return;
+			}
+
+			if (command === "disable") {
+				await handleDisable(rest, ctx);
+				return;
+			}
+
+			if (command === "remove") {
+				await handleRemove(rest, ctx);
+				return;
+			}
+
+			if (command === "reload") {
+				await ctx.reload();
+				return;
+			}
+
+			if (command === "autoload") {
+				await handleAutoload(rest, ctx);
 				return;
 			}
 
