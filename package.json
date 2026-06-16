@@ -5,10 +5,13 @@
   "description": "A global Pi extension for loading project-local Pi resources.",
   "type": "module",
   "pi": {
-    "extensions": ["src/index.ts"]
+    "extensions": [
+      "src/index.ts"
+    ]
   },
   "scripts": {
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "smoke": "./scripts/smoke.sh"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
