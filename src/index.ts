@@ -667,6 +667,15 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 		}
 	}
 
+	const constructRead = await readJson(paths.projectConstructPath);
+	try {
+		parseProjectConstruct(constructRead);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Cannot load package until Construct metadata is fixed.\n${message}`);
+		return;
+	}
+
 	const beforePackages = getPackages(await readJson(paths.projectSettingsPath));
 
 	let backupPath: string | undefined;
@@ -700,7 +709,6 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 
 	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
 	const declaredSource = chooseDeclaredSource(beforePackages, afterPackages, resolved.source);
-	const constructRead = await readJson(paths.projectConstructPath);
 	const itemId = uniqueManagedId(resolved.item?.id ?? deriveId(resolved.source), constructRead, declaredSource);
 	try {
 		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, resolved.source, paths);
