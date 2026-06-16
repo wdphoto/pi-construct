@@ -11,8 +11,10 @@ This repo is for planning and eventually building **the-construct**, a global Pi
 
 ## Current status
 
-- Planning only unless explicitly asked to implement.
+- MVP implementation exists.
+- Entry point: `construct/index.ts`.
 - Main plan: `the-construct-plan.md`.
+- Main validation: `./scripts/smoke.sh` plus disposable installed-package checks.
 
 ## Safety rules
 
@@ -21,14 +23,21 @@ This repo is for planning and eventually building **the-construct**, a global Pi
   - `~/.pi/agent/settings.json`
   - `~/.pi/agent/npm/`
   - `~/.pi/agent/git/`
-- Do not install the extension globally during early development.
-- Test extensions with explicit loading, for example:
+- Do not install the extension into the live global Pi config unless explicitly requested.
+- Test extension loading explicitly:
   ```bash
-  pi --no-extensions -e ./src/index.ts
+  pi --no-extensions -e ./construct/index.ts
+  ```
+- Test package install/discovery only with a disposable `HOME`, for example:
+  ```bash
+  TMP="$(mktemp -d)"
+  mkdir -p "$TMP/home" "$TMP/project"
+  HOME="$TMP/home" pi install "$PWD" --approve
+  (cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
   ```
 - Prefer disposable fixture projects for testing project-local writes.
 - Before editing any `.pi/settings.json`, create a backup.
-- `/construct apply` should use conservative merge behavior: add missing declarations, preserve existing config, ask before overwrite/remove.
+- `/construct load` should use conservative behavior: add missing declarations, preserve existing config, ask before overwrite/remove.
 - Never write secrets, tokens, API keys, or auth material.
 
 ## Pi docs to consult before implementation

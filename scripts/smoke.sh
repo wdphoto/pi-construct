@@ -28,7 +28,7 @@ TS
 run_pi() {
   (
     cd "$PROJECT_DIR"
-    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT/src/index.ts" -p "$1"
+    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT/construct/index.ts" -p "$1"
   )
 }
 

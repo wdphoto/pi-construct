@@ -27,10 +27,10 @@ MVP principle: **Construct is not a package manager.** It wraps idiomatic Pi pro
 
 ## Safe local testing
 
-Do not install globally during early development. Load explicitly:
+Do not install into your live global Pi config during early development. Load explicitly:
 
 ```bash
-pi --no-extensions -e ./src/index.ts
+pi --no-extensions -e ./construct/index.ts
 ```
 
 Print-mode smoke checks:
@@ -41,10 +41,27 @@ Print-mode smoke checks:
 
 The smoke script uses disposable temp `HOME`, project, and package directories.
 
+To test actual package install/discovery without touching your real Pi config:
+
+```bash
+TMP="$(mktemp -d)"
+mkdir -p "$TMP/home" "$TMP/project"
+HOME="$TMP/home" pi install "$PWD" --approve
+(cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
+```
+
+For interactive testing:
+
+```bash
+pi --no-extensions -e ./construct/index.ts
+```
+
 ## Notes
 
+- Package entry point is `construct/index.ts`.
 - `/construct load` runs `pi install <source> -l --approve` from the active Pi project.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - Autoload means auto-offer only. It never installs packages by itself.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` is advisory metadata.
+- Current known follow-up: make `/construct disable` use Pi package filters instead of removing the package declaration.
