@@ -743,6 +743,27 @@ Usually do not commit:
 
 Git ignore policy is out of scope for MVP. Construct should show changed files after apply and let the user's normal git workflow decide what to commit or ignore.
 
+## Implementation status
+
+Current code implements the MVP package loop:
+
+- `/construct` and `/construct status`.
+- User catalog list/add/remove.
+- Project-local package load via `pi install <source> -l --approve`.
+- `.pi/construct.json` metadata writes.
+- Disable, enable, and remove for Construct-managed package items.
+- Autoload user setting plus conservative TUI-only auto-offer.
+- Disposable smoke test in `scripts/smoke.sh`.
+
+Still intentionally post-MVP:
+
+- Profiles/loadouts.
+- Import/export scripts.
+- Resource-level filters.
+- Rich dashboard TUI.
+- Project/bundled catalogs.
+- Doctor/update commands.
+
 ## MVP scope
 
 Build the smallest useful Construct loop:
