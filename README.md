@@ -2,24 +2,18 @@
 
 The Construct is a loadout manager for [Pi](https://pi.dev). It helps me remember the tools I use, then load or unload them inside of my projects.
 
-MVP principle: **Construct is not a package manager.** It is a simple install-memory picker for idiomatic Pi project config:
-
-- project packages in `.pi/settings.json`
-- Construct metadata in `.pi/construct.json`
-- user reusable picker state in `~/.pi/agent/construct/`
-
-## MVP workflow
+## Current Workflow
 
 1. In project A, install a Pi package or local extension source with normal Pi:
    ```bash
    pi install <source> -l
    ```
-2. Construct remembers that source when it sees project A.
+2. Sync your project with the Construct. Then the Construct remembers that source when it sees project B.
 3. In project B, run:
    ```text
    /construct
    ```
-4. Pick an unchecked remembered source:
+4. Pick an unchecked source:
    ```text
    [x] tally tools          npm:tally-tools
    [ ] tripwire             /Users/me/code/tripwire
@@ -111,6 +105,7 @@ MIT
 - `/construct` opens the remembered-source picker; choosing an unchecked item runs `pi install <source> -l --approve` from the active Pi project.
 - `/construct load` is the explicit/direct-load alias for the same flow.
 - `/construct unload` unloads all current project package declarations by running `pi remove <source> -l --approve` for each one. `/construct unload <source-or-id>` unloads one. It does not delete local source files or forget Construct library items.
+- Construct does not auto-reload after load/unload/sync. Run `/construct reload` or `/reload` when you want Pi to refresh resources.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - `/construct sync` remembers package sources from the current project's `.pi/settings.json` into the Construct library. It never installs or edits the project.
