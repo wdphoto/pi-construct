@@ -1,6 +1,6 @@
 # the-construct
 
-A global Pi extension for remembering Pi package/extension install sources and checking them into projects with project-local installs.
+The Construct is a loadout manager for [Pi](https://pi.dev). It helps me remember the tools I use, then load or unload them inside of my projects.
 
 MVP principle: **Construct is not a package manager.** It is a simple install-memory picker for idiomatic Pi project config:
 
