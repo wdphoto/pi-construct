@@ -81,6 +81,7 @@ Print-mode smoke checks:
 
 ```bash
 ./scripts/smoke.sh
+./scripts/e2e-smoke.sh
 ```
 
 The smoke script uses disposable temp `HOME`, project, and package directories.
@@ -120,7 +121,6 @@ MIT
 
 ## Next refactor order
 
-1. Add a permanent end-to-end smoke script for Project A raw install → `/construct sync` → Project B load/unload/reload.
-2. Replace the current simple select picker with a searchable checkbox TUI.
-3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
-4. Only after that, revisit profiles/groups and resource-level disable filters.
+1. Replace the current simple select picker with a searchable checkbox TUI.
+2. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
+3. Only after that, revisit profiles/groups and resource-level disable filters.

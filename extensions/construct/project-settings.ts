@@ -161,15 +161,3 @@ export async function removePackageDeclaration(paths: ConstructPaths, source: st
 	await writeJson(paths.projectSettingsPath, settings);
 	return { removed: true, backupPath, settingsMissing: false };
 }
-
-export function getRemovablePackageSources(settings: JsonReadResult): string[] {
-	const sources: string[] = [];
-	const seen = new Set<string>();
-	for (const pkg of getPackages(settings)) {
-		const source = pkg.source.trim();
-		if (pkg.form === "invalid" || !source || seen.has(source)) continue;
-		sources.push(source);
-		seen.add(source);
-	}
-	return sources;
-}

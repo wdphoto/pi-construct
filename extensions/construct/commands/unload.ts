@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, JsonReadResult } from "../types.js";
-import { findCatalogItem, loadCatalog } from "../catalog.js";
+import { findCatalogItem, loadCatalog, packageSourcesFromSettings } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { backupProjectSettingsIfPresent, getRemovablePackageSources } from "../project-settings.js";
+import { backupProjectSettingsIfPresent, getPackages, readSettingsObject } from "../project-settings.js";
 import { getManagedEntry, managedItemChoices, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
 import { showText } from "../ui.js";
 
@@ -50,8 +50,9 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		return;
 	}
 
-	const sources = getRemovablePackageSources(settings);
-	if (sources.length === 0) {
+	const rawSources = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.source.trim()).map((pkg) => pkg.source.trim());
+	const sources = [...new Set(await packageSourcesFromSettings(paths.projectSettingsPath))];
+	if (rawSources.length === 0) {
 		showText(ctx, "No project package declarations to unload.");
 		return;
 	}
@@ -85,35 +86,32 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	}
 
 	const removed: string[] = [];
-	for (const source of sources) {
+	const removeWarnings: string[] = [];
+	for (const source of rawSources) {
 		const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
-		if (removal.code !== 0) {
-			showText(
-				ctx,
-				[
-					"Construct unload-all failed during Pi package removal.",
-					`Failed source: ${source}`,
-					`Command: pi remove ${source} -l --approve`,
-					`Exit code: ${removal.code}`,
-					removed.length > 0 ? `Already removed before failure: ${removed.length}` : undefined,
-					...removed.map((removedSource) => `- ${removedSource}`),
-					backupPath ? `Settings backup: ${backupPath}` : undefined,
-					removal.stdout ? `\nstdout:\n${removal.stdout}` : undefined,
-					removal.stderr ? `\nstderr:\n${removal.stderr}` : undefined,
-				]
-					.filter((line): line is string => line !== undefined)
-					.join("\n"),
-			);
-			return;
+		if (removal.code === 0) {
+			removed.push(source);
+			continue;
 		}
-		removed.push(source);
+		removeWarnings.push(`pi remove did not match ${source}; removed it by editing .pi/settings.json instead.`);
 	}
 
+	try {
+		const latestSettings = readSettingsObject(await readJson(paths.projectSettingsPath));
+		latestSettings.packages = [];
+		await writeJson(paths.projectSettingsPath, latestSettings);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not finish clearing project package declarations.\n${message}`);
+		return;
+	}
+
+	const metadataSources = new Set([...rawSources, ...sources]);
 	let metadataChanged = 0;
 	const construct = await readJson(paths.projectConstructPath);
 	if (construct.state !== "missing") {
 		try {
-			const update = updateConstructSourcesEnabled(construct, new Set(removed), false);
+			const update = updateConstructSourcesEnabled(construct, metadataSources, false);
 			metadataChanged = update.changed;
 			if (metadataChanged > 0) await writeJson(paths.projectConstructPath, update.data);
 		} catch (error) {
@@ -127,11 +125,12 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		ctx,
 		[
 			"Construct unload complete.",
-			`Unloaded project packages: ${removed.length}`,
-			...removed.map((source) => `- ${source}`),
+			`Unloaded project packages: ${rawSources.length}`,
+			...rawSources.map((source) => `- ${source}`),
 			`Project settings: ${paths.projectSettingsPath}`,
 			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
 			metadataChanged > 0 ? `Construct metadata marked unloaded: ${metadataChanged}` : "Construct metadata was not changed.",
+			...removeWarnings.map((warning) => `! ${warning}`),
 			"Sources remain remembered in Construct if they were in the library.",
 			"Reload Pi resources with /construct reload or /reload.",
 		]

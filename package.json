@@ -24,7 +24,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "smoke": "./scripts/smoke.sh",
-    "install-smoke": "./scripts/install-smoke.sh"
+    "install-smoke": "./scripts/install-smoke.sh",
+    "e2e-smoke": "./scripts/e2e-smoke.sh"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
