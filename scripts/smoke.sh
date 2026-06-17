@@ -28,7 +28,7 @@ TS
 run_pi() {
   (
     cd "$PROJECT_DIR"
-    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT/construct/index.ts" -p "$1"
+    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT" -p "$1"
   )
 }
 
@@ -44,6 +44,29 @@ quiet_pi '/construct catalog'
 quiet_pi '/construct catalog add npm:@scope/pkg browser-tools'
 quiet_pi '/construct load --dry-run browser-tools'
 quiet_pi '/construct catalog remove browser-tools'
+
+printf '== library sync ==\n'
+mkdir -p "$PROJECT_DIR/.pi"
+python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
+PY
+quiet_pi '/construct load'
+python3 - "$HOME_DIR" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+assert any(item.get("source") == source for item in catalog.get("items", [])), catalog
+PY
 
 printf '== load / disable / enable / remove ==\n'
 quiet_pi "/construct load $PKG_DIR"

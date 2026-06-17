@@ -357,7 +357,7 @@ function buildLoadPreview(paths: ConstructPaths, source: string, item: CatalogIt
 		`- ${paths.projectSettingsPath}`,
 		`- ${paths.projectConstructPath}`,
 		"",
-		item ? `Catalog item: ${item.id}` : "Catalog item: <ad hoc source>",
+		item ? `Library item: ${item.id}` : "Library item: <ad hoc source>",
 		`Package source: ${source}`,
 		"",
 		"Equivalent Pi command:",
@@ -417,9 +417,9 @@ async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Prom
 		"--------------------",
 		`Settings: ${describeRead(userSettings)}`,
 		`Autoload: ${autoload.note}`,
-		`Catalog: ${describeRead(userCatalog)}`,
-		`Catalog items: ${catalog.data.items.length}`,
-		...formatList(catalogPreview, "no catalog preview"),
+		`Construct library: ${describeRead(userCatalog)}`,
+		`Library items: ${catalog.data.items.length}`,
+		...formatList(catalogPreview, "no library preview"),
 		...catalog.warnings.map((warning) => `! ${warning}`),
 		`Skips: ${describeRead(userSkips)}`,
 		`Skipped here: ${skippedHere ? "yes" : "no"}`,
@@ -453,6 +453,39 @@ async function loadCatalog(ctx: ExtensionCommandContext): Promise<{ paths: Const
 	const read = await readJson(paths.userCatalogPath);
 	const { data, warnings } = parseCatalog(read);
 	return { paths, read, catalog: data, warnings };
+}
+
+async function syncProjectPackagesToCatalog(ctx: ExtensionCommandContext): Promise<{ added: CatalogItem[]; warnings: string[] }> {
+	const paths = await getPaths(ctx);
+	const catalogRead = await readJson(paths.userCatalogPath);
+	if (catalogRead.state === "invalid") {
+		return { added: [], warnings: [`Skipped Construct library sync because catalog JSON is invalid: ${catalogRead.error}`] };
+	}
+
+	const { data: catalog, warnings } = parseCatalog(catalogRead);
+	if (catalogRead.state === "ok" && warnings.length > 0) {
+		return { added: [], warnings: [`Skipped Construct library sync because catalog has warnings; fix ${paths.userCatalogPath} first.`, ...warnings] };
+	}
+
+	const projectSettings = await readJson(paths.projectSettingsPath);
+	const sources = getPackages(projectSettings)
+		.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim())
+		.map((pkg) => pkg.source.trim());
+	const existingSources = new Set(catalog.items.map((item) => item.source));
+	const nextItems = [...catalog.items];
+	const added: CatalogItem[] = [];
+	for (const source of sources) {
+		if (existingSources.has(source)) continue;
+		const item: CatalogItem = { id: uniqueId(deriveId(source), nextItems), kind: "package", source };
+		nextItems.push(item);
+		added.push(item);
+		existingSources.add(source);
+	}
+
+	if (added.length > 0) {
+		await writeJson(paths.userCatalogPath, { version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
+	}
+	return { added, warnings };
 }
 
 function readUserSettings(settings: JsonReadResult): JsonObject {
@@ -538,12 +571,12 @@ async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promis
 		showText(
 			ctx,
 			[
-				"Construct catalog",
+				"Construct library",
 				"=================",
 				`Path: ${paths.userCatalogPath}`,
 				`State: ${describeRead(read)}`,
 				`Items: ${catalog.items.length}`,
-				...formatList(catalog.items.map(formatCatalogItem), "catalog is empty"),
+				...formatList(catalog.items.map(formatCatalogItem), "library is empty"),
 				...warnings.map((warning) => `! ${warning}`),
 				"",
 				"Commands:",
@@ -561,16 +594,17 @@ async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promis
 			return;
 		}
 		if (catalog.items.some((item) => item.source === source)) {
-			showText(ctx, `Catalog already contains source: ${source}`);
+			showText(ctx, `Construct library already contains source: ${source}`);
 			return;
 		}
 		const id = uniqueId(requestedId || deriveId(source), catalog.items);
+		const item: CatalogItem = { id, kind: "package", source };
 		const next: CatalogData = {
 			version: 1,
-			items: [...catalog.items, { id, kind: "package", source }].sort((a, b) => a.id.localeCompare(b.id)),
+			items: [...catalog.items, item].sort((a, b) => a.id.localeCompare(b.id)),
 		};
 		await writeJson(paths.userCatalogPath, next);
-		showText(ctx, [`Added catalog item:`, formatCatalogItem({ id, kind: "package", source }), `Path: ${paths.userCatalogPath}`].join("\n"));
+		showText(ctx, [`Added library item:`, formatCatalogItem(item), `Path: ${paths.userCatalogPath}`].join("\n"));
 		return;
 	}
 
@@ -582,12 +616,12 @@ async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promis
 		}
 		const existing = findCatalogItem(catalog.items, query);
 		if (!existing) {
-			showText(ctx, `Catalog item not found: ${query}`);
+			showText(ctx, `Library item not found: ${query}`);
 			return;
 		}
 		const next: CatalogData = { version: 1, items: catalog.items.filter((item) => item !== existing) };
 		await writeJson(paths.userCatalogPath, next);
-		showText(ctx, [`Removed catalog item:`, formatCatalogItem(existing), `Path: ${paths.userCatalogPath}`].join("\n"));
+		showText(ctx, [`Removed library item:`, formatCatalogItem(existing), `Path: ${paths.userCatalogPath}`].join("\n"));
 		return;
 	}
 
@@ -612,24 +646,33 @@ async function resolveLoadSource(args: string, ctx: ExtensionCommandContext): Pr
 		return item ? { source: item.source, item, warnings } : { source: query, warnings };
 	}
 
-	if (catalog.items.length === 0) return { warnings };
 	if (!ctx.hasUI) return { warnings };
+	if (catalog.items.length === 0) {
+		const choices = ["Enter source manually", "Cancel"];
+		const selected = await ctx.ui.select("Your Construct library is empty", choices);
+		if (!selected || selected === "Cancel") return { warnings };
+		const source = await ctx.ui.input("Pi package source", "npm:@scope/package");
+		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
+	}
 
-	const choices = [...catalog.items.map((item) => `${item.id}: ${item.source}`), "Enter source manually", "Cancel"];
+	const choiceToItem = new Map(catalog.items.map((item) => [`${item.id}: ${item.source}`, item]));
+	const choices = [...choiceToItem.keys(), "Enter source manually", "Cancel"];
 	const selected = await ctx.ui.select("Load into this project", choices);
 	if (!selected || selected === "Cancel") return { warnings };
 	if (selected === "Enter source manually") {
 		const source = await ctx.ui.input("Pi package source", "npm:@scope/package");
 		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
 	}
-	const id = selected.split(":", 1)[0];
-	const item = catalog.items.find((candidate) => candidate.id === id);
-	return item ? { source: item.source, item, warnings } : { warnings };
+	const item = choiceToItem.get(selected);
+	return item
+		? { source: item.source, item, warnings }
+		: { warnings: [...warnings, `Could not resolve selected library item: ${selected}`] };
 }
 
 async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
 	const flags = parseLoadFlags(args);
+	const sync = flags.dryRun ? { added: [], warnings: [] } : await syncProjectPackagesToCatalog(ctx);
 	const resolved = await resolveLoadSource(flags.query, ctx);
 
 	if (!resolved.source) {
@@ -642,13 +685,13 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 				"- /construct load npm:@scope/package",
 				"- /construct load --dry-run npm:@scope/package",
 				"- /construct catalog add npm:@scope/package",
-				"- /construct load <catalog-id>",
+				"- /construct load <library-id>",
 			].join("\n"),
 		);
 		return;
 	}
 
-	const warnings = [...resolved.warnings];
+	const warnings = [...sync.warnings, ...resolved.warnings];
 	if (!looksLikePackageSource(resolved.source)) {
 		warnings.push("Source does not look like an npm:, git:, URL, or local path package source. Pi may still reject or accept it.");
 	}
@@ -728,22 +771,22 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 		return;
 	}
 
-	let catalogMessage = "";
+	let catalogMessage = sync.added.length > 0 ? `\nRemembered ${sync.added.length} existing project package(s) in the Construct library.` : "";
 	if (!resolved.item && ctx.hasUI) {
-		const add = await ctx.ui.confirm("Add to Construct catalog?", `Add ${resolved.source} to your user catalog for future projects?`);
+		const add = await ctx.ui.confirm("Add to Construct library?", `Add ${resolved.source} to your Construct library for future projects?`);
 		if (add) {
 			const { paths: catalogPaths, catalog } = await loadCatalog(ctx);
 			if (!catalog.items.some((item) => item.source === resolved.source)) {
-				const id = uniqueId(deriveId(resolved.source), catalog.items);
+				const item: CatalogItem = { id: uniqueId(deriveId(resolved.source), catalog.items), kind: "package", source: resolved.source };
 				await writeJson(catalogPaths.userCatalogPath, {
 					version: 1,
-					items: [...catalog.items, { id, kind: "package", source: resolved.source }].sort((a, b) => a.id.localeCompare(b.id)),
+					items: [...catalog.items, item].sort((a, b) => a.id.localeCompare(b.id)),
 				});
-				catalogMessage = `\nAdded to user catalog as: ${id}`;
+				catalogMessage = `${catalogMessage}\nAdded to Construct library as: ${item.id}`;
 			}
 		}
 	} else if (!resolved.item) {
-		catalogMessage = `\nTip: run /construct catalog add ${resolved.source} to reuse this source in future projects.`;
+		catalogMessage = `${catalogMessage}\nTip: run /construct catalog add ${resolved.source} to reuse this source in future projects.`;
 	}
 
 	const summary = [
@@ -1056,7 +1099,7 @@ function planned(ctx: ExtensionCommandContext, subcommand: string): void {
 			"- /construct catalog",
 			"- /construct catalog add <source> [id]",
 			"- /construct catalog remove <id-or-source>",
-			"- /construct load [source-or-catalog-id]",
+			"- /construct load [source-or-library-id]",
 			"",
 			"Next phase adds autoload auto-offer.",
 		].join("\n"),
@@ -1161,7 +1204,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"Try:",
 					"- /construct status",
 					"- /construct catalog",
-					"- /construct load <source-or-catalog-id>",
+					"- /construct load <source-or-library-id>",
 				].join("\n"),
 			);
 		},

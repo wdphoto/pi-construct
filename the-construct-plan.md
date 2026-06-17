@@ -20,6 +20,8 @@ MVP workflow:
 
 Optional autoload is **auto-offer only**. It may show `Load it into the Construct?` in new trusted projects, but it must never silently install or enable project code.
 
+Construct library sync is **remember-only**. When Construct sees project-level package declarations, it may remember their source strings in the user's Construct library so they appear in future `/construct load` menus. It must never install, enable, copy, or execute anything by itself.
+
 ## Existing Pi primitives we should build on
 
 - **Project trust**: project-local `.pi/settings.json`, `.pi/extensions`, `.pi/skills`, `.pi/prompts`, `.pi/themes`, `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md`, and `.agents/skills` load only after trust.
@@ -62,7 +64,7 @@ Construct's value is not a new resource system. Its value is packaging these idi
 
 ## UX sketch
 
-### MVP manual load flow
+### Simple `/construct load` menu
 
 Primary command:
 
@@ -70,27 +72,60 @@ Primary command:
 /construct load
 ```
 
-If the user's Construct catalog is empty:
+`/construct load` should work in any trusted project directory. It is the one simple place to see the Construct library and toggle project-level packages on or off.
 
-```text
-Your Construct catalog is empty.
-
-Load a Pi package source into this project:
-  npm:@scope/pi-browser-tools
-  git:github.com/user/pi-extension@main
-  ./local-pi-package
-```
-
-A direct source should also work:
+A direct source should also work without opening the picker:
 
 ```text
 /construct load npm:@scope/pi-browser-tools
 ```
 
-Before writing anything, Construct must show the target and the exact project-local effect:
+Before showing the menu, Construct syncs the current project into the user-local Construct library:
+
+- read `.pi/settings.json` package declarations;
+- remember package source strings in `~/.pi/agent/construct/catalog.json` if missing;
+- do not install, enable, copy, execute, or rewrite anything just because it was detected;
+- mark local/relative path sources as less portable, but still list them for us.
+
+Menu sketch:
 
 ```text
-Load into this project?
+Construct — /path/to/current/cwd
+
+Enabled in this project
+  [x] browser-tools        npm:@scope/pi-browser-tools
+  [x] audit-kit            npm:@scope/pi-audit-kit
+
+Available from Construct
+  [ ] review-prompts       npm:@scope/pi-review-prompts
+  [ ] local-tools          ../pi-tools                    local path
+
+Project-local only
+  local-helper             .pi/extensions/local.ts        not portable yet
+
+Groups
+  website: browser-tools, review-prompts
+  script: audit-kit
+
+Actions
+  Toggle selected
+  Enter source manually
+  Forget from Construct library
+  Reload
+  Cancel
+```
+
+The toggle is intentionally simple:
+
+- unchecked → checked means **enable in this project** with `pi install <source> -l --approve` and record/update `.pi/construct.json`.
+- checked → unchecked means **disable in this project** by removing that package declaration from this project's `.pi/settings.json` and recording `enabled: false` in `.pi/construct.json`.
+- disabling does **not** remove the source from the Construct library.
+- forgetting removes the source from the Construct library only; it should not edit the current project unless the user separately disables it.
+
+Before writing anything, Construct must show the target and exact project-local effect:
+
+```text
+Enable in this project?
 
 Target:
   /path/to/current/cwd
@@ -105,27 +140,43 @@ Package source:
 This is equivalent to:
   pi install npm:@scope/pi-browser-tools -l --approve
 
-Actions: Load / Cancel
+Actions: Enable / Cancel
 ```
 
-After load:
+For disable:
 
 ```text
-Loaded npm:@scope/pi-browser-tools into this project.
-Added to your Construct catalog for future projects? [yes/no]
-Reload Pi resources now? [yes/no]
+Disable in this project?
+
+Target:
+  /path/to/current/cwd
+
+Will update:
+  .pi/settings.json
+  .pi/construct.json
+
+Package source:
+  npm:@scope/pi-browser-tools
+
+This removes the project package declaration only.
+The source remains available in Construct for other projects.
+
+Actions: Disable / Cancel
 ```
 
-If the catalog has entries:
+If the Construct library is empty and nothing reusable is detected, Construct should still be useful:
 
 ```text
-Load into this project:
+Your Construct library is empty.
 
-  browser-tools       npm:@scope/pi-browser-tools
-  review-prompts      npm:@scope/pi-review-prompts
-  local-tools         ../pi-tools
+Options:
+  Enter a Pi package source
+  Cancel
 
-Actions: Load selected / Enter source / Cancel
+Examples:
+  npm:@scope/pi-browser-tools
+  git:github.com/user/pi-extension@main
+  ./local-pi-package
 ```
 
 ### Autoload flow
@@ -137,12 +188,12 @@ Autoload is opt-in and user-local:
 /construct autoload off
 ```
 
-`/construct status` should include autoload state, so a separate `autoload status` command is unnecessary.
+`/construct status` should include autoload state. `/construct autoload status` may exist as a convenience, but it should not be the only way to see autoload state.
 
-When autoload is on and Construct sees a new trusted project with no `.pi/construct.json` and no user-local skip entry, it may offer:
+When autoload is on and Construct sees an eligible trusted project with no user-local skip entry, it may offer:
 
 ```text
-Load it into the Construct?
+Open Construct for this project?
   yes
   not now
   don't ask for this project
@@ -150,30 +201,73 @@ Load it into the Construct?
 
 Rules:
 
-- `yes` opens the same `/construct load` picker.
+- `yes` opens the same `/construct load` menu.
 - `not now` writes nothing.
 - `don't ask for this project` writes user-local skip state, not project files.
 - Autoload must never install anything by itself.
 - Non-interactive modes must not prompt.
 
+### Project scenarios
+
+**Brand-new empty project**
+
+- `/construct load` shows the Construct library and manual source entry.
+- Enabling an item writes `.pi/settings.json` and `.pi/construct.json`.
+- Nothing is installed until selected.
+
+**Existing project with plain Pi package declarations**
+
+- Construct detects packages from `.pi/settings.json`.
+- It adds those package source strings to the Construct library if missing.
+- It does not reinstall them just because it sees them.
+- The next `/construct load` in any project shows those sources as options.
+
+**Existing project with local `.pi` resources**
+
+- Construct detects `.pi/extensions`, `.pi/prompts`, `.pi/skills`, and `.pi/themes`.
+- These show as project-local only.
+- They are not automatically added to the reusable package library because a raw local file is not a portable install source.
+- Future export/package/profile flows can make them reusable.
+
+**Old project opened after Construct remembered something elsewhere**
+
+- Remembered library entries appear as available options.
+- Nothing is installed into the old project until the user toggles an item on.
+- If the old project already has that package declared, Construct shows it as enabled.
+
+**Project already managed by Construct**
+
+- `/construct load` shows current enabled/disabled state, not only new install options.
+- Enabled items can be toggled off for this project.
+- Disabled/library items can be toggled on for this project.
+- Drift between `.pi/construct.json` and `.pi/settings.json` is shown; `.pi/settings.json` wins.
+
 ### Ongoing management
 
 Primary command:
 
-- `/construct` — print the same useful information as `/construct status` for MVP.
+- `/construct` — print the same useful information as `/construct status` in print/non-UI mode; open the Construct menu in TUI mode once the menu exists.
 
-Useful MVP subcommands:
+Current implemented commands:
 
-- `/construct status` — show target cwd, trust/load availability, autoload state, user catalog path/count, project Construct metadata, project package declarations, managed/detected packages, and pending reload hint.
-- `/construct load [source]` — choose or enter a package source and install it project-locally.
-- `/construct enable <item>` — re-add a previously disabled Construct-managed package to this project.
-- `/construct disable <item>` — disable a Construct-managed package for this project without deleting caches or unrelated files.
-- `/construct remove <item>` — remove a Construct-managed package from this project and from `.pi/construct.json` after confirmation.
-- `/construct catalog` — list/add/remove package sources in the user's reusable picker.
-- `/construct autoload on|off` — enable or disable auto-offer behavior.
+- `/construct status` — show target cwd, trust/load availability, autoload state, user catalog path/count, project Construct metadata, project package declarations, managed packages, and runtime diagnostics.
+- `/construct load [source-or-catalog-id]` — choose or enter a package source and install it project-locally.
+- `/construct load --dry-run <source-or-catalog-id>` — preview the package load without writing.
+- `/construct enable <managed-id>` — re-add a previously disabled Construct-managed package to this project.
+- `/construct disable <managed-id>` — disable a Construct-managed package for this project without deleting caches or unrelated files.
+- `/construct remove <managed-id>` — remove a Construct-managed package from this project and from `.pi/construct.json` after confirmation.
+- `/construct catalog` — list/add/remove package sources in the user's reusable library.
+- `/construct autoload on|off|status` — enable, disable, or inspect auto-offer behavior.
 - `/construct reload` — reload resources after changes.
 
-Post-MVP commands can add profiles, import/export, updates, resource-level filters, prompt/skill copying, and richer TUI dashboards.
+Next planned behavior should avoid extra command sprawl:
+
+- `/construct load` becomes the main menu/toggle UI.
+- `/construct status` syncs and reports detected package declarations.
+- `/construct catalog` remains the simple way to list or forget Construct library items.
+- Future profiles are named groups of library items, not a separate package system.
+
+Post-MVP commands can add profile save/apply, import/export, local-file packaging, and richer TUI dashboards only when the simple library/toggle flow is solid.
 
 ## Proposed architecture
 
@@ -195,9 +289,11 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - If enabled, `session_start` may auto-offer `/construct load` only after Pi trust/resource resolution and only in UI-capable modes.
    - Store autoload settings and per-project skips in user-local Construct files, not in project files.
 
-3. **Catalog layer**
+3. **Construct library/catalog layer**
    - MVP catalog is user-only: `~/.pi/agent/construct/catalog.json`.
    - Catalog entries are package sources the user can load into future projects.
+   - Whenever Construct sees package declarations in the current project's `.pi/settings.json`, it should remember missing source strings here.
+   - Manual catalog add/remove stays simple; removing from the catalog means “forget from Construct,” not “disable in this project.”
    - No official/bundled/project catalog in MVP unless needed for local testing.
 
 4. **Project state layer**
@@ -218,6 +314,8 @@ The global `the-construct` extension should be lightweight: commands, user catal
 6. **Inventory layer**
    - Read `.pi/settings.json` to know current project package declarations.
    - Read `.pi/construct.json` to know Construct-managed item state.
+   - Read project-local resource directories (`.pi/extensions`, `.pi/skills`, `.pi/prompts`, `.pi/themes`) for detected/project-bound inventory.
+   - Classify package declarations as enabled here, available from Construct, disabled by Construct metadata, local path, project-local only, or drifted.
    - Use `pi.getCommands()`, `pi.getAllTools()`, and `pi.getActiveTools()` for status/diagnostics only; runtime inventory is not the source of truth.
 
 7. **UI layer**
@@ -275,7 +373,8 @@ MVP catalog entries are package-first. Avoid executable command strings in machi
       "name": "Browser tools",
       "kind": "package",
       "source": "npm:@org/pi-browser-tools",
-      "description": "Browser automation extension and skills"
+      "description": "Browser automation extension and skills",
+      "groups": ["website"]
     }
   ]
 }
@@ -286,6 +385,7 @@ Rules:
 - `source` is passed to `pi install <source> -l --approve` when loading into a project.
 - Preserve source strings exactly. If a user enters a pinned npm version or git ref, keep it; do not invent pinning policy in MVP.
 - Catalog membership means “available to load into a project,” not “currently installed.”
+- `groups` are optional labels for simple future profile/toolbelt views, for example `website`, `script`, `review`, or `debug`.
 
 ### Project Construct metadata: `.pi/construct.json`
 
@@ -299,8 +399,11 @@ Rules:
     "browser-tools": {
       "kind": "package",
       "source": "npm:@org/pi-browser-tools",
+      "requestedSource": "npm:@org/pi-browser-tools",
       "enabled": true,
-      "loadedAt": "2026-06-15T00:00:00.000Z"
+      "managedReason": "loaded",
+      "loadedAt": "2026-06-15T00:00:00.000Z",
+      "updatedAt": "2026-06-15T00:00:00.000Z"
     }
   }
 }
@@ -312,6 +415,7 @@ Rules:
 - If metadata and `.pi/settings.json` disagree, `/construct status` reports drift and settings win.
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Do not write `.pi/construct.json` for `not now` or `don't ask` answers.
+- `managedReason` can be `loaded`, `synced`, `enabled`, or future values. Syncing records that Construct noticed an existing declaration; it should not imply Construct originally installed the package.
 
 ## Post-MVP: Shareable project profiles/templates
 
@@ -416,54 +520,107 @@ Overwrite rules:
 
 Profiles should be plain JSON so users can fix them by hand. Friendly UI on top, boring files underneath.
 
-## Picker source and inventory model
+## Construct library, inventory, and profile model
 
-The picker should not be magic. It should be built from several explicit sources, with clear labels:
+The picker should stay simple. Construct has one user-local **library** of package sources, plus project-local state that says whether each source is enabled here.
 
-1. **Bundled construct catalog**
-   - Ships with the-construct.
-   - Contains known-good package/loadout recommendations.
-   - Best for common choices like planning mode, tool manager, permission gates, web/search skills, review prompts.
+Sources for the `/construct load` menu:
 
-2. **User construct catalog**
+1. **User Construct library**
    - Stored at `~/.pi/agent/construct/catalog.json`.
-   - User-curated personal arsenal.
-   - This is what makes resources reusable across future projects.
+   - Contains package sources we have seen or added.
+   - This is the list shown in future projects.
+   - Construct may automatically add package sources it detects in trusted project `.pi/settings.json`. This is a remember-only action.
 
-3. **Project construct catalog**
-   - Optional `.pi/construct.catalog.json`, loaded only after trust.
-   - Team/project-specific recommended loadouts.
+2. **Current project package declarations**
+   - Read from `.pi/settings.json` `packages`.
+   - Anything declared here is enabled in the current project.
+   - If a package source is missing from the user library, Construct should add it so it appears in future `/construct load` menus.
 
-4. **Current project inventory**
-   - Read from `.pi/settings.json`, `.pi/extensions`, `.pi/skills`, `.pi/prompts`, `.pi/themes`, and package entries.
-   - These items appear as already installed/detected for the current project.
-   - They are not automatically promoted to the reusable user catalog.
+3. **Project Construct metadata**
+   - Read from `.pi/construct.json`.
+   - Tracks what Construct toggled and the last known enabled/disabled state.
+   - Advisory only; `.pi/settings.json` wins when there is disagreement.
 
-5. **Current runtime inventory**
-   - `pi.getCommands()` for loaded extension/prompt/skill commands.
-   - `pi.getAllTools()` and `pi.getActiveTools()` for tools.
-   - Useful for status and inspection, but not enough by itself to reinstall resources elsewhere.
+4. **Project-local resources**
+   - Read from `.pi/extensions`, `.pi/skills`, `.pi/prompts`, `.pi/themes`.
+   - Show these as “project-local only.”
+   - Do not add raw local files to the reusable package library. They need a future profile/export/package flow.
 
-### Are all local/project things added to the Construct?
+5. **Runtime inventory**
+   - `pi.getCommands()`, `pi.getAllTools()`, and `pi.getActiveTools()` are useful for status/diagnostics.
+   - Runtime inventory is not enough to reinstall a resource elsewhere, so it is not the source of truth.
 
-No, not automatically.
+### Library sync principle
 
-All project-local things should be **shown** in `/construct status` as detected inventory. But they should only become reusable Construct catalog entries after an explicit action, such as:
+Construct should remember project-level package sources automatically because this tool is for our own local workflow and we want future projects to see what we have used before.
 
-- `/construct adopt` — mark existing project resources as managed by the-construct for this project.
-- `/construct promote` — add a reusable entry to the user's global construct catalog for future projects.
-- `/construct export-loadout` — create a shareable loadout from the current project.
+Rules:
 
-Reason: project resources may be private, one-off, broken, or tightly coupled to the current repo. Automatically adding everything to the future-project picker would pollute the arsenal and could leak project-specific paths or package sources.
+- Sync runs during `/construct status`, `/construct load`, and other explicit Construct commands.
+- Sync reads package declarations from the current trusted project's `.pi/settings.json`.
+- Sync appends missing package sources to the user library.
+- Sync never installs anything.
+- Sync never enables anything in another project.
+- Sync never copies project-local files.
+- Sync dedupes by exact source string.
+- Local/relative/absolute path package sources can be remembered, but should be labeled `local path` because they may not work from other projects.
+
+This replaces separate “scan/promote/adopt/remember” commands for now. We can add more control later if the library gets noisy, but the first version should optimize for a tiny personal toolbelt.
+
+### Enable/disable model
+
+For the user, this is a toggle:
+
+- **Enabled here**: package source exists in this project's `.pi/settings.json` `packages`.
+- **Available**: package source exists in the Construct library but not in this project's `.pi/settings.json`.
+- **Disabled here**: Construct metadata remembers the user toggled it off here. Practically, this means it is absent from `.pi/settings.json` and still present in the library.
+
+Disable/uninstall wording:
+
+- In Construct UI, call it **disable** because the source remains available in Construct.
+- Implementation can remove the package declaration from the project. That is effectively uninstalling it from this project.
+- Do not delete caches, package checkouts, generated files, or config files.
+- Do not remove from the Construct library unless the user chooses “forget.”
+
+### Groups and future profiles
+
+Groups are lightweight labels on library items:
+
+```json
+{
+  "id": "browser-tools",
+  "kind": "package",
+  "source": "npm:@org/pi-browser-tools",
+  "groups": ["website", "debug"]
+}
+```
+
+For now, groups only organize the menu. Later, a profile is just a named group/loadout of library item ids plus optional notes/config:
+
+```text
+website → browser-tools, review-prompts, search-tools
+script  → audit-kit, cli-helper
+```
+
+Future profile flow:
+
+```text
+/construct load
+Choose group/profile: website
+Toggle all website items on for this project? y/n
+```
+
+This keeps the long-term profile goal without adding many commands now.
 
 Suggested labels in UI:
 
-- `catalog` — available to install.
-- `installed` — configured in current project.
-- `managed` — installed/configured by the-construct.
-- `detected` / `unmanaged` — exists locally, but not owned by the-construct.
-- `global` — installed at user scope, available in every project already.
-- `promotable` — can be added to the user catalog after confirmation.
+- `enabled` — declared in the current project's `.pi/settings.json`.
+- `available` — in the Construct library, not enabled here.
+- `disabled` — previously toggled off here by Construct.
+- `local path` — package source is a local path and may not be portable.
+- `project-local only` — raw `.pi` file/directory resource; not reusable until exported/packaged.
+- `group:<name>` — optional library grouping/profile label.
 
 ## Config strategy
 
@@ -549,19 +706,70 @@ Rules:
 - Skill commands are controlled by enabling/disabling the skill, or globally by `enableSkillCommands`.
 - Extension slash commands are controlled by enabling/disabling the extension that registers them; the-construct cannot safely toggle individual commands inside an extension unless that extension provides its own config.
 
-## Load and autoload flow details
+## Load, sync, and toggle flow details
 
-### Manual load
+### `/construct load` in a new project
 
-1. User runs `/construct load` or `/construct load <source>`.
-2. Construct treats `ctx.cwd` as the target project for MVP.
-3. Construct shows the target path and exact files/commands involved before changing anything.
-4. Construct creates `.pi/` as needed.
-5. Construct loads selected package sources with Pi project scope:
+Scenario: user opens a repo that has no `.pi/settings.json` and no `.pi/construct.json`.
+
+1. User runs `/construct load` or accepts the autoload offer.
+2. Construct treats `ctx.cwd` as the target project.
+3. Construct syncs current project package declarations into the user library; likely no-op in an empty project.
+4. Construct shows the library grouped by optional `groups`, plus `Enter source manually`.
+5. User toggles one or more items on.
+6. Construct shows the target path and exact files/commands involved before changing anything.
+7. Construct creates `.pi/` as needed.
+8. Construct enables selected package sources with Pi project scope:
    - `pi install <source> -l --approve`
-6. Construct writes/updates `.pi/construct.json` to record the managed package item.
-7. Construct offers to add the source to `~/.pi/agent/construct/catalog.json` for reuse in other projects.
-8. Construct asks to reload. If running from a command context, call `ctx.reload()` and treat reload as terminal.
+9. Construct writes/updates `.pi/construct.json` with advisory toggle metadata.
+10. Construct asks to reload. If running from a command context, call `ctx.reload()` and treat reload as terminal.
+
+### `/construct load` in an existing project with plain Pi package declarations
+
+Scenario: user previously ran plain Pi commands such as `pi install <source> -l`, or a teammate committed `.pi/settings.json`.
+
+1. User runs `/construct load` or `/construct status`.
+2. Construct reads `.pi/settings.json` and detects package declarations.
+3. Construct adds missing source strings to the user library.
+4. The menu shows those sources as enabled here.
+5. The same sources now appear as available options in other projects.
+6. Nothing is reinstalled just because Construct remembered it.
+
+### `/construct load` in a project already managed by Construct
+
+Scenario: project has `.pi/construct.json`.
+
+1. Construct syncs `.pi/settings.json` package declarations into the user library.
+2. Construct merges library entries, project package declarations, and Construct metadata into one toggle list.
+3. Checked items are enabled here.
+4. Unchecked items are available from the library.
+5. Toggling on enables the package in this project.
+6. Toggling off disables/removes the package declaration from this project only.
+7. Drift is shown clearly; `.pi/settings.json` wins over metadata.
+
+### Remembering project installs
+
+Construct should remember project-level package installs without owning the install path.
+
+Example:
+
+```bash
+pi install npm:@org/pi-audit-kit -l --approve
+```
+
+Later, in that project:
+
+```text
+/construct status
+```
+
+or:
+
+```text
+/construct load
+```
+
+Construct sees `npm:@org/pi-audit-kit` in `.pi/settings.json` and adds it to the user library if missing. It is now available in new and old projects through `/construct load`, but it does not install into those projects until toggled on.
 
 ### Autoload
 
@@ -569,28 +777,29 @@ Rules:
 2. On `session_start`, after Pi has resolved project trust/resource loading, Construct checks:
    - `ctx.hasUI` is true.
    - Project is trusted according to `ctx.isProjectTrusted()` when project-local resources are relevant.
-   - `.pi/construct.json` does not already exist.
    - The canonical project path is not in user-local skips.
    - Autoload is enabled in user-local Construct settings.
 3. If eligible, Construct asks:
 
    ```text
-   Load it into the Construct?
+   Open Construct for this project?
      yes
      not now
      don't ask for this project
    ```
 
-4. `yes` opens the same load picker as `/construct load`.
+4. `yes` opens the same `/construct load` menu.
 5. `not now` writes nothing.
 6. `don't ask for this project` writes only user-local skip state.
 7. Non-interactive modes never prompt.
+8. Autoload may sync package source strings from `.pi/settings.json`, but it must never install or enable packages by itself.
 
-### Enable / disable / remove
+### Enable / disable / forget
 
-- Disable means remove/deactivate the Construct-managed package declaration from this project's `.pi/settings.json`, keep Construct metadata with `enabled: false`, and offer reload.
-- Enable means re-add the remembered package source to this project's `.pi/settings.json`/package declarations, set `enabled: true`, and offer reload.
-- Remove means remove the package declaration and Construct metadata for that item after confirmation. Prefer `pi remove <source> -l --approve` when it matches the intended project-local package removal.
+- Enable means add the package source to this project's `.pi/settings.json` with `pi install <source> -l --approve`, set Construct metadata `enabled: true`, and offer reload.
+- Disable means remove the package declaration from this project's `.pi/settings.json`, set Construct metadata `enabled: false`, and offer reload.
+- Forget means remove the source from the user Construct library. It does not change any project by itself.
+- Remove/delete wording should be avoided in the main UI except for “forget from library,” because project-level disable is the normal uninstall-from-this-project action.
 - Never delete package caches, copied files, or config files unless Construct created and tracks them and the user explicitly confirms cleanup. MVP should avoid file cleanup entirely.
 
 ## Conflicts and maintenance risks
@@ -601,12 +810,12 @@ Rules:
 - **Tool name collisions**: extensions can override built-in tools or each other. This is powerful but dangerous; the-construct should warn clearly.
 - **Package duplication**: the same package can exist globally and project-locally. Pi's package identity rules make the project entry win, but users need visibility.
 - **Settings merge surprises**: project settings override/merge with global settings. the-construct should show effective state and project-only state separately.
-- **Resource filters**: package object filters can disable resources in subtle ways. UI needs to show “installed but filtered out.”
+- **Resource filters**: package object filters can disable resources in subtle ways. MVP should avoid partial resource toggles unless we later need them.
 - **Reload lifecycle**: after changing settings, old extension instances continue until reload completes. Treat `ctx.reload()` as terminal for the command handler.
 - **Trust boundary confusion**: project trust is Pi's responsibility and is not a sandbox. the-construct should not add its own trust language beyond showing package/file changes before applying.
 - **Non-interactive mode**: print/json modes cannot prompt. Autoload auto-offer must skip safely.
 - **Offline/network failures**: package install/update may fail or be intentionally disabled. Keep dry-run and already-installed management useful offline.
-- **Project-specific resources**: local prompts/skills/extensions may contain repo-specific assumptions. Do not auto-promote them globally.
+- **Project-specific resources**: local prompts/skills/extensions may contain repo-specific assumptions. Do not add raw local files to the reusable package library automatically.
 
 ### Maintenance challenges as Pi updates
 
@@ -694,7 +903,7 @@ Recommended behavior:
 The catalog is separate from installed packages.
 
 - Bundled catalog updates when the-construct updates.
-- User catalog updates only when the user edits it, imports a catalog, or promotes/adopts resources.
+- User catalog/library updates when the user edits it, imports a catalog/profile, enters a source manually, or Construct sync remembers package declarations from a trusted project.
 - Project catalog updates through normal project file changes.
 
 ### Lock file
@@ -720,6 +929,7 @@ The lock file is informational at first; Pi's real source of truth remains `.pi/
 - Treat skills as powerful: they can tell the model to execute scripts.
 - Treat extensions as full-code-execution: they run with user permissions.
 - Offline mode should skip network package discovery and only manage already-known local/catalog resources.
+- Learn mode must never install, execute, or validate remote package code; it only records source strings already declared by trusted project config.
 - `defaultProjectTrust: "always"` is a personal-machine convenience, not something Construct should recommend for shared/untrusted repos.
 
 ## Version-control policy
@@ -745,52 +955,56 @@ Git ignore policy is out of scope for MVP. Construct should show changed files a
 
 ## Implementation status
 
-Current code implements the MVP package loop:
+Current code implements the initial package loop:
 
 - `/construct` and `/construct status`.
-- User catalog list/add/remove.
+- User catalog/library list/add/remove.
 - Project-local package load via `pi install <source> -l --approve`.
 - `.pi/construct.json` metadata writes.
 - Disable, enable, and remove for Construct-managed package items.
 - Autoload user setting plus conservative TUI-only auto-offer.
 - Disposable smoke test in `scripts/smoke.sh`.
 
-Still intentionally post-MVP:
+Need to simplify/adjust from the current code:
 
-- Profiles/loadouts.
-- Import/export scripts.
-- Resource-level filters.
-- Rich dashboard TUI.
-- Project/bundled catalogs.
-- Doctor/update commands.
+- Treat the catalog as the Construct **library**: a remembered list of package sources.
+- Sync package declarations from the current project into the library on `/construct status` and `/construct load`.
+- Make `/construct load` the main toggle/menu flow.
+- Treat disable as “remove/uninstall from this project, keep in Construct library.”
+- Treat forget as “remove from Construct library, do not touch project.”
+- Reduce command sprawl; do not add separate scan/promote/adopt/learn commands unless we later need them.
+- Add group labels as the bridge toward future profiles.
+- Add installed-package smoke test using disposable `HOME`.
 
 ## MVP scope
 
-Build the smallest useful Construct loop:
+Build the smallest useful Construct loop for our local workflow:
 
 1. Global extension with `/construct` command surface.
-2. `/construct` and `/construct status` print everything useful for the current project, including autoload state.
+2. `/construct` and `/construct status` print useful current project state.
 3. User-local Construct files:
    - `~/.pi/agent/construct/settings.json`
    - `~/.pi/agent/construct/catalog.json`
    - `~/.pi/agent/construct/skips.json`
 4. Project-local Construct metadata: `.pi/construct.json`.
 5. Project-local Pi source of truth: `.pi/settings.json`.
-6. `/construct load [source]` loads a package into `ctx.cwd` with `pi install <source> -l --approve`.
-7. `/construct load` can reuse package sources from the user's catalog in future projects.
-8. `/construct enable`, `/construct disable`, and `/construct remove` manage Construct-loaded packages for the current project.
-9. `/construct autoload on|off` toggles auto-offer only; no auto-install.
-10. Backup `.pi/settings.json` before direct edits.
-11. Ask for `/reload` or call `ctx.reload()` from command flow.
+6. Construct library is the reusable list of package sources seen/added by us.
+7. `/construct status` reads `.pi/settings.json`, remembers package sources in the library, and reports enabled/available/disabled state.
+8. `/construct load` loads/toggles library items into the current `ctx.cwd`.
+9. Enable uses `pi install <source> -l --approve`.
+10. Disable removes the package declaration from this project and leaves the source in the Construct library.
+11. Forget removes a source from the Construct library and does not touch project files.
+12. `/construct autoload on|off` toggles auto-offer only; no auto-install.
+13. Backup `.pi/settings.json` before direct edits.
+14. Ask for `/reload` or call `ctx.reload()` from command flow.
 
 Explicitly out of MVP:
 
-- Profiles/loadouts.
-- Import/export scripts.
+- Separate scan/promote/adopt/learn command family.
 - Bundled official catalog.
 - Project catalogs.
 - Lock file.
-- Rich dashboard TUI.
+- Rich dashboard TUI beyond a simple picker/toggle.
 - Resource-level package filters.
 - Copying prompt/skill/theme files.
 - Project-type detection.
@@ -799,62 +1013,82 @@ Explicitly out of MVP:
 
 ## Phase plan
 
-### Phase 1 — Skeleton and status
+### Phase 1 — Keep current package loop working
 
-- Create extension skeleton with `/construct` and `/construct status`.
-- Resolve target as `ctx.cwd` and print it clearly.
-- Read user Construct settings/catalog/skips, creating directories/files only when a command needs to write.
-- Read `.pi/settings.json` and `.pi/construct.json` if present.
-- Print:
-  - target cwd
-  - whether project appears trusted/usable from the current context
-  - autoload on/off
-  - user catalog path and item count
-  - project package declarations
-  - Construct-managed items and drift against `.pi/settings.json`
-  - reload recommendation when changes were made in this command
+- Keep explicit extension load working:
+  ```bash
+  pi --no-extensions -e .
+  ```
+- Keep `./scripts/smoke.sh` green.
+- Add installed-package smoke test with disposable `HOME`.
+- Do not touch live global Pi config during development.
 
-### Phase 2 — Catalog and dry-run load
+### Phase 2 — Library sync
 
-- Define package-only catalog schema.
-- Add `/construct catalog` list/add/remove basics.
-- Add `/construct load [source]` dry-run path that shows exact target, files, and `pi install` command.
-- No package install yet.
+- Rename user-facing “catalog” language toward “Construct library” while preserving file path/schema compatibility.
+- On `/construct status`, read current project `.pi/settings.json` package declarations.
+- Add missing package sources to `~/.pi/agent/construct/catalog.json`.
+- Dedupe by exact source string.
+- Label local/relative/absolute path sources as `local path`.
+- Do not write project files during sync.
 
-### Phase 3 — Project package load
+### Phase 3 — Simple toggle semantics
 
-- Add package load via `pi.exec("pi", ["install", source, "-l", "--approve"])`.
-- Write/update `.pi/construct.json` after successful load.
-- Offer to add direct sources to user catalog.
-- Offer reload; call `ctx.reload()` from command flow when accepted.
+- Update status/menu language:
+  - enabled here
+  - available from Construct
+  - disabled here
+  - local path
+  - project-local only
+- Make disable remove the package declaration from `.pi/settings.json` and mark metadata `enabled: false`.
+- Make enable add/install the package declaration and mark metadata `enabled: true`.
+- Keep source in the library after disable.
+- Add/keep backups before direct `.pi/settings.json` edits.
 
-### Phase 4 — Enable / disable / remove
+### Phase 4 — `/construct load` menu
 
-- Disable Construct-managed package declarations for current project.
-- Enable disabled Construct-managed package declarations.
-- Remove Construct-managed package declarations and metadata after confirmation.
-- Prefer Pi CLI for add/remove; use conservative direct JSON edits only when needed.
-- Always backup `.pi/settings.json` before direct edits.
+- In TUI mode, `/construct load` shows the simple library toggle menu.
+- In print/non-UI mode, `/construct load <source-or-id>` remains deterministic.
+- Menu supports:
+  - toggle selected on/off for this project;
+  - enter source manually;
+  - forget from Construct library;
+  - reload;
+  - cancel.
+- Keep `/construct catalog` as low-level list/add/remove until we replace/rename it cleanly.
 
-### Phase 5 — Autoload auto-offer
+### Phase 5 — Groups and profile groundwork
 
-- Add `/construct autoload on|off`.
-- Include autoload status in `/construct status`.
-- On `session_start`, if autoload is enabled and the project is eligible, offer `Load it into the Construct?`.
-- Implement `not now` as no write and `don't ask for this project` as user-local skip.
-- Never auto-install.
+- Add optional `groups` to catalog/library items.
+- Show grouped lists in `/construct load`.
+- Add a simple way to edit group labels, probably through `/construct catalog add <source> [id] --group website` or a later UI action.
+- Do not implement full profile apply until the simple toggle library feels right.
 
-### Phase 6 — Post-MVP polish candidates
+### Phase 6 — Future profile/loadout work
 
-- Profiles/loadouts.
+- Profiles/loadouts as named sets of library item ids.
 - Export/import readable Construct scripts.
-- Resource-level filters using package object form.
-- Rich `SettingsList`/dashboard UI.
-- Project and bundled catalogs.
+- Local-file packaging/export for `.pi/extensions`, prompts, skills, themes.
+- Resource-level filters only if we truly need partial package enablement.
 - Doctor/update commands.
-- Project-type recommendations.
-- Managing copied prompt/skill/theme templates.
-- Optional dynamic cwd-based profile companion mode.
+- Project-type recommendations like `website` or `script` once groups are useful.
+
+## Core development TODO
+
+Next agent session checklist:
+
+- [ ] Run `./scripts/smoke.sh` before changes.
+- [ ] Add disposable installed-package smoke script.
+- [ ] Implement library sync from current project `.pi/settings.json` into `~/.pi/agent/construct/catalog.json`.
+- [ ] Update `/construct status` output to say library/available/enabled instead of catalog/promotable language.
+- [ ] Keep `/construct catalog` working for now as the low-level library editor.
+- [ ] Change `/construct disable` messaging to “disabled from this project; still available in Construct.”
+- [ ] Confirm disable removes only the project package declaration and never removes from library.
+- [ ] Add/adjust smoke assertions for disable + library persistence.
+- [ ] Sketch the first simple TUI `/construct load` toggle menu after sync/status behavior is solid.
+- [ ] Run explicit package smoke: `pi --no-extensions -e . -p '/construct status'`.
+- [ ] Run installed-package smoke with disposable `HOME`.
+- [ ] Update `HANDOFF.md` after implementation.
 
 ## What might not work / missing pieces
 
@@ -870,7 +1104,7 @@ Pi can discover packages/resources/settings, but it cannot always know:
 - whether a prompt/skill is generic or repo-specific.
 - whether a package should be pinned or floating.
 
-So Construct needs explicit recipes/profiles. Detection is useful, but adoption/promotion should require confirmation.
+So Construct needs explicit recipes/profiles. Detection is useful, but management should require intent. Promotion may be manual or automatic only when the user has enabled library sync, and library sync must stay limited to safe package source strings.
 
 ### 2. Extension config is not standardized
 
@@ -939,7 +1173,43 @@ For other agents/friends/users, export should include simple artifacts they can 
 
 A shared profile is still code/config from someone else. Pi's normal project trust flow comes first. Construct should not track trust; it should display package sources and file changes before applying.
 
-### 8. Dynamic cwd-based profiles are a future idea
+### 8. Remembering everything has hard limits
+
+Construct can remember package **sources** from `.pi/settings.json`; it cannot reliably turn every local resource into a reusable cross-project artifact.
+
+Not automatically portable:
+
+- raw `.pi/extensions/*.ts` files that import project code.
+- prompts/skills that reference repo-specific commands, paths, or conventions.
+- local package paths outside the project.
+- config files with machine-specific paths or secrets.
+- runtime-only tools/commands that do not expose their install source.
+
+For these, Construct should detect and label the item, then offer future export/profile/package flows. If the user wants something available everywhere, the idiomatic path is to package it as a Pi package or export a readable loadout/profile.
+
+### 9. Maintaining remembered catalogs can get noisy
+
+If library sync is too aggressive, the user catalog becomes cluttered. To keep it maintainable:
+
+- sync only runs during explicit Construct commands or accepted autoload menu flow.
+- remembered entries should be removable/forgettable.
+- dedupe by exact source string.
+- label local/private/questionable entries clearly, especially local paths.
+- provide future cleanup commands only if the library becomes noisy.
+
+### 10. Idiomatic boundary
+
+This remains idiomatic Pi if Construct writes normal Pi project declarations and keeps its own metadata advisory:
+
+- `.pi/settings.json` is still source of truth for Pi behavior.
+- project package install still goes through `pi install <source> -l --approve`.
+- disable removes the project package declaration while keeping the source in the Construct library.
+- local resources are detected, not secretly copied or globally enabled.
+- user catalog is only a picker/source list, not an alternative package manager.
+
+It becomes non-idiomatic if Construct starts hiding project behavior in global state, auto-installing on session start, or inventing resource loading outside Pi's trust/settings model.
+
+### 11. Dynamic cwd-based profiles are a future idea
 
 A power user could write a global extension that uses `resources_discover` and `before_agent_start` to load resources based on `ctx.cwd`. That is great for one person's machine, but it is less transparent for teams and friends because the project itself does not declare the workflow.
 
