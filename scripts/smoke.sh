@@ -68,6 +68,19 @@ catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 assert any(item.get("source") == source for item in catalog.get("items", [])), catalog
 PY
 
+printf '== unload all raw project packages ==\n'
+quiet_pi '/construct unload'
+python3 - "$PROJECT_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+settings = json.loads((project / ".pi/settings.json").read_text())
+assert settings.get("packages") == [], settings
+assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup files"
+PY
+
 printf '== load / unload / disable / enable / remove ==\n'
 quiet_pi "/construct load $PKG_DIR"
 quiet_pi '/construct unload pkg'

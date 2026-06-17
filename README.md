@@ -38,7 +38,8 @@ Checked means already declared in this project. Unchecked means remembered by Co
 /construct
 /construct load [source-or-library-id]
 /construct load --dry-run <source-or-library-id>
-/construct unload [source-or-library-id]
+/construct unload                    # unload all project package declarations
+/construct unload <source-or-library-id> # unload one package declaration
 /construct sync
 /construct sync on|off|status
 /construct status
@@ -108,7 +109,7 @@ MIT
 - Package entry point is `extensions/construct/index.ts`; normal testing should load the package root (`-e .`) so Pi reads `package.json` and labels the extension as `construct`.
 - `/construct` opens the remembered-source picker; choosing an unchecked item runs `pi install <source> -l --approve` from the active Pi project.
 - `/construct load` is the explicit/direct-load alias for the same flow.
-- `/construct unload <source-or-id>` runs `pi remove <source> -l --approve` to remove that source from the active project only. It does not delete local source files or forget the Construct library item.
+- `/construct unload` unloads all current project package declarations by running `pi remove <source> -l --approve` for each one. `/construct unload <source-or-id>` unloads one. It does not delete local source files or forget Construct library items.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - `/construct sync` remembers package sources from the current project's `.pi/settings.json` into the Construct library. It never installs or edits the project.
