@@ -121,6 +121,6 @@ MIT
 
 ## Next refactor order
 
-1. Replace the current simple select picker with a searchable checkbox TUI.
+1. Tighten the picker/menu flow and keep expanding scripted coverage.
 2. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
 3. Only after that, revisit profiles/groups and resource-level disable filters.

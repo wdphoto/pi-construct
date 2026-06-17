@@ -1,9 +1,10 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, JsonReadResult } from "../types.js";
-import { findCatalogItem, loadCatalog, packageSourcesFromSettings } from "../catalog.js";
+import { findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { backupProjectSettingsIfPresent, getPackages, readSettingsObject } from "../project-settings.js";
+import { backupProjectSettingsIfPresent, getPackages, packageSource, readSettingsObject } from "../project-settings.js";
 import { getManagedEntry, managedItemChoices, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
 import { showText } from "../ui.js";
 
@@ -37,6 +38,30 @@ export async function resolveUnloadTarget(
 	const libraryItem = findCatalogItem(catalog.items, resolvedQuery);
 	if (libraryItem) return { construct, source: libraryItem.source, label: libraryItem.id };
 	return { construct, source: resolvedQuery, label: resolvedQuery };
+}
+
+async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string): Promise<boolean> {
+	const settings = readSettingsObject(await readJson(paths.projectSettingsPath));
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	const nextPackages = [];
+	let removed = false;
+	for (const entry of packages) {
+		const rawSource = packageSource(entry);
+		if (!rawSource) {
+			nextPackages.push(entry);
+			continue;
+		}
+		const normalized = await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath));
+		if (rawSource === source || normalized === source) {
+			removed = true;
+			continue;
+		}
+		nextPackages.push(entry);
+	}
+	if (!removed) return false;
+	settings.packages = nextPackages;
+	await writeJson(paths.projectSettingsPath, settings);
+	return true;
 }
 
 export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandContext, paths: ConstructPaths): Promise<void> {
@@ -182,21 +207,32 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 	}
 
 	const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
+	let fallbackWarning: string | undefined;
 	if (removal.code !== 0) {
-		showText(
-			ctx,
-			[
-				"Construct unload failed during Pi package removal.",
-				`Command: pi remove ${source} -l --approve`,
-				`Exit code: ${removal.code}`,
-				backupPath ? `Settings backup: ${backupPath}` : undefined,
-				removal.stdout ? `\nstdout:\n${removal.stdout}` : undefined,
-				removal.stderr ? `\nstderr:\n${removal.stderr}` : undefined,
-			]
-				.filter((line): line is string => line !== undefined)
-				.join("\n"),
-		);
-		return;
+		try {
+			const removedByEdit = await removeMatchingPackageDeclaration(paths, source);
+			if (!removedByEdit) {
+				showText(
+					ctx,
+					[
+						"Construct unload failed during Pi package removal.",
+						`Command: pi remove ${source} -l --approve`,
+						`Exit code: ${removal.code}`,
+						backupPath ? `Settings backup: ${backupPath}` : undefined,
+						removal.stdout ? `\nstdout:\n${removal.stdout}` : undefined,
+						removal.stderr ? `\nstderr:\n${removal.stderr}` : undefined,
+					]
+						.filter((line): line is string => line !== undefined)
+						.join("\n"),
+				);
+				return;
+			}
+			fallbackWarning = `pi remove did not match ${source}; removed it by editing .pi/settings.json instead.`;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showText(ctx, `Construct unload failed during fallback settings edit.\n${message}`);
+			return;
+		}
 	}
 
 	if (id) {
@@ -218,6 +254,7 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 			`Project settings: ${paths.projectSettingsPath}`,
 			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
 			id ? "Construct metadata marked unloaded." : "Construct metadata was not changed.",
+			fallbackWarning ? `! ${fallbackWarning}` : undefined,
 			"The source remains remembered in Construct if it was in the library.",
 			removal.stdout ? `\npi remove stdout:\n${removal.stdout}` : undefined,
 			removal.stderr ? `\npi remove stderr:\n${removal.stderr}` : undefined,

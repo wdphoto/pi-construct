@@ -102,6 +102,29 @@ assert any(
 # No settings backup is expected on first load because .pi/settings.json did not exist yet.
 PY
 
+printf '== project B construct unload one by id ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct unload construct-e2e-package'
+quiet_construct_pi "$PROJECT_B" '/construct reload'
+
+python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = pathlib.Path(sys.argv[2]).resolve()
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert settings.get("packages") == [], settings
+items = construct.get("items", {})
+assert any(item.get("requestedSource") == str(source) and item.get("enabled") is False for item in items.values()), construct
+assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after single unload"
+PY
+
+printf '== project B construct reload remembered package ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct load construct-e2e-package'
+quiet_construct_pi "$PROJECT_B" '/construct reload'
+
 printf '== project B construct unload all ==\n'
 quiet_construct_pi "$PROJECT_B" '/construct unload'
 quiet_construct_pi "$PROJECT_B" '/construct reload'

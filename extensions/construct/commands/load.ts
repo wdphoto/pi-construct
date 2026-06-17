@@ -6,6 +6,7 @@ import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { backupProjectSettingsIfPresent, chooseDeclaredSource, getPackages, looksLikePackageSource, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
 import { showText } from "../ui.js";
+import { handleUnload } from "./unload.js";
 
 export function parseLoadFlags(args: string): { dryRun: boolean; query: string } {
 	const tokens = args.split(/\s+/).filter(Boolean);
@@ -80,7 +81,7 @@ export async function loadPickerItems(paths: ConstructPaths, catalog: CatalogDat
 export async function resolveLoadSource(
 	args: string,
 	ctx: ExtensionCommandContext,
-): Promise<{ source?: string; item?: CatalogItem; alreadyInstalled?: boolean; warnings: string[] }> {
+): Promise<{ source?: string; item?: CatalogItem; alreadyInstalled?: boolean; action?: "unloadAll"; warnings: string[] }> {
 	const { paths, catalog, warnings } = await loadCatalog(ctx);
 	const items = await loadPickerItems(paths, catalog);
 	const query = args.trim();
@@ -107,10 +108,11 @@ export async function resolveLoadSource(
 		choiceToResolution.set(choice, { item, alreadyInstalled });
 		return choice;
 	});
-	choices.push("Enter source manually", "Cancel");
+	choices.push("Enter source manually", "Unload all project packages", "Cancel");
 
-	const selected = await ctx.ui.select("Construct — check a remembered source into this project", choices);
+	const selected = await ctx.ui.select("Construct — project loadout", choices);
 	if (!selected || selected === "Cancel") return { warnings };
+	if (selected === "Unload all project packages") return { action: "unloadAll", warnings };
 	if (selected === "Enter source manually") {
 		const source = await ctx.ui.input("Pi package source", "npm:@scope/package");
 		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
@@ -126,6 +128,11 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 	const flags = parseLoadFlags(args);
 	const sync = flags.dryRun ? { added: [], warnings: [] } : await syncProjectPackagesToCatalog(ctx);
 	const resolved = await resolveLoadSource(flags.query, ctx);
+
+	if (resolved.action === "unloadAll") {
+		await handleUnload("all", pi, ctx);
+		return;
+	}
 
 	if (!resolved.source) {
 		showText(
@@ -144,6 +151,22 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 	}
 
 	if (resolved.alreadyInstalled) {
+		if (ctx.hasUI) {
+			const action = await ctx.ui.select(
+				"Already loaded in this project",
+				[
+					"Unload this package from this project",
+					"Keep it loaded",
+				],
+			);
+			if (action === "Unload this package from this project") {
+				await handleUnload(resolved.source, pi, ctx);
+				return;
+			}
+			showText(ctx, "Construct picker closed. No files were changed.");
+			return;
+		}
+
 		showText(
 			ctx,
 			[
@@ -151,7 +174,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 				`Source: ${resolved.source}`,
 				`Project: ${paths.cwd}`,
 				"",
-				"Checked items are already declared in .pi/settings.json. Choose an unchecked item to add it here.",
+				"Checked items are already declared in .pi/settings.json. Choose an unchecked item to add it here, or run /construct unload <source-or-id>.",
 			].join("\n"),
 		);
 		return;
