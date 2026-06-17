@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 type JsonObject = Record<string, unknown>;
@@ -15,6 +15,7 @@ interface ConstructPaths {
 	cwd: string;
 	realCwd: string;
 	constructDir: string;
+	agentSettingsPath: string;
 	userSettingsPath: string;
 	userCatalogPath: string;
 	userSkipsPath: string;
@@ -28,11 +29,18 @@ interface CatalogItem {
 	kind: "package";
 	source: string;
 	description?: string;
+	managed?: boolean;
 }
 
 interface CatalogData {
 	version: 1;
 	items: CatalogItem[];
+}
+
+interface SyncResult {
+	added: CatalogItem[];
+	alreadyKnown: number;
+	warnings: string[];
 }
 
 interface PackageDeclarationSummary {
@@ -62,6 +70,7 @@ async function getPaths(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<Cons
 		cwd,
 		realCwd,
 		constructDir,
+		agentSettingsPath: join(agentDir, "settings.json"),
 		userSettingsPath: join(constructDir, "settings.json"),
 		userCatalogPath: join(constructDir, "catalog.json"),
 		userSkipsPath: join(constructDir, "skips.json"),
@@ -219,6 +228,13 @@ function getAutoload(settings: JsonReadResult): { enabled: boolean; note: string
 	if (settings.state === "invalid") return { enabled: false, note: "off (settings file invalid)" };
 	if (!isObject(settings.data)) return { enabled: false, note: "off (settings file is not an object)" };
 	return settings.data.autoload === true ? { enabled: true, note: "on" } : { enabled: false, note: "off" };
+}
+
+function getAutosync(settings: JsonReadResult): { enabled: boolean; note: string } {
+	if (settings.state === "missing") return { enabled: false, note: "off (default; settings file missing)" };
+	if (settings.state === "invalid") return { enabled: false, note: "off (settings file invalid)" };
+	if (!isObject(settings.data)) return { enabled: false, note: "off (settings file is not an object)" };
+	return settings.data.autosync === true ? { enabled: true, note: "on" } : { enabled: false, note: "off" };
 }
 
 function getSkippedHere(skips: JsonReadResult, cwd: string, realCwd: string): boolean {
@@ -380,6 +396,7 @@ async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Prom
 	]);
 
 	const autoload = getAutoload(userSettings);
+	const autosync = getAutosync(userSettings);
 	const catalog = parseCatalog(userCatalog);
 	const catalogPreview = catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const skippedHere = getSkippedHere(userSkips, paths.cwd, paths.realCwd);
@@ -417,6 +434,7 @@ async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Prom
 		"--------------------",
 		`Settings: ${describeRead(userSettings)}`,
 		`Autoload: ${autoload.note}`,
+		`Invisible sync: ${autosync.note}`,
 		`Construct library: ${describeRead(userCatalog)}`,
 		`Library items: ${catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
@@ -448,34 +466,61 @@ async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Prom
 		.join("\n");
 }
 
-async function loadCatalog(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; read: JsonReadResult; catalog: CatalogData; warnings: string[] }> {
+async function loadCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<{ paths: ConstructPaths; read: JsonReadResult; catalog: CatalogData; warnings: string[] }> {
 	const paths = await getPaths(ctx);
 	const read = await readJson(paths.userCatalogPath);
 	const { data, warnings } = parseCatalog(read);
 	return { paths, read, catalog: data, warnings };
 }
 
-async function syncProjectPackagesToCatalog(ctx: ExtensionCommandContext): Promise<{ added: CatalogItem[]; warnings: string[] }> {
+function isLocalPathSource(source: string): boolean {
+	return source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~");
+}
+
+async function normalizeSourceForLibrary(source: string, baseDir: string): Promise<string> {
+	const trimmed = source.trim();
+	if (!isLocalPathSource(trimmed)) return trimmed;
+	const expanded = trimmed === "~" ? homedir() : trimmed.startsWith("~/") ? join(homedir(), trimmed.slice(2)) : trimmed;
+	const absolute = expanded.startsWith("/") ? expanded : resolve(baseDir, expanded);
+	return realpath(absolute).catch(() => absolute);
+}
+
+async function packageSourcesFromSettings(settingsPath: string): Promise<string[]> {
+	const settings = await readJson(settingsPath);
+	const baseDir = dirname(settingsPath);
+	const packages = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim());
+	const sources: string[] = [];
+	for (const pkg of packages) {
+		sources.push(await normalizeSourceForLibrary(pkg.source, baseDir));
+	}
+	return sources;
+}
+
+async function syncSourcesToCatalog(
+	ctx: Pick<ExtensionCommandContext, "cwd">,
+	sources: string[],
+): Promise<SyncResult> {
 	const paths = await getPaths(ctx);
 	const catalogRead = await readJson(paths.userCatalogPath);
 	if (catalogRead.state === "invalid") {
-		return { added: [], warnings: [`Skipped Construct library sync because catalog JSON is invalid: ${catalogRead.error}`] };
+		return { added: [], alreadyKnown: 0, warnings: [`Skipped Construct library sync because catalog JSON is invalid: ${catalogRead.error}`] };
 	}
 
 	const { data: catalog, warnings } = parseCatalog(catalogRead);
 	if (catalogRead.state === "ok" && warnings.length > 0) {
-		return { added: [], warnings: [`Skipped Construct library sync because catalog has warnings; fix ${paths.userCatalogPath} first.`, ...warnings] };
+		return { added: [], alreadyKnown: 0, warnings: [`Skipped Construct library sync because catalog has warnings; fix ${paths.userCatalogPath} first.`, ...warnings] };
 	}
 
-	const projectSettings = await readJson(paths.projectSettingsPath);
-	const sources = getPackages(projectSettings)
-		.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim())
-		.map((pkg) => pkg.source.trim());
 	const existingSources = new Set(catalog.items.map((item) => item.source));
 	const nextItems = [...catalog.items];
 	const added: CatalogItem[] = [];
+	let alreadyKnown = 0;
 	for (const source of sources) {
-		if (existingSources.has(source)) continue;
+		if (!source) continue;
+		if (existingSources.has(source)) {
+			alreadyKnown += 1;
+			continue;
+		}
 		const item: CatalogItem = { id: uniqueId(deriveId(source), nextItems), kind: "package", source };
 		nextItems.push(item);
 		added.push(item);
@@ -485,7 +530,17 @@ async function syncProjectPackagesToCatalog(ctx: ExtensionCommandContext): Promi
 	if (added.length > 0) {
 		await writeJson(paths.userCatalogPath, { version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
 	}
-	return { added, warnings };
+	return { added, alreadyKnown, warnings };
+}
+
+async function syncProjectPackagesToCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<SyncResult> {
+	const paths = await getPaths(ctx);
+	return syncSourcesToCatalog(ctx, await packageSourcesFromSettings(paths.projectSettingsPath));
+}
+
+async function syncGlobalPackagesToCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<SyncResult> {
+	const paths = await getPaths(ctx);
+	return syncSourcesToCatalog(ctx, await packageSourcesFromSettings(paths.agentSettingsPath));
 }
 
 function readUserSettings(settings: JsonReadResult): JsonObject {
@@ -498,6 +553,11 @@ function readUserSettings(settings: JsonReadResult): JsonObject {
 async function writeAutoload(paths: ConstructPaths, enabled: boolean): Promise<void> {
 	const settings = readUserSettings(await readJson(paths.userSettingsPath));
 	await writeJson(paths.userSettingsPath, { ...settings, version: 1, autoload: enabled });
+}
+
+async function writeAutosync(paths: ConstructPaths, enabled: boolean): Promise<void> {
+	const settings = readUserSettings(await readJson(paths.userSettingsPath));
+	await writeJson(paths.userSettingsPath, { ...settings, version: 1, autosync: enabled });
 }
 
 async function addSkip(paths: ConstructPaths): Promise<void> {
@@ -563,6 +623,133 @@ async function handleAutoload(args: string, ctx: ExtensionCommandContext): Promi
 	);
 }
 
+async function handleSync(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const subcommand = args.trim() || "current";
+	const paths = await getPaths(ctx);
+
+	if (subcommand === "status") {
+		const settings = await readJson(paths.userSettingsPath);
+		const autosync = getAutosync(settings);
+		showText(
+			ctx,
+			[
+				"Construct sync",
+				"==============",
+				`Invisible sync: ${autosync.note}`,
+				`Settings: ${describeRead(settings)}`,
+				"",
+				"/construct sync remembers current project package sources now.",
+				"/construct sync on remembers project package sources automatically on session shutdown.",
+				"Sync never installs, removes, enables, or copies anything.",
+			].join("\n"),
+		);
+		return;
+	}
+
+	if (subcommand === "on" || subcommand === "off") {
+		try {
+			await writeAutosync(paths, subcommand === "on");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showText(ctx, `Could not update sync settings.\n${message}`);
+			return;
+		}
+		showText(
+			ctx,
+			[
+				`Construct invisible sync ${subcommand === "on" ? "enabled" : "disabled"}.`,
+				`Settings: ${paths.userSettingsPath}`,
+				"Sync is remember-only. It never installs anything automatically.",
+			].join("\n"),
+		);
+		return;
+	}
+
+	if (!["current", "project", "global", "all"].includes(subcommand)) {
+		showText(ctx, "Usage: /construct sync [on|off|status]");
+		return;
+	}
+
+	const added: CatalogItem[] = [];
+	let alreadyKnown = 0;
+	const warnings: string[] = [];
+	try {
+		if (subcommand === "current" || subcommand === "project" || subcommand === "all") {
+			const result = await syncProjectPackagesToCatalog(ctx);
+			added.push(...result.added);
+			alreadyKnown += result.alreadyKnown;
+			warnings.push(...result.warnings);
+		}
+		if (subcommand === "global" || subcommand === "all") {
+			const result = await syncGlobalPackagesToCatalog(ctx);
+			added.push(...result.added);
+			alreadyKnown += result.alreadyKnown;
+			warnings.push(...result.warnings);
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Construct sync failed.\n${message}`);
+		return;
+	}
+
+	showText(
+		ctx,
+		[
+			"Construct sync complete.",
+			added.length > 0 ? "New remembered sources:" : "No new sources remembered.",
+			...added.map((item) => `- ${item.id}: ${item.source}`),
+			alreadyKnown > 0 ? `Already synced: ${alreadyKnown}` : undefined,
+			...warnings.map((warning) => `! ${warning}`),
+			"",
+			"Sync is remember-only. It never installs or edits this project.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
+	);
+}
+
+async function handleAutosync(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const settings = await readJson(paths.userSettingsPath);
+	const autosync = getAutosync(settings);
+	const subcommand = args.trim();
+	if (subcommand === "status") {
+		showText(
+			ctx,
+			[
+				"Construct sync compatibility",
+				"============================",
+				`Invisible sync: ${autosync.note}`,
+				`Settings: ${describeRead(settings)}`,
+				"",
+				"Use /construct sync on|off|status. This compatibility command will remain hidden.",
+				"Invisible sync remembers package declarations on session shutdown. It never installs anything automatically.",
+			].join("\n"),
+		);
+		return;
+	}
+	if (subcommand && subcommand !== "on" && subcommand !== "off") {
+		showText(ctx, "Usage: /construct sync [on|off|status]");
+		return;
+	}
+	const enabled = subcommand === "on" ? true : subcommand === "off" ? false : !autosync.enabled;
+	try {
+		await writeAutosync(paths, enabled);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not update autosync settings.\n${message}`);
+		return;
+	}
+	showText(
+		ctx,
+		[
+			`Construct invisible sync ${enabled ? "enabled" : "disabled"}.`,
+			`Settings: ${paths.userSettingsPath}`,
+			"Sync is remember-only. On session shutdown it remembers package sources from .pi/settings.json.",
+		].join("\n"),
+	);
+}
+
 async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, read, catalog, warnings } = await loadCatalog(ctx);
 	const { command, rest } = splitArgs(args);
@@ -588,11 +775,12 @@ async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promis
 	}
 
 	if (command === "add") {
-		const [source, requestedId] = rest.split(/\s+/).filter(Boolean);
-		if (!source) {
+		const [rawSource, requestedId] = rest.split(/\s+/).filter(Boolean);
+		if (!rawSource) {
 			showText(ctx, "Usage: /construct catalog add <source> [id]");
 			return;
 		}
+		const source = await normalizeSourceForLibrary(rawSource, paths.cwd);
 		if (catalog.items.some((item) => item.source === source)) {
 			showText(ctx, `Construct library already contains source: ${source}`);
 			return;
@@ -638,16 +826,53 @@ async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promis
 	);
 }
 
-async function resolveLoadSource(args: string, ctx: ExtensionCommandContext): Promise<{ source?: string; item?: CatalogItem; warnings: string[] }> {
-	const { catalog, warnings } = await loadCatalog(ctx);
+async function managedCatalogItems(paths: ConstructPaths): Promise<CatalogItem[]> {
+	const construct = await readJson(paths.projectConstructPath);
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
+
+	const items: CatalogItem[] = [];
+	for (const [id, value] of Object.entries(construct.data.items)) {
+		if (!isObject(value) || value.kind !== "package") continue;
+		const rawSource = typeof value.requestedSource === "string"
+			? value.requestedSource
+			: typeof value.source === "string"
+				? value.source
+				: undefined;
+		if (!rawSource) continue;
+		items.push({ id, kind: "package", source: await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath)), managed: true });
+	}
+	return items;
+}
+
+async function loadPickerItems(paths: ConstructPaths, catalog: CatalogData): Promise<CatalogItem[]> {
+	const items = [...(await managedCatalogItems(paths))];
+	const sources = new Set(items.map((item) => item.source));
+	const ids = new Set(items.map((item) => item.id));
+	for (const catalogItem of catalog.items) {
+		if (sources.has(catalogItem.source)) continue;
+		const id = ids.has(catalogItem.id) ? uniqueId(catalogItem.id, items) : catalogItem.id;
+		const item = { ...catalogItem, id };
+		items.push(item);
+		sources.add(item.source);
+		ids.add(item.id);
+	}
+	return items.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function resolveLoadSource(
+	args: string,
+	ctx: ExtensionCommandContext,
+): Promise<{ source?: string; item?: CatalogItem; alreadyInstalled?: boolean; warnings: string[] }> {
+	const { paths, catalog, warnings } = await loadCatalog(ctx);
+	const items = await loadPickerItems(paths, catalog);
 	const query = args.trim();
 	if (query) {
-		const item = findCatalogItem(catalog.items, query);
+		const item = findCatalogItem(items, query);
 		return item ? { source: item.source, item, warnings } : { source: query, warnings };
 	}
 
 	if (!ctx.hasUI) return { warnings };
-	if (catalog.items.length === 0) {
+	if (items.length === 0) {
 		const choices = ["Enter source manually", "Cancel"];
 		const selected = await ctx.ui.select("Your Construct library is empty", choices);
 		if (!selected || selected === "Cancel") return { warnings };
@@ -655,17 +880,26 @@ async function resolveLoadSource(args: string, ctx: ExtensionCommandContext): Pr
 		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
 	}
 
-	const choiceToItem = new Map(catalog.items.map((item) => [`${item.id}: ${item.source}`, item]));
-	const choices = [...choiceToItem.keys(), "Enter source manually", "Cancel"];
-	const selected = await ctx.ui.select("Load into this project", choices);
+	const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
+	const choiceToResolution = new Map<string, { item: CatalogItem; alreadyInstalled: boolean }>();
+	const choices = items.map((item) => {
+		const alreadyInstalled = projectSources.has(item.source);
+		const label = item.name ?? item.id;
+		const choice = `${alreadyInstalled ? "[x]" : "[ ]"} ${label}  ${item.source}`;
+		choiceToResolution.set(choice, { item, alreadyInstalled });
+		return choice;
+	});
+	choices.push("Enter source manually", "Cancel");
+
+	const selected = await ctx.ui.select("Construct — check a remembered source into this project", choices);
 	if (!selected || selected === "Cancel") return { warnings };
 	if (selected === "Enter source manually") {
 		const source = await ctx.ui.input("Pi package source", "npm:@scope/package");
 		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
 	}
-	const item = choiceToItem.get(selected);
-	return item
-		? { source: item.source, item, warnings }
+	const resolution = choiceToResolution.get(selected);
+	return resolution
+		? { source: resolution.item.source, item: resolution.item, alreadyInstalled: resolution.alreadyInstalled, warnings }
 		: { warnings: [...warnings, `Could not resolve selected library item: ${selected}`] };
 }
 
@@ -686,6 +920,20 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 				"- /construct load --dry-run npm:@scope/package",
 				"- /construct catalog add npm:@scope/package",
 				"- /construct load <library-id>",
+			].join("\n"),
+		);
+		return;
+	}
+
+	if (resolved.alreadyInstalled) {
+		showText(
+			ctx,
+			[
+				"Already installed in this project.",
+				`Source: ${resolved.source}`,
+				`Project: ${paths.cwd}`,
+				"",
+				"Checked items are already declared in .pi/settings.json. Choose an unchecked item to add it here.",
 			].join("\n"),
 		);
 		return;
@@ -752,7 +1000,7 @@ async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandC
 
 	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
 	const declaredSource = chooseDeclaredSource(beforePackages, afterPackages, resolved.source);
-	const itemId = uniqueManagedId(resolved.item?.id ?? deriveId(resolved.source), constructRead, declaredSource);
+	const itemId = resolved.item?.managed ? resolved.item.id : uniqueManagedId(resolved.item?.id ?? deriveId(resolved.source), constructRead, declaredSource);
 	try {
 		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, resolved.source, paths);
 		await writeJson(paths.projectConstructPath, construct);
@@ -914,6 +1162,121 @@ function removeConstructItem(construct: JsonReadResult, id: string): JsonObject 
 	};
 }
 
+async function resolveUnloadTarget(
+	ctx: ExtensionCommandContext,
+	paths: ConstructPaths,
+	query: string,
+): Promise<{ construct: JsonReadResult; id?: string; source?: string; label?: string }> {
+	const construct = await readJson(paths.projectConstructPath);
+	let resolvedQuery = query.trim();
+	if (!resolvedQuery && ctx.hasUI) {
+		const choices = [...managedItemChoices(construct), "Cancel"];
+		if (choices.length === 1) return { construct };
+		const selected = await ctx.ui.select("Construct unload: choose item", choices);
+		if (!selected || selected === "Cancel") return { construct };
+		resolvedQuery = selected.split(":", 1)[0];
+	}
+	if (!resolvedQuery) return { construct };
+
+	const managed = getManagedEntry(construct, resolvedQuery);
+	if (managed) {
+		const source = typeof managed.item.requestedSource === "string"
+			? managed.item.requestedSource
+			: typeof managed.item.source === "string"
+				? managed.item.source
+				: undefined;
+		return { construct, id: managed.id, source, label: managed.id };
+	}
+
+	const { catalog } = await loadCatalog(ctx);
+	const libraryItem = findCatalogItem(catalog.items, resolvedQuery);
+	if (libraryItem) return { construct, source: libraryItem.source, label: libraryItem.id };
+	return { construct, source: resolvedQuery, label: resolvedQuery };
+}
+
+async function handleUnload(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const { construct, id, source, label } = await resolveUnloadTarget(ctx, paths, args);
+	if (!source) {
+		showText(ctx, "No Construct item/source selected to unload.");
+		return;
+	}
+
+	if (ctx.hasUI) {
+		const ok = await ctx.ui.confirm(
+			"Unload from this project?",
+			[
+				`Source: ${source}`,
+				`Project: ${paths.cwd}`,
+				"",
+				"This runs:",
+				`pi remove ${source} -l --approve`,
+				"",
+				"It removes the project package declaration only. It does not delete local source files or forget the Construct library item.",
+			].join("\n"),
+		);
+		if (!ok) {
+			showText(ctx, "Construct unload cancelled.");
+			return;
+		}
+	}
+
+	let backupPath: string | undefined;
+	try {
+		backupPath = await backupProjectSettingsIfPresent(paths);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Could not back up .pi/settings.json; aborting unload.\n${message}`);
+		return;
+	}
+
+	const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000 });
+	if (removal.code !== 0) {
+		showText(
+			ctx,
+			[
+				"Construct unload failed during Pi package removal.",
+				`Command: pi remove ${source} -l --approve`,
+				`Exit code: ${removal.code}`,
+				backupPath ? `Settings backup: ${backupPath}` : undefined,
+				removal.stdout ? `\nstdout:\n${removal.stdout}` : undefined,
+				removal.stderr ? `\nstderr:\n${removal.stderr}` : undefined,
+			]
+				.filter((line): line is string => line !== undefined)
+				.join("\n"),
+		);
+		return;
+	}
+
+	if (id) {
+		try {
+			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, id, false));
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			showText(ctx, `Package unloaded, but Construct metadata update failed for ${id}.\n${message}`);
+			return;
+		}
+	}
+
+	showText(
+		ctx,
+		[
+			"Construct unload complete.",
+			label ? `Item: ${label}` : undefined,
+			`Source: ${source}`,
+			`Project settings: ${paths.projectSettingsPath}`,
+			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
+			id ? "Construct metadata marked unloaded." : "Construct metadata was not changed.",
+			"The source remains remembered in Construct if it was in the library.",
+			removal.stdout ? `\npi remove stdout:\n${removal.stdout}` : undefined,
+			removal.stderr ? `\npi remove stderr:\n${removal.stderr}` : undefined,
+			"Reload Pi resources with /construct reload or /reload.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
+	);
+}
+
 async function handleDisable(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
 	const { construct, id, item } = await resolveManagedEntry(ctx, paths, args, "disable");
@@ -1069,7 +1432,7 @@ async function handleEnable(args: string, pi: ExtensionAPI, ctx: ExtensionComman
 
 function splitArgs(args: string): { command: string; rest: string } {
 	const trimmed = args.trim();
-	if (!trimmed) return { command: "status", rest: "" };
+	if (!trimmed) return { command: "load", rest: "" };
 	const firstSpace = trimmed.search(/\s/);
 	if (firstSpace === -1) return { command: trimmed, rest: "" };
 	return { command: trimmed.slice(0, firstSpace), rest: trimmed.slice(firstSpace).trim() };
@@ -1100,10 +1463,23 @@ function planned(ctx: ExtensionCommandContext, subcommand: string): void {
 			"- /construct catalog add <source> [id]",
 			"- /construct catalog remove <id-or-source>",
 			"- /construct load [source-or-library-id]",
+			"- /construct unload [source-or-library-id]",
+			"- /construct sync",
+			"- /construct sync on|off|status",
 			"",
-			"Next phase adds autoload auto-offer.",
+			"Next phase improves the TUI loadout picker.",
 		].join("\n"),
 	);
+}
+
+async function maybeAutosyncOnShutdown(ctx: ExtensionContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const settings = await readJson(paths.userSettingsPath);
+	if (!getAutosync(settings).enabled) return;
+	const result = await syncProjectPackagesToCatalog(ctx);
+	if (result.added.length > 0 && ctx.hasUI) {
+		ctx.ui.notify(`Construct sync remembered ${result.added.length} package source(s).`, "info");
+	}
 }
 
 async function maybeOfferAutoload(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
@@ -1146,10 +1522,18 @@ export default function constructExtension(pi: ExtensionAPI) {
 		await maybeOfferAutoload(pi, ctx);
 	});
 
+	pi.on("session_shutdown", async (_event, ctx) => {
+		try {
+			await maybeAutosyncOnShutdown(ctx);
+		} catch {
+			// Autosync is best-effort and remember-only. Never block shutdown.
+		}
+	});
+
 	pi.registerCommand("construct", {
-		description: "Inspect and manage project-local Pi loadouts",
+		description: "Load and unload remembered Pi sources in this project",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "catalog", "enable", "disable", "remove", "autoload", "reload"];
+			const commands = ["status", "load", "unload", "sync", "catalog", "reload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -1168,6 +1552,11 @@ export default function constructExtension(pi: ExtensionAPI) {
 
 			if (command === "load") {
 				await handleLoad(rest, pi, ctx);
+				return;
+			}
+
+			if (command === "unload") {
+				await handleUnload(rest, pi, ctx);
 				return;
 			}
 
@@ -1196,6 +1585,16 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			if (command === "autosync") {
+				await handleAutosync(rest, ctx);
+				return;
+			}
+
+			if (command === "sync") {
+				await handleSync(rest, ctx);
+				return;
+			}
+
 			showText(
 				ctx,
 				[
@@ -1203,8 +1602,10 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"",
 					"Try:",
 					"- /construct status",
-					"- /construct catalog",
 					"- /construct load <source-or-library-id>",
+					"- /construct unload <source-or-library-id>",
+					"- /construct sync",
+					"- /construct sync on|off|status",
 				].join("\n"),
 			);
 		},
