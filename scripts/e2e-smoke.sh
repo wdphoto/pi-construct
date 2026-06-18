@@ -61,7 +61,10 @@ assert resolved == source, settings
 PY
 
 printf '== project A construct sync remembers raw install ==\n'
-quiet_construct_pi "$PROJECT_A" '/construct sync'
+SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync' 2>&1)"
+grep -Fq 'Local package installs remembered from this project:' <<<"$SYNC_OUTPUT"
+grep -Fq 'construct-e2e-package:' <<<"$SYNC_OUTPUT"
+grep -Fq "$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve())' "$PKG_DIR")" <<<"$SYNC_OUTPUT"
 
 python3 - "$HOME_DIR" "$PKG_DIR" <<'PY'
 import json

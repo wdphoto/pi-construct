@@ -293,14 +293,6 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		.filter((line): line is string => line !== undefined)
 		.join("\n");
 
-	if (ctx.hasUI) {
-		const reload = await ctx.ui.confirm("Reload Pi resources now?", `${summary}\n\nReload so newly loaded resources are available?`);
-		if (reload) {
-			await ctx.reload();
-			return;
-		}
-	}
-
-	showText(ctx, `${summary}\n\nReload Pi resources with /construct reload or /reload.`);
+	showText(ctx, `${summary}\n\nPackage declaration is ready. Reload Pi resources with /construct reload or /reload when you want to use it.`);
 
 }

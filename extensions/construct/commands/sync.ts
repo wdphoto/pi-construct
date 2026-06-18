@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem } from "../types.js";
-import { syncGlobalPackagesToCatalog, syncProjectPackagesToCatalog } from "../catalog.js";
+import { findCatalogItem, loadCatalog, packageSourcesFromSettings, syncProjectPackagesToCatalog } from "../catalog.js";
 import { describeRead, readJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getAutosync, writeAutosync } from "../user-settings.js";
@@ -48,8 +48,8 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		return;
 	}
 
-	if (!["current", "project", "global", "all"].includes(subcommand)) {
-		showText(ctx, "Usage: /construct sync [on|off|status]");
+	if (!["current", "project"].includes(subcommand)) {
+		showText(ctx, "Usage: /construct sync [project|on|off|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json.");
 		return;
 	}
 
@@ -57,34 +57,40 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	let alreadyKnown = 0;
 	const warnings: string[] = [];
 	try {
-		if (subcommand === "current" || subcommand === "project" || subcommand === "all") {
-			const result = await syncProjectPackagesToCatalog(ctx);
-			added.push(...result.added);
-			alreadyKnown += result.alreadyKnown;
-			warnings.push(...result.warnings);
-		}
-		if (subcommand === "global" || subcommand === "all") {
-			const result = await syncGlobalPackagesToCatalog(ctx);
-			added.push(...result.added);
-			alreadyKnown += result.alreadyKnown;
-			warnings.push(...result.warnings);
-		}
+		const result = await syncProjectPackagesToCatalog(ctx);
+		added.push(...result.added);
+		alreadyKnown += result.alreadyKnown;
+		warnings.push(...result.warnings);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct sync failed.\n${message}`);
 		return;
 	}
 
+	const localSources = await packageSourcesFromSettings(paths.projectSettingsPath);
+	const addedBySource = new Map(added.map((item) => [item.source, item]));
+	const { catalog } = await loadCatalog(ctx);
+	const syncedLines = localSources.map((source) => {
+		const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
+		const status = addedBySource.has(source) ? "added" : "already remembered";
+		return `- ${item?.id ?? "<unknown>"}: ${source} (${status})`;
+	});
+
 	showText(
 		ctx,
 		[
 			"Construct sync complete.",
-			added.length > 0 ? "New remembered sources:" : "No new sources remembered.",
-			...added.map((item) => `- ${item.id}: ${item.source}`),
-			alreadyKnown > 0 ? `Already synced: ${alreadyKnown}` : undefined,
+			`Project: ${paths.cwd}`,
+			`Project settings: ${paths.projectSettingsPath}`,
+			"",
+			"Local package installs remembered from this project:",
+			...(syncedLines.length > 0 ? syncedLines : ["- none"]),
+			"",
+			`Added to Construct: ${added.length}`,
+			`Already remembered: ${alreadyKnown}`,
 			...warnings.map((warning) => `! ${warning}`),
 			"",
-			"Sync is remember-only. It never installs or edits this project.",
+			"Sync is remember-only. It never installs, removes, or edits this project.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),

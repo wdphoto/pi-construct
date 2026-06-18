@@ -177,8 +177,3 @@ export async function syncProjectPackagesToCatalog(ctx: Pick<ExtensionCommandCon
 	return syncSourcesToCatalog(ctx, await packageSourcesFromSettings(paths.projectSettingsPath));
 }
 
-export async function syncGlobalPackagesToCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<SyncResult> {
-	const paths = await getPaths(ctx);
-	return syncSourcesToCatalog(ctx, await packageSourcesFromSettings(paths.agentSettingsPath));
-
-}

@@ -14,6 +14,7 @@
   "files": [
     "extensions/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "pi": {
