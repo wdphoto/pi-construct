@@ -1,12 +1,12 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, JsonReadResult } from "../types.js";
+import type { ConstructPaths, JsonObject, JsonReadResult } from "../types.js";
 import { findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { backupProjectSettingsIfPresent, getPackages, packageSource, readSettingsObject } from "../project-settings.js";
 import { getManagedEntry, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
-import { showText } from "../ui.js";
+import { pickCheckboxes, showText } from "../ui.js";
 
 export async function resolveUnloadTarget(
 	ctx: ExtensionCommandContext,
@@ -50,6 +50,29 @@ export async function resolveUnloadTarget(
 	const libraryItem = findCatalogItem(catalog.items, resolvedQuery);
 	if (libraryItem) return { construct, source: libraryItem.source, label: libraryItem.id };
 	return { construct, source: resolvedQuery, label: resolvedQuery };
+}
+
+function managedPackageSource(item: JsonObject): string | undefined {
+	return typeof item.requestedSource === "string"
+		? item.requestedSource
+		: typeof item.source === "string"
+			? item.source
+			: undefined;
+}
+
+async function loadedManagedTargets(paths: ConstructPaths, construct: JsonReadResult): Promise<Array<{ id: string; source: string }>> {
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
+	const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
+	const rawSources = new Set(getPackages(await readJson(paths.projectSettingsPath)).filter((pkg) => pkg.form !== "invalid" && pkg.enabled).map((pkg) => pkg.source));
+	const targets: Array<{ id: string; source: string }> = [];
+	for (const [id, value] of Object.entries(construct.data.items)) {
+		if (!isObject(value) || value.kind !== "package") continue;
+		const source = managedPackageSource(value);
+		if (!source) continue;
+		const normalized = await normalizeSourceForLibrary(source, dirname(paths.projectSettingsPath));
+		if (rawSources.has(source) || projectSources.has(normalized)) targets.push({ id, source });
+	}
+	return targets.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string): Promise<boolean> {
@@ -176,11 +199,75 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	);
 }
 
+export async function handleOff(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const construct = await readJson(paths.projectConstructPath);
+	const targets = await loadedManagedTargets(paths, construct);
+	if (targets.length === 0) {
+		showText(ctx, "No Construct-managed packages are on in this project. Unsynced local Pi packages were ignored.");
+		return;
+	}
+	for (const target of targets) {
+		await handleUnload(target.id, pi, ctx);
+	}
+	showText(
+		ctx,
+		[
+			"Construct off complete.",
+			`Turned off packages: ${targets.length}`,
+			...targets.map((target) => `- ${target.id}: ${target.source}`),
+			"Reload Pi resources with /construct reload or /reload when ready.",
+		].join("\n"),
+	);
+}
+
 export async function handleUnload(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
 	const query = args.trim();
 	if (query === "all" || query === "--all") {
-		await handleUnloadAll(pi, ctx, paths);
+		showText(ctx, "Unload-all moved to /construct off and now only affects Construct-managed packages. Unsynced local Pi packages are ignored.");
+		return;
+	}
+
+	if (!query && ctx.hasUI) {
+		const construct = await readJson(paths.projectConstructPath);
+		const targets = await loadedManagedTargets(paths, construct);
+		if (targets.length === 0) {
+			showText(ctx, "No Construct-managed packages are loaded in this project. Unsynced local Pi packages are ignored; run /construct sync to adopt them.");
+			return;
+		}
+		const selectedIds = await pickCheckboxes(
+			ctx,
+			"Construct unload — uncheck packages to turn off",
+			targets.map((target) => ({
+				id: target.id,
+				label: target.id,
+				value: target.source,
+				checked: true,
+			})),
+		);
+		if (!selectedIds) {
+			showText(ctx, "Construct unload cancelled. No files were changed.");
+			return;
+		}
+		const keep = new Set(selectedIds);
+		const toUnload = targets.filter((target) => !keep.has(target.id));
+		if (toUnload.length === 0) {
+			showText(ctx, "No packages were unchecked. No files were changed.");
+			return;
+		}
+		for (const target of toUnload) {
+			await handleUnload(target.id, pi, ctx);
+		}
+		showText(
+			ctx,
+			[
+				"Construct unload selections applied.",
+				`Turned off packages: ${toUnload.length}`,
+				...toUnload.map((target) => `- ${target.id}: ${target.source}`),
+				"Reload Pi resources with /construct reload or /reload when ready.",
+			].join("\n"),
+		);
 		return;
 	}
 

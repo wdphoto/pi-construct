@@ -1,8 +1,9 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem } from "../types.js";
-import { findCatalogItem, loadCatalog, packageSourcesFromSettings, syncProjectPackagesToCatalog } from "../catalog.js";
-import { describeRead, readJson } from "../json.js";
+import { deriveId, findCatalogItem, loadCatalog, packageSourcesFromSettings, syncProjectPackagesToCatalog } from "../catalog.js";
+import { describeRead, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
+import { parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
 import { getAutosync, writeAutosync } from "../user-settings.js";
 import { showText } from "../ui.js";
 
@@ -76,6 +77,24 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		return `- ${item?.id ?? "<unknown>"}: ${source} (${status})`;
 	});
 
+	let metadataChanged = 0;
+	if (localSources.length > 0) {
+		const constructRead = await readJson(paths.projectConstructPath);
+		try {
+			let construct = parseProjectConstruct(constructRead);
+			for (const source of localSources) {
+				const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
+				const itemId = uniqueManagedId(item?.id ?? deriveId(source), constructRead, source);
+				construct = upsertConstructItem(construct, itemId, source, source, paths);
+				metadataChanged += 1;
+			}
+			await writeJson(paths.projectConstructPath, construct);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			warnings.push(`Could not update project Construct metadata: ${message}`);
+		}
+	}
+
 	showText(
 		ctx,
 		[
@@ -88,9 +107,10 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 			"",
 			`Added to Construct: ${added.length}`,
 			`Already remembered: ${alreadyKnown}`,
+			metadataChanged > 0 ? `Project Construct items armed: ${metadataChanged}` : undefined,
 			...warnings.map((warning) => `! ${warning}`),
 			"",
-			"Sync is remember-only. It never installs, removes, or edits this project.",
+			"Sync is adoption-only. It never installs or removes package declarations; it may update .pi/construct.json metadata.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),

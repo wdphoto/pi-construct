@@ -2,9 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { handleAutoload } from "./commands/autoload.js";
 import { handleCatalog } from "./commands/catalog.js";
 import { handleEnable, handleDisable, handleRemove } from "./commands/manage.js";
-import { handleLoad } from "./commands/load.js";
+import { handleLoad, handleOn } from "./commands/load.js";
 import { handleSync, handleAutosync } from "./commands/sync.js";
-import { handleUnload } from "./commands/unload.js";
+import { handleOff, handleUnload } from "./commands/unload.js";
 import { maybeAutosyncOnShutdown, maybeOfferAutoload } from "./lifecycle.js";
 import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
@@ -25,7 +25,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Load remembered Pi sources and unload project packages",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "wipe", "sync", "catalog", "reload"];
+			const commands = ["status", "load", "unload", "on", "off", "sync", "catalog", "reload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -52,8 +52,18 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			if (command === "off") {
+				await handleOff(pi, ctx);
+				return;
+			}
+
+			if (command === "on") {
+				await handleOn(pi, ctx);
+				return;
+			}
+
 			if (command === "wipe") {
-				await handleUnload("all", pi, ctx);
+				showText(ctx, "/construct wipe was removed. Use /construct off to turn off Construct-managed packages; unsynced local Pi packages are ignored.");
 				return;
 			}
 
@@ -101,7 +111,8 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct status",
 					"- /construct load <source-or-library-id>",
 					"- /construct unload [source-or-library-id]",
-					"- /construct wipe",
+					"- /construct off",
+					"- /construct on",
 					"- /construct sync",
 					"- /construct sync on|off|status",
 				].join("\n"),

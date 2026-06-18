@@ -128,8 +128,8 @@ printf '== project B construct reload remembered package ==\n'
 quiet_construct_pi "$PROJECT_B" '/construct load construct-e2e-package'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
-printf '== project B construct wipe all ==\n'
-quiet_construct_pi "$PROJECT_B" '/construct wipe'
+printf '== project B construct off all ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct off'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
 python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'
@@ -144,7 +144,29 @@ construct = json.loads((project / ".pi/construct.json").read_text())
 assert settings.get("packages") == [], settings
 items = construct.get("items", {})
 assert any(item.get("requestedSource") == str(source) and item.get("enabled") is False for item in items.values()), construct
-assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after unload"
+assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after off"
+PY
+
+printf '== project B construct on rearms loadout ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct on'
+quiet_construct_pi "$PROJECT_B" '/construct reload'
+
+python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = pathlib.Path(sys.argv[2]).resolve()
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+packages = settings.get("packages")
+assert isinstance(packages, list) and len(packages) == 1, settings
+entry = pathlib.Path(packages[0])
+resolved = entry if entry.is_absolute() else (project / ".pi" / entry).resolve()
+assert resolved == source, settings
+items = construct.get("items", {})
+assert any(item.get("requestedSource") == str(source) and item.get("enabled") is True for item in items.values()), construct
 PY
 
 printf 'e2e smoke ok\n'

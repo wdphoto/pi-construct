@@ -56,7 +56,7 @@ project = pathlib.Path(sys.argv[1])
 source = sys.argv[2]
 (project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
 PY
-quiet_pi '/construct load'
+quiet_pi '/construct sync'
 python3 - "$HOME_DIR" "$PKG_DIR" <<'PY'
 import json
 import pathlib
@@ -68,8 +68,8 @@ catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 assert any(item.get("source") == source for item in catalog.get("items", [])), catalog
 PY
 
-printf '== wipe all raw project packages ==\n'
-quiet_pi '/construct wipe'
+printf '== construct off managed project packages ==\n'
+quiet_pi '/construct off'
 python3 - "$PROJECT_DIR" <<'PY'
 import json
 import pathlib
@@ -132,7 +132,7 @@ user_settings = json.loads((home / ".pi/agent/construct/settings.json").read_tex
 catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 
 assert settings.get("packages") == [source], settings
-assert construct.get("items") == {}, construct
+assert isinstance(construct.get("items"), dict), construct
 assert user_settings.get("autoload") is False, user_settings
 assert user_settings.get("autosync") is True, user_settings
 assert any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog

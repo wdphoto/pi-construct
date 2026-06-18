@@ -1,12 +1,11 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, ConstructPaths } from "../types.js";
-import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings, syncProjectPackagesToCatalog, uniqueId } from "../catalog.js";
+import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings, uniqueId } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { backupProjectSettingsIfPresent, chooseDeclaredSource, getPackages, looksLikePackageSource, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
-import { showText } from "../ui.js";
-import { handleUnload } from "./unload.js";
+import { pickCheckboxes, showText } from "../ui.js";
 
 export function parseLoadFlags(args: string): { dryRun: boolean; query: string } {
 	const tokens = args.split(/\s+/).filter(Boolean);
@@ -81,7 +80,7 @@ export async function loadPickerItems(paths: ConstructPaths, catalog: CatalogDat
 export async function resolveLoadSource(
 	args: string,
 	ctx: ExtensionCommandContext,
-): Promise<{ source?: string; item?: CatalogItem; alreadyInstalled?: boolean; action?: "unloadAll"; warnings: string[] }> {
+): Promise<{ source?: string; item?: CatalogItem; alreadyInstalled?: boolean; warnings: string[] }> {
 	const { paths, catalog, warnings } = await loadCatalog(ctx);
 	const items = await loadPickerItems(paths, catalog);
 	const query = args.trim();
@@ -108,11 +107,10 @@ export async function resolveLoadSource(
 		choiceToResolution.set(choice, { item, alreadyInstalled });
 		return choice;
 	});
-	choices.push("Enter source manually", "Unload all project packages", "Cancel");
+	choices.push("Enter source manually", "Cancel");
 
 	const selected = await ctx.ui.select("Construct — project loadout", choices);
 	if (!selected || selected === "Cancel") return { warnings };
-	if (selected === "Unload all project packages") return { action: "unloadAll", warnings };
 	if (selected === "Enter source manually") {
 		const source = await ctx.ui.input("Pi package source", "npm:@scope/package");
 		return source?.trim() ? { source: source.trim(), warnings } : { warnings };
@@ -123,16 +121,94 @@ export async function resolveLoadSource(
 		: { warnings: [...warnings, `Could not resolve selected library item: ${selected}`] };
 }
 
+export async function handleOn(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+	const paths = await getPaths(ctx);
+	const construct = await readJson(paths.projectConstructPath);
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) {
+		showText(ctx, "No Construct-managed packages are remembered for this project yet.");
+		return;
+	}
+	const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
+	const candidates: CatalogItem[] = [];
+	for (const [id, value] of Object.entries(construct.data.items)) {
+		if (!isObject(value) || value.kind !== "package" || value.enabled !== false) continue;
+		const rawSource = typeof value.requestedSource === "string"
+			? value.requestedSource
+			: typeof value.source === "string"
+				? value.source
+				: undefined;
+		if (!rawSource) continue;
+		const source = await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath));
+		if (!projectSources.has(source)) candidates.push({ id, kind: "package", source, managed: true });
+	}
+	if (candidates.length === 0) {
+		showText(ctx, "No Construct-managed packages are off and ready to rearm.");
+		return;
+	}
+	for (const item of candidates) {
+		await handleLoad(item.id, pi, ctx);
+	}
+	showText(
+		ctx,
+		[
+			"Construct on complete.",
+			`Rearmed packages: ${candidates.length}`,
+			...candidates.map((item) => `- ${item.id}: ${item.source}`),
+			"Reload Pi resources with /construct reload or /reload when ready.",
+		].join("\n"),
+	);
+}
+
 export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
 	const flags = parseLoadFlags(args);
-	const sync = flags.dryRun ? { added: [], warnings: [] } : await syncProjectPackagesToCatalog(ctx);
-	const resolved = await resolveLoadSource(flags.query, ctx);
 
-	if (resolved.action === "unloadAll") {
-		await handleUnload("all", pi, ctx);
+	if (!flags.query && !flags.dryRun && ctx.hasUI) {
+		const { catalog, warnings } = await loadCatalog(ctx);
+		const items = await loadPickerItems(paths, catalog);
+		const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
+		const loadable = items.filter((item) => !projectSources.has(item.source));
+		if (loadable.length === 0) {
+			showText(ctx, "No Construct library items are available to load. Run /construct sync to adopt local-only Pi packages into Construct.");
+			return;
+		}
+		const selectedIds = await pickCheckboxes(
+			ctx,
+			"Construct load — choose packages to turn on",
+			loadable.map((item) => ({
+				id: item.id,
+				label: item.name ?? item.id,
+				value: item.source,
+				description: item.description,
+				checked: false,
+			})),
+		);
+		if (!selectedIds) {
+			showText(ctx, "Construct load cancelled. No files were changed.");
+			return;
+		}
+		const selected = loadable.filter((item) => selectedIds.includes(item.id));
+		if (selected.length === 0) {
+			showText(ctx, "No packages selected. No files were changed.");
+			return;
+		}
+		for (const item of selected) {
+			await handleLoad(item.id, pi, ctx);
+		}
+		showText(
+			ctx,
+			[
+				"Construct load selections applied.",
+				`Selected packages: ${selected.length}`,
+				...selected.map((item) => `- ${item.id}: ${item.source}`),
+				...warnings.map((warning) => `! ${warning}`),
+				"Reload Pi resources with /construct reload or /reload when ready.",
+			].join("\n"),
+		);
 		return;
 	}
+
+	const resolved = await resolveLoadSource(flags.query, ctx);
 
 	if (!resolved.source) {
 		showText(
@@ -151,22 +227,6 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 	}
 
 	if (resolved.alreadyInstalled) {
-		if (ctx.hasUI) {
-			const action = await ctx.ui.select(
-				"Already loaded in this project",
-				[
-					"Unload this package from this project",
-					"Keep it loaded",
-				],
-			);
-			if (action === "Unload this package from this project") {
-				await handleUnload(resolved.source, pi, ctx);
-				return;
-			}
-			showText(ctx, "Construct picker closed. No files were changed.");
-			return;
-		}
-
 		showText(
 			ctx,
 			[
@@ -180,7 +240,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		return;
 	}
 
-	const warnings = [...sync.warnings, ...resolved.warnings];
+	const warnings = [...resolved.warnings];
 	if (!looksLikePackageSource(resolved.source)) {
 		warnings.push("Source does not look like an npm:, git:, URL, or local path package source. Pi may still reject or accept it.");
 	}
@@ -252,7 +312,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		return;
 	}
 
-	let catalogMessage = sync.added.length > 0 ? `\nRemembered ${sync.added.length} existing project package(s) in the Construct library.` : "";
+	let catalogMessage = "";
 	if (!resolved.item && ctx.hasUI) {
 		const add = await ctx.ui.confirm("Add to Construct library?", `Add ${resolved.source} to your Construct library for future projects?`);
 		if (add) {

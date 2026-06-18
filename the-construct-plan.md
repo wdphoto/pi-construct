@@ -1355,30 +1355,34 @@ Current checkpoint completed:
 Next refactor order when we come back:
 
 1. **Save-based picker/menu flow**
-   - Replace the current one-item `ctx.ui.select` flow with a custom save-based TUI.
-   - `/construct load` should list only loadable/unchecked remembered sources. User selects one or more, hits Save, and Construct installs them with no second confirmation page.
-   - `/construct unload` should list only loaded/checked project package declarations. User selects one or more, hits Save, and Construct disables them with no second confirmation page.
-   - `/construct wipe` should remain the explicit warned action for disabling every project package declaration.
-   - `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available. Save reconciles selections to `.pi/settings.json`.
+   - [x] `/construct load` lists only loadable/unchecked remembered sources. User selects one or more with Space, hits Enter/Save, and Construct installs them with no second confirmation page.
+   - [x] `/construct unload` lists only loaded Construct-managed declarations. User unchecks one or more with Space, hits Enter/Save, and Construct disables them with no second confirmation page.
+   - [ ] `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available, red/warning means unsynced local-only and read-only. Save reconciles selections to `.pi/settings.json`.
+   - [ ] Rename/remove the `wipe` surface in favor of `/construct off` and `/construct on`; off/on should only touch Construct-managed items and ignore unsynced local-only Pi packages.
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
-2. **Pretty listings**
-   - Clean up status, sync, catalog/library, load, and unload output.
+2. **Open questions from the TUI pass**
+   - Should the full `/construct` overview include a one-key "adopt/sync" action for `[!]` unsynced local-only packages, or should adoption remain only `/construct sync`?
+   - Should direct `/construct load <ad-hoc-source>` add to the library automatically, or keep asking before remembering ad-hoc sources?
+   - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.
+
+3. **Pretty listings**
+   - Clean up status, sync, catalog/library, load, unload, on, and off output.
    - Prefer concise sections, stable ordering, aligned labels where useful, and clear loaded/available/disabled language.
    - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 
-3. **Library language cleanup**
+4. **Library language cleanup**
    - Keep `catalog.json` file/schema compatibility.
    - Consider user-facing aliases:
      - `/construct remember <source>` for current `/construct catalog add`.
      - `/construct forget <id-or-source>` for current `/construct catalog remove`.
    - Do not remove `catalog` commands until aliases and docs are settled.
 
-4. **Restore/profile model**
+5. **Restore/profile model**
    - Today, the project remembers actual loaded packages in `.pi/settings.json` and advisory Construct state in `.pi/construct.json`; there is no named profile command yet.
-   - After `/construct wipe`, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
-   - Add a simple `/construct restore` or `/construct apply <profile>` only after the save-based picker is stable.
+   - After `/construct off`, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
+   - Add `/construct on` as the simple restore/rearm command before adding named profiles.
    - A profile should be a list of remembered source ids/sources plus any Pi package filters, not a new package format.
    - Consider making `/construct wipe` save a `lastWipe`/`lastLoadout` snapshot before disabling everything, so restore is obvious.
    - Avoid resource-level filters unless we explicitly need partial package disable behavior.
