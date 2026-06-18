@@ -128,14 +128,38 @@ MIT
 - `/construct catalog ...` remains a compatibility alias for library operations.
 - Old enable/disable/remove commands are compatibility/power-user paths; MVP language is load/unload/sync.
 
-## Next refactor order
+## Next pickup checklist
 
-1. Keep refining the full `/construct` overview:
-   - `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync` now have searchable save-based multi-toggle TUI flows.
-   - `/construct` groups Construct packages, local-only packages, skill commands, and other commands.
-   - Unsynced local-only items are read-only until `/construct sync` adopts them.
-   - Runtime skill/command rows are read-only inventory for now; package toggles control the package resources that provide them.
-2. Clean up and prettify list output for status, sync, catalog/library, load, unload, toggle, and dashboard.
-3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
-4. Define restore/profile behavior: `/construct on` is the simple current-project rearm; named profiles come later.
-5. Only after that, revisit profiles/groups and resource-level disable filters.
+1. Push/check latest local commits if needed, then start with a disposable `HOME` and project.
+2. Do a command audit for the public surface:
+   - `/construct`
+   - `/construct status`
+   - `/construct load`
+   - `/construct unload`
+   - `/construct toggle`
+   - `/construct sync`
+   - `/construct sync status`
+   - `/construct library`
+   - `/construct remember <source> [id]`
+   - `/construct forget <id-or-source>`
+   - `/construct reload`
+3. Also verify compatibility/debug commands still behave intentionally:
+   - `/construct catalog`, `catalog add`, `catalog remove`
+   - `/construct on`, `/construct off`
+   - `/construct wipe`
+   - `/construct autoload`, `/construct autosync`
+   - old `enable`/`disable`/`remove` paths
+4. Search for stale public wording and update it:
+   - prefer `library`, `remember`, `forget`
+   - avoid public `catalog` except as a compatibility alias
+   - avoid `wipe`
+   - prefer `toggle`, `loadout`, `Construct-managed`, `local-only`, `adopted`
+5. Pretty-print command output for status, sync, library, load, unload, toggle, and dashboard.
+6. Manual interactive TUI test:
+   - fuzzy search typing
+   - Backspace edits
+   - Space toggles
+   - Enter saves
+   - Esc cancels
+   - section headers remain readable
+7. Later: improve skill visibility and maybe package-backed skill filters. Keep runtime skill/command rows read-only until package-level UX feels solid.

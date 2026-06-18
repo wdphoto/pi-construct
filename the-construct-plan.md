@@ -1342,19 +1342,26 @@ Explicitly out of MVP:
 Current checkpoint completed:
 
 - [x] Package-root extension layout: `extensions/construct/index.ts` loaded via `pi --no-extensions -e .`.
-- [x] `/construct` opens the main remembered-source picker/load flow.
+- [x] `/construct` opens the main searchable dashboard/loadout view.
 - [x] `/construct load [source-or-id]` runs `pi install <source> -l --approve` and records advisory `.pi/construct.json` metadata.
 - [x] `/construct unload [source-or-id]` runs `pi remove <source> -l --approve`, marks Construct metadata unloaded, does not delete source files, and does not forget library items.
-- [x] `/construct sync` remembers current project package sources into `~/.pi/agent/construct/catalog.json` with clean output.
+- [x] `/construct sync` adopts unsynced current-project package sources into `~/.pi/agent/construct/catalog.json` and `.pi/construct.json` with clean output.
 - [x] `/construct sync on|off|status` controls invisible remember-only shutdown sync.
 - [x] Local path sources are normalized for cross-project library memory.
 - [x] Unloaded Construct-managed items remain reloadable by id even without a global library entry.
 - [x] Old `enable`/`disable`/`remove`/`autosync` verbs remain compatibility/power-user paths but are no longer the primary MVP surface.
-- [x] `npm run check`, `npm run smoke`, and `npm run install-smoke` pass.
+- [x] `/construct library`, `/construct remember`, and `/construct forget` are the public library verbs; `/construct catalog` remains a compatibility alias.
+- [x] `npm run check`, `./scripts/e2e-smoke.sh`, `./scripts/smoke.sh`, and `./scripts/install-smoke.sh` pass.
 
 Next refactor order when we come back:
 
-1. **Save-based picker/menu flow**
+1. **Command audit and stale wording cleanup**
+   - Audit the public surface in a disposable `HOME` and project: `/construct`, `status`, `load`, `unload`, `toggle`, `sync`, `sync status`, `library`, `remember`, `forget`, and `reload`.
+   - Audit compatibility/debug paths: `catalog`, `catalog add`, `catalog remove`, `on`, `off`, `wipe`, `autoload`, `autosync`, and old `enable`/`disable`/`remove`.
+   - Search output/docs/code for stale public wording: prefer `library`, `remember`, `forget`, `toggle`, `loadout`, `Construct-managed`, `local-only`, and `adopted`; avoid public `catalog` and `wipe` except compatibility notes.
+   - Keep `catalog.json` as the on-disk schema/file name for now; the user-facing language is library.
+
+2. **Save-based picker/menu flow**
    - [x] `/construct load` lists only loadable/unchecked remembered sources. User selects one or more with Space, hits Enter/Save, and Construct installs them with no second confirmation page.
    - [x] `/construct unload` lists only loaded Construct-managed declarations. User unchecks one or more with Space, hits Enter/Save, and Construct disables them with no second confirmation page.
    - [x] `/construct` is now the all-up loadout view: checked means loaded here, unchecked means available, warning means unsynced local-only and read-only. Save reconciles Construct package selections to `.pi/settings.json`.
@@ -1362,25 +1369,21 @@ Next refactor order when we come back:
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
-2. **Decisions from the TUI pass**
+3. **Decisions from the TUI pass**
    - Adoption stays in `/construct sync`, not a one-key dashboard action. If there is one unsynced item, sync adopts it immediately; if there are multiple, sync shows the same searchable save-based checkbox flow.
    - Runtime skill/command rows should be included in the dashboard and searchable. They are read-only inventory for now; package-backed resource filters can come later only if needed.
    - Direct `/construct load <ad-hoc-source>` does not need automatic remembering beyond the existing explicit behavior.
    - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.
 
-3. **Pretty listings**
+4. **Pretty listings**
    - Clean up status, sync, catalog/library, load, unload, toggle, and dashboard output.
    - Prefer concise sections, stable ordering, aligned labels where useful, and clear loaded/available/disabled language.
    - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 
-4. **Library language cleanup**
-   - Keep `catalog.json` file/schema compatibility.
-   - Consider user-facing aliases:
-     - `/construct remember <source>` for current `/construct catalog add`.
-     - `/construct forget <id-or-source>` for current `/construct catalog remove`.
-   - Do not remove `catalog` commands until aliases and docs are settled.
+5. **Manual interactive TUI test**
+   - Verify fuzzy search typing, Backspace, Space, Enter, Esc, and readable section headers in `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
 
-5. **Restore/profile model**
+6. **Restore/profile model**
    - Today, the project remembers actual loaded packages in `.pi/settings.json` and advisory Construct state in `.pi/construct.json`; there is no named profile command yet.
    - After `/construct toggle` turns a loadout off, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
    - `/construct toggle` is the simple current-project restore/rearm command before named profiles.
