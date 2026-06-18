@@ -6,7 +6,7 @@
 
 the-construct should be a **global extension** installed in `~/.pi/agent/extensions/` or as a global Pi package. It manages project resources but does not itself live inside each project.
 
-The global `the-construct` extension should be lightweight: commands, user catalog, autoload auto-offer, and project-local package management only for MVP. The actual workflow resources should be declared project-locally whenever possible.
+The global `the-construct` extension should be lightweight: commands, user catalog, and project-local package management only for MVP. The actual workflow resources should be declared project-locally whenever possible.
 
 ### Main pieces
 
@@ -15,12 +15,11 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - `/construct` and `/construct status` should print the useful current state; do not require rich TUI for MVP.
    - Guard interactive flows with `ctx.hasUI` / `ctx.mode === "tui"` as appropriate.
 
-2. **Autoload layer**
+2. **Startup behavior**
    - Do not participate in Pi's trust prompt for MVP.
    - Do not track Pi trust decisions in Construct state.
-   - Autoload is enabled by default as an offer only.
-   - If enabled, `session_start` may auto-offer `/construct` only after Pi trust/resource resolution and only in UI-capable modes.
-   - Store autoload settings and per-project skips in user-local Construct files, not in project files.
+   - Do not prompt, open Construct, sync, install, reload, or write files from lifecycle hooks.
+   - Future automation belongs behind an explicit opt-in toggle.
 
 3. **Construct library/catalog layer**
    - MVP catalog is user-only: `~/.pi/agent/construct/catalog.json`.
@@ -57,41 +56,6 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - Non-TUI/RPC/print modes should never block unexpectedly; status can print, prompts should skip or require explicit command input.
 
 ## Data model draft
-
-### User Construct settings: `~/.pi/agent/construct/settings.json`
-
-```json
-{
-  "version": 1,
-  "autoload": true
-}
-```
-
-Rules:
-
-- User-local only.
-- Does not modify Pi global settings.
-- `autoload` defaults on. `autoload: true` means auto-offer `/construct` in new eligible trusted projects, not auto-install.
-
-### User Construct skips: `~/.pi/agent/construct/skips.json`
-
-```json
-{
-  "version": 1,
-  "projects": {
-    "/absolute/path/to/project": {
-      "skippedAt": "2026-06-15T00:00:00.000Z",
-      "reason": "dont-ask"
-    }
-  }
-}
-```
-
-Rules:
-
-- Written only when the user chooses `don't ask for this project`.
-- User-local only; never create project files just to remember a negative answer.
-- Paths should be canonicalized as much as practical.
 
 ### User catalog: `~/.pi/agent/construct/catalog.json`
 

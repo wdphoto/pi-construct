@@ -8,7 +8,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 
 ### Added
 - Added the full `/construct` loadout dashboard with grouped package sections and searchable read-only runtime skill/command inventory.
-- Added fuzzy filtering to checkbox-style TUI pickers: type to search, Backspace edits, Space toggles, Enter saves, Esc cancels.
+- Added fuzzy filtering to checkbox-style TUI pickers: type to search/filter, Space toggles, Enter saves, Esc cancels.
 - Added checkbox-style TUI pickers for `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
 - Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, toggle-off, toggle-on, and reload.
 - Added `/construct toggle` as the public project loadout switch for Construct-managed packages, with hidden `/construct off` and `/construct on` aliases for testing.
@@ -16,6 +16,8 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - Added public library verbs: `/construct library`, `/construct remember`, and `/construct forget`; `/construct catalog` remains a compatibility alias.
 
 ### Changed
+- Removed active autoload/startup behavior. Construct no longer prompts, opens, syncs, or writes files when a project loads.
+- Removed `/construct autoload`, `/construct autosync`, and related user-local settings/skip handling.
 - `/construct load` no longer auto-syncs local project packages. Use `/construct sync` as the explicit adoption step for local-only Pi packages.
 - `/construct sync` now adopts only unsynced local packages, auto-adopts a single candidate, and opens a searchable save-based picker when multiple candidates are available.
 - `/construct sync` now arms adopted local packages in `.pi/construct.json` so they become Construct-managed for the project.

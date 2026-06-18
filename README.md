@@ -1,14 +1,16 @@
-# the-construct
+# The Construct
 
-The Construct is a loadout manager for [Pi](https://pi.dev). It helps me remember the tools I use, then load or unload them inside of my projects.
+The Construct is a loadout manager for [Pi](https://pi.dev). It helps me load the tools I use on every project.
 
-## Current Workflow
+WARNING: I don't know what I'm doing. Take that as you will.
 
-1. In project A, install a Pi package or local extension source with normal Pi:
+## How it works
+
+1. In project A, you install a local Pi package:
    ```bash
    pi install <source> -l
    ```
-2. Sync your project with the Construct. Then the Construct remembers that source when it sees project B.
+2. To store that tool in the construct for other projects, you simply sync. The Construct now that source when it sees project B.
 3. In project B, run:
    ```text
    /construct
@@ -17,16 +19,12 @@ The Construct is a loadout manager for [Pi](https://pi.dev). It helps me remembe
    ```text
    [x] tally tools          npm:tally-tools
    [ ] tripwire             /Users/me/code/tripwire
-   [ ] demo extension       /Users/me/code/foo/extensions/demo.ts
    ```
-5. Construct runs:
-   ```bash
-   pi install <source> -l --approve
-   ```
+5. Construct does the rest
 
-Checked means already declared in this project. Unchecked means remembered by Construct and available to add here.
+Checked means already declared in the project. Unchecked means it's in the Construct and available to use.
 
-## Current MVP commands
+## Current commands are subject to change
 
 ```text
 /construct
@@ -52,13 +50,12 @@ Low-level library/power-user commands still exist for now:
 /construct catalog remove <id-or-source>
 ```
 
-Compatibility commands still exist but are not the primary MVP surface:
+Compatibility/power-user commands still exist but are not the primary MVP surface:
 
 ```text
 /construct enable <managed-id>
 /construct disable <managed-id>
 /construct remove <managed-id>
-/construct autoload on|off|status
 ```
 
 ## Safe local testing
@@ -107,7 +104,7 @@ MIT
 
 - Package entry point is `extensions/construct/index.ts`; normal testing should load the package root (`-e .`) so Pi reads `package.json` and labels the extension as `construct`.
 - `/construct` opens the full loadout overview with package sections plus searchable read-only runtime skill/command sections. Themes are intentionally out of scope.
-- `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync` support fuzzy filtering: type to search, Backspace edits, Space toggles, Enter saves, Esc cancels.
+- `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync` support fuzzy filtering: type to search/filter, Space toggles, Enter saves, Esc cancels.
 - `/construct load` shows remembered Construct sources that are not loaded here; direct `/construct load <source-or-id>` also works.
 - `/construct load` does not auto-sync local-only Pi packages. Run `/construct sync` to adopt local project package declarations into Construct.
 - `/construct unload` shows Construct-managed package declarations currently loaded in this project; Space toggles multiple items off, Enter saves, Esc cancels. `/construct unload <source-or-id>` disables one. It does not delete local source files or forget Construct library items.
@@ -120,7 +117,8 @@ MIT
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - `/construct sync` adopts unsynced package sources from the current project's `.pi/settings.json` into the Construct library and arms them in `.pi/construct.json`. If there is one unsynced item, it adopts immediately; if there are multiple in TUI mode, it shows the same save-based checkbox flow. It never installs or removes package declarations.
 - Automatic/invisible sync is disabled for the MVP. Use `/construct sync` manually.
-- Autoload means startup auto-offer only. It asks `Load it into the Construct?` after project trust and never installs packages by itself.
+- Autoload/startup behavior has been removed. Construct does not prompt, sync, open, or write files when a project loads.
+- A project with no `.pi/construct.json` still opens the full `/construct` loadout view; status/dashboard reads do not create metadata.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` is advisory metadata.
 - `/construct library` shows the global Construct library: reusable package sources that appear as options in other projects.
 - `/construct remember <source> [id]` adds a package source to that library.
@@ -147,7 +145,6 @@ MIT
    - `/construct catalog`, `catalog add`, `catalog remove`
    - `/construct on`, `/construct off`
    - `/construct wipe`
-   - `/construct autoload`, `/construct autosync` compatibility no-op for autosync
    - old `enable`/`disable`/`remove` paths
 4. Search for stale public wording and update it:
    - prefer `library`, `remember`, `forget`
@@ -157,7 +154,6 @@ MIT
 5. Pretty-print command output for status, sync, library, load, unload, toggle, and dashboard.
 6. Manual interactive TUI test:
    - fuzzy search typing
-   - Backspace edits
    - Space toggles
    - Enter saves
    - Esc cancels

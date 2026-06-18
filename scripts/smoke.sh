@@ -52,8 +52,19 @@ quiet_pi() {
   run_pi "$1" >/dev/null 2>&1
 }
 
-printf '== status ==\n'
-quiet_pi '/construct status'
+printf '== new-project dashboard/status ==\n'
+DASHBOARD_OUTPUT="$(run_pi '/construct')"
+[[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"AVAILABLE — Construct library"* ]]
+STATUS_OUTPUT="$(run_pi '/construct status')"
+[[ "$STATUS_OUTPUT" == *"Construct metadata: missing:"* ]]
+python3 - "$PROJECT_DIR" <<'PY'
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+assert not (project / ".pi/construct.json").exists(), "status should not create Construct metadata"
+PY
 
 printf '== catalog ==\n'
 quiet_pi '/construct catalog'
@@ -108,18 +119,8 @@ quiet_pi '/construct remove pkg'
 printf '== sync commands ==\n'
 quiet_pi '/construct sync'
 quiet_pi '/construct sync status'
-quiet_pi '/construct sync on'
-quiet_pi '/construct sync off'
 quiet_pi '/construct sync current'
 quiet_pi '/construct sync project'
-
-printf '== autoload/autosync compatibility settings ==\n'
-quiet_pi '/construct autoload on'
-quiet_pi '/construct autoload off'
-quiet_pi '/construct autosync status'
-quiet_pi '/construct autosync on'
-quiet_pi '/construct autosync off'
-quiet_pi '/construct autosync'
 
 printf '== automatic sync disabled ==\n'
 python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
@@ -144,13 +145,12 @@ source = sys.argv[3]
 remembered_source = str(pathlib.Path(source).resolve())
 settings = json.loads((project / ".pi/settings.json").read_text())
 construct = json.loads((project / ".pi/construct.json").read_text())
-user_settings = json.loads((home / ".pi/agent/construct/settings.json").read_text())
+user_settings_path = home / ".pi/agent/construct/settings.json"
 catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 
 assert settings.get("packages") == [source], settings
 assert isinstance(construct.get("items"), dict), construct
-assert user_settings.get("autoload") is False, user_settings
-assert user_settings.get("autosync") in (None, False), user_settings
+assert not user_settings_path.exists(), "status/sync should not create Construct user settings"
 assert not any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog
 assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup files"
 PY

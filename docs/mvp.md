@@ -64,9 +64,9 @@ Secondary project-local actions can exist behind an item action menu later:
    or conservatively remove the matching package declaration from `.pi/settings.json` with a backup. For local path sources, this must not delete original local files.
 3. **Forget from Construct** — remove the source from the user-local Construct library only; do not edit the current project.
 
-Optional autoload is **auto-offer only**. It may show `Load it into the Construct?` in new trusted projects, but it must never silently install or enable project code.
+Autoload/startup behavior is **out of the active MVP**. Construct must not prompt, open, sync, install, enable, copy, reload, or write files just because a project/session loads.
 
-Construct library sync is **remember-only**. When Construct sees project-level package declarations, it may remember their source strings in the user's Construct library so they appear in future `/construct load` menus. It must never install, enable, copy, or execute anything by itself.
+Construct library sync is **manual and remember-only**. When the user runs `/construct sync`, Construct may remember project-level package source strings in the user's Construct library so they appear in future `/construct load` menus. It must never install, enable, copy, or execute anything by itself.
 
 <!-- Source: the-construct-plan.md lines 71-225: Current learning/sync model -->
 
@@ -74,58 +74,42 @@ Construct library sync is **remember-only**. When Construct sees project-level p
 
 A Pi package installed with `pi install <source> -l` is project-local. It persists in that project's `.pi/settings.json`; it does not automatically become known to other projects or to the user's Construct library.
 
-Construct currently learns reusable package options from three places:
+Construct currently learns reusable package options from explicit user actions:
 
-1. explicit user action: `/construct catalog add <source> [id]`;
-2. `/construct load` in a project that already has package declarations in `.pi/settings.json`;
-3. ad-hoc loads where the user chooses to remember the source in the Construct library.
+1. `/construct sync` to adopt current-project package declarations from `.pi/settings.json`;
+2. `/construct remember <source> [id]` or `/construct catalog add <source> [id]`;
+3. `/construct load <source>` for direct/ad-hoc sources.
 
-That means discovery is intentionally passive in the MVP. If a user installs a package locally with raw Pi commands, Construct will not know about it for other projects until Construct sees that project and remembers the source.
+That means discovery is intentionally command-driven in the MVP. If a user installs a package locally with raw Pi commands, Construct will not know about it for other projects until the user runs `/construct sync` in that project.
 
 ### Automatic sync possibilities
 
-Pi extensions can hook lifecycle events such as session startup and shutdown, so automatic Construct sync is technically possible. The safe version would remain **remember-only**:
+Pi extensions can hook lifecycle events such as session startup and shutdown, so automatic Construct sync is technically possible. It is intentionally **not active** in the MVP.
 
-- read package declarations from trusted project `.pi/settings.json`;
-- optionally read global package declarations from `~/.pi/agent/settings.json`;
-- add missing package sources to `~/.pi/agent/construct/catalog.json`;
-- never install, enable, copy, remove, update, or execute anything.
-
-Possible trigger points:
-
-- **command-time sync**: sync when `/construct load`, `/construct status`, or `/construct sync` runs. This is explicit and easiest to reason about.
-- **session_start sync**: remember packages when Pi starts in a trusted project. Useful, but it writes user state without a direct command, so it should likely be opt-in.
-- **session_shutdown sync**: remember packages on exit. This is less intrusive during startup, but can be missed on crashes and may be surprising if a session changes directories.
-- **post-install detection by diff**: Pi does not currently expose a dedicated "package installed" extension event in the documented API. Construct can approximate this by comparing project/global package declarations against its library on startup, reload, or command execution. If it sees unknown package sources, it can ask: "Add these to your Construct library?" This is detection after the declaration exists, not a true install hook.
-
-Course correction: make `/construct sync` the explicit current-project memory command. Invisible/automatic sync is disabled for the MVP and belongs later:
+Course correction: `/construct sync` is the explicit current-project memory command. Invisible/automatic sync belongs later behind an opt-in toggle:
 
 ```text
 /construct sync
 /construct sync status
 ```
 
-Sync must not be conflated with autoload. Autoload means "offer to open Construct"; sync means "remember existing package declarations". A detection prompt should be conservative: show the source, scope (`project` or `global`), and target library path before writing `~/.pi/agent/construct/catalog.json`.
+Sync means "remember existing package declarations". It should be conservative: show/adopt package sources from the current project only when the user runs the command, and never install, enable, copy, remove, update, reload, or execute anything.
 
 ### Automatic sync option matrix
 
 | Option | Trigger | What it can learn | Pros | Cons | MVP stance |
 | --- | --- | --- | --- | --- | --- |
-| Manual sync | `/construct sync ...` | Project/global package declarations and explicit extension paths | User-visible, debuggable, safest | User has to remember to run it | Build first |
-| Command-time passive sync | `/construct load`, maybe `/construct status` | Current project package declarations | Already near user intent; no background surprises | Still only learns when Construct is used | Keep for `/construct load`; maybe add to `/construct status` later |
-| Startup autosync | `session_start` | Current trusted project declarations; optionally global declarations | Library is fresh before user opens picker | Writes user state at startup; can feel spooky | Opt-in only, after `/construct sync` exists |
-| Shutdown autosync | `session_shutdown` | Final current project declarations; optionally global declarations | Least intrusive during startup; can happen quietly after normal work | Missed on crash/kill; no good moment to ask; cwd/session changes can confuse target | Later only; disabled for MVP |
-| Reload autosync | `resources_discover` / reload flow | Changed declarations after `/reload` | Catches package changes during active work | Reloads can happen for many reasons; still surprising | Only as part of opt-in autosync |
-| Detection prompt | Startup/reload/command diff finds unknown sources | Unknown sources not in library | Friendly: "Add this to Construct?" | Prompt fatigue; bad for shutdown because user is leaving | Use for command-time/startup, not shutdown |
+| Manual sync | `/construct sync ...` | Current project package declarations | User-visible, debuggable, safest | User has to remember to run it | Active MVP |
+| Command-time passive sync | Future explicit command flow | Current project package declarations | Already near user intent; no background surprises | Still only learns when Construct is used | Later |
+| Startup/shutdown/reload automation | Lifecycle hooks | Current trusted project declarations | Library can stay fresh | Writes user state without a direct command; can feel spooky | Roadmap only, opt-in |
 
 Recommended order:
 
-1. Implement explicit `/construct sync` for the current project.
+1. Keep explicit `/construct sync` for the current project.
 2. Add source classification and path normalization.
-3. Add optional detection prompt for command-time or startup sync.
-4. Reconsider opt-in silent shutdown sync only if explicit sync proves useful.
+3. Reconsider opt-in automation only after explicit sync proves useful.
 
-Shutdown autosync is attractive because it stays out of the way, but it is disabled for MVP. If we need to ask the user, startup or command-time is friendlier because the user is present and in context.
+Lifecycle automation is disabled for MVP. If it returns, it must be opt-in and remember-only.
 
 ### Low-tech install memory model
 
@@ -151,12 +135,7 @@ This keeps Construct low-tech:
 - keep `.pi/settings.json` as the project source of truth;
 - keep `~/.pi/agent/construct/catalog.json` as user-local memory only.
 
-Autosync can be implemented as a diff of package declarations:
-
-1. On session start or before shutdown, read current project `.pi/settings.json` packages.
-2. Compare sources to `~/.pi/agent/construct/catalog.json`.
-3. Add missing sources to the library if autosync is enabled, or offer to remember them during an explicit command.
-4. Never mutate project settings during autosync.
+Future opt-in automation can be implemented as a diff of package declarations, but the active MVP only runs this adoption when the user runs `/construct sync`.
 
 This captures installs made outside Construct, including local installs done with raw Pi commands, as long as they resulted in package declarations. It does not capture arbitrary files copied into `.pi/extensions/` unless a future detector reports them as local-only resources.
 
@@ -198,11 +177,11 @@ For MVP sync, only package declarations should enter `catalog.json` automaticall
 
 The install-memory plan is possible with documented Pi APIs, but these are the concerns to resolve deliberately:
 
-1. **Shutdown autosync has no prompt window.** `session_shutdown` is documented and works for cleanup, but it is a bad moment to ask questions. If autosync runs there, it should be silent, opt-in, remember-only, and best-effort.
+1. **Lifecycle automation has no active MVP path.** If startup/shutdown/reload automation returns, it must be opt-in, remember-only, and best-effort.
 2. **No true install event.** Pi does not document a `package_installed` event. Construct learns after the fact by reading `packages` declarations from settings. That means raw installs are remembered on next sync/startup/shutdown, not at install time.
 3. **Only package declarations are replayable.** Sources in `packages` can be replayed as `pi install <source> -l --approve`. Loose resources under `.pi/extensions`, `.pi/prompts`, `.pi/skills`, etc. are detectable but not automatically reusable install memories.
 4. **Local paths need normalization.** Relative local package sources are resolved relative to the settings file that declared them. Construct should store absolute/real paths in the user library to make replay from another project work.
-5. **Global sync can pollute the library.** `~/.pi/agent/settings.json` packages may be always-on personal tools, not project loadouts. `/construct sync global` should stay explicit; global autosync should be separate or avoided.
+5. **Global sync can pollute the library.** `~/.pi/agent/settings.json` packages may be always-on personal tools, not project loadouts. `/construct sync global` should stay explicit if it is added later.
 6. **Deduplication is harder than exact strings.** Pi deduplicates by npm package name, git repo without ref, and local resolved path. Construct currently mostly uses exact sources plus path normalization. Npm/git identity normalization is a follow-up.
 7. **Toggle UI maps to package declarations, not resources.** The simple `[x]/[ ]` list should toggle whole package sources in `.pi/settings.json`. Fine-grained extension/skill/prompt filtering should use Pi filters later, not be invented now.
 8. **Disable/remove wording matters.** Removing a project package declaration is not uninstalling caches or deleting code. The UI must say "remove from this project" or "disable in this project," not "uninstall".
@@ -234,18 +213,16 @@ Build the smallest useful Construct loop for our local workflow:
 1. Global extension with `/construct` command surface.
 2. `/construct` and `/construct status` print useful current project state.
 3. User-local Construct files:
-   - `~/.pi/agent/construct/settings.json`
    - `~/.pi/agent/construct/catalog.json`
-   - `~/.pi/agent/construct/skips.json`
 4. Project-local Construct metadata: `.pi/construct.json`.
 5. Project-local Pi source of truth: `.pi/settings.json`.
 6. Construct library is the reusable list of package sources seen/added by us.
-7. `/construct status` reads `.pi/settings.json`, remembers package sources in the library, and reports enabled/available/disabled state.
+7. `/construct status` reads `.pi/settings.json` and reports enabled/available/disabled state without writing files.
 8. `/construct load` loads/toggles library items into the current `ctx.cwd`.
 9. Enable uses `pi install <source> -l --approve`.
 10. Disable removes the package declaration from this project and leaves the source in the Construct library.
 11. Forget removes a source from the Construct library and does not touch project files.
-12. `/construct autoload on|off` toggles auto-offer only; no auto-install.
+12. No autoload/startup behavior in the active MVP.
 13. Backup `.pi/settings.json` before direct edits.
 14. Ask for `/reload` or call `ctx.reload()` from command flow.
 
@@ -262,29 +239,13 @@ Explicitly out of MVP:
 - Package update/pinning UX.
 - Managing `AGENTS.md`, `CLAUDE.md`, `.pi/SYSTEM.md`, or `.pi/APPEND_SYSTEM.md`.
 
-<!-- Source: the-construct-plan.md lines 1766-1788: Autoload once-per-project rule -->
+<!-- Source: current pivot: no active autoload -->
 
-## Autoload once-per-project rule
+## Startup behavior
 
-Construct autoload is startup/reload offer-only. It must not auto-install or invisibly sync anything.
+Construct has no active startup/autoload behavior in the MVP.
 
-The prompt `Load it into the Construct?` should be shown only once per trusted project, not on every reload.
+A project with no `.pi/construct.json` still opens the full loadout view when the user runs `/construct`. Read-only commands must not create metadata just to show project state.
 
-Desired MVP behavior:
-
-1. On `session_start`, after Pi trust is verified and UI is available, Construct may offer `Load it into the Construct? y/n`.
-2. Ask only if this project has no user-local Construct project marker yet.
-3. If user says yes:
-   - open `/construct`;
-   - record a user-local marker for this project, e.g. reason `accepted`.
-4. If user says no:
-   - record a user-local marker for this project, e.g. reason `declined`.
-5. Do not ask again for that project on reload/startup unless the marker is manually cleared.
-6. The marker must live in user-local Construct state, not project files, so Construct does not mutate a project just because it offered.
-
-Implementation note:
-
-- Existing `~/.pi/agent/construct/skips.json` can be reused short-term, but the concept is really `projects.json` / `seen projects`, not only skips.
-- `maybeOfferAutoload` should record the marker on both accept and decline.
-- Keep autoload separate from sync. Recording the marker must not install, sync, copy, enable, or edit `.pi/settings.json`.
+Future onboarding automation can be reconsidered later as an explicit opt-in setting, but no lifecycle hook should prompt, open Construct, sync, install, reload, or write state today.
 

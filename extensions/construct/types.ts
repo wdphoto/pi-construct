@@ -9,10 +9,7 @@ export interface ConstructPaths {
 	cwd: string;
 	realCwd: string;
 	constructDir: string;
-	agentSettingsPath: string;
-	userSettingsPath: string;
 	userCatalogPath: string;
-	userSkipsPath: string;
 	projectSettingsPath: string;
 	projectConstructPath: string;
 }

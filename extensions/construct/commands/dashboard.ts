@@ -3,7 +3,6 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { ConstructPaths, JsonObject } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings } from "../catalog.js";
 import { isObject, readJson } from "../json.js";
-import { getPaths } from "../paths.js";
 import { getPackages } from "../project-settings.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 import { handleLoad } from "./load.js";

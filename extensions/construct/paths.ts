@@ -13,10 +13,7 @@ export async function getPaths(ctx: Pick<ExtensionCommandContext | ExtensionCont
 		cwd,
 		realCwd,
 		constructDir,
-		agentSettingsPath: join(agentDir, "settings.json"),
-		userSettingsPath: join(constructDir, "settings.json"),
 		userCatalogPath: join(constructDir, "catalog.json"),
-		userSkipsPath: join(constructDir, "skips.json"),
 		projectSettingsPath: join(cwd, ".pi", "settings.json"),
 		projectConstructPath: join(cwd, ".pi", "construct.json"),
 	};

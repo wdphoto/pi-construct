@@ -13,7 +13,7 @@
 - **Resource filters**: package object filters can disable resources in subtle ways. MVP should avoid partial resource toggles unless we later need them.
 - **Reload lifecycle**: after changing settings, old extension instances continue until reload completes. Treat `ctx.reload()` as terminal for the command handler.
 - **Trust boundary confusion**: project trust is Pi's responsibility and is not a sandbox. the-construct should not add its own trust language beyond showing package/file changes before applying.
-- **Non-interactive mode**: print/json modes cannot prompt. Autoload auto-offer must skip safely.
+- **Non-interactive mode**: print/json modes cannot prompt. Construct has no startup prompt in the active MVP.
 - **Offline/network failures**: package install/update may fail or be intentionally disabled. Keep dry-run and already-installed management useful offline.
 - **Project-specific resources**: local prompts/skills/extensions may contain repo-specific assumptions. Do not add raw local files to the reusable package library automatically.
 
@@ -256,7 +256,7 @@ For these, Construct should detect and label the item, then offer future export/
 
 If library sync is too aggressive, the user catalog becomes cluttered. To keep it maintainable:
 
-- sync only runs during explicit Construct commands or accepted autoload menu flow.
+- sync only runs during explicit Construct commands.
 - remembered entries should be removable/forgettable.
 - dedupe by exact source string.
 - label local/private/questionable entries clearly, especially local paths.

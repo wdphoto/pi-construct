@@ -85,7 +85,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				return cachedLines;
 			}
 			if (visibleItems.length === 0) {
-				lines.push(theme.fg("muted", "  No matching items"), "", theme.fg("muted", "  Backspace clears search · Esc cancels"));
+				lines.push(theme.fg("muted", "  No matching items"), "", theme.fg("muted", "  Esc cancels"));
 				cachedWidth = width;
 				cachedLines = lines.map((line) => truncateToWidth(line, width));
 				return cachedLines;
@@ -117,7 +117,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (start > 0 || end < visibleItems.length || query) lines.push(theme.fg("muted", `  (${selected + 1}/${visibleItems.length}${query ? ` of ${items.length}` : ""})`));
 			const item = selectedItem();
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
-			lines.push("", theme.fg("muted", "  Type to fuzzy filter · Backspace edits · Space toggles · Enter saves · Esc cancels"));
+			lines.push("", theme.fg("muted", "  Type to search/filter · Space toggles · Enter saves · Esc cancels"));
 			cachedWidth = width;
 			cachedLines = lines.map((line) => truncateToWidth(line, width));
 			return cachedLines;

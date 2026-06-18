@@ -4,13 +4,15 @@ This file is now the index for the Construct plan. The detailed notes were split
 
 ## Start here
 
-- [MVP contract](docs/mvp.md) — current workflow, hard MVP boundaries, manual sync, autoload once-per-project.
+- [MVP contract](docs/mvp.md) — current workflow, hard MVP boundaries, manual sync, no startup behavior.
 - [Safety and maintenance](docs/safety-and-maintenance.md) — no auto-install, trust boundaries, backups, known risks.
 - [Commands and UX](docs/commands-and-ux.md) — `/construct`, load/unload/toggle/sync flows.
 - [Architecture and data model](docs/architecture.md) — layers, user/project state, catalog, settings.
 - [Idiomatic Pi model](docs/pi-model.md) — Pi primitives Construct should build on instead of replacing.
 - [Roadmap and future work](docs/roadmap.md) — phase plan, profiles/export ideas, open questions.
 - [Morning audit](docs/morning-audit.md) — next review questions before more implementation.
+- [Autoload removal plan](docs/autoload-removal-plan.md) — current pivot away from startup behavior; keep `/construct sync` as the explicit adoption command.
+- [Pre-flight checklist](docs/preflight-checklist.md) — one-item-at-a-time manual check and cleanup pass before adding features.
 
 ## Current hard rules
 
@@ -18,8 +20,8 @@ This file is now the index for the Construct plan. The detailed notes were split
 - Construct must not silently install, enable, copy, sync, update, or reload project code.
 - `/construct load` may install only after an explicit user command or selection.
 - `/construct sync` is manual; automatic/invisible sync is disabled for MVP.
-- Autoload is offer-only: ask `Load it into the Construct? y/n` after trust, then open `/construct` only if accepted.
-- The autoload offer should be once per trusted project using user-local seen state, not every reload.
+- Autoload/startup behavior is removed. Construct must not prompt, sync, open, or write files on project/session load.
+- A project with no `.pi/construct.json` should still open the full Construct loadout view without creating metadata.
 - `.pi/settings.json` remains Pi's source of truth. `.pi/construct.json` is advisory metadata only.
 - Pi owns package resolution and dependency installs. Construct only remembers and replays Pi-supported sources.
 
@@ -37,4 +39,4 @@ Equivalent command for a user-selected load:
 pi install <source> -l --approve
 ```
 
-That command is never run from background/autoload/sync paths.
+That command is never run from background/startup/sync paths.

@@ -3,23 +3,17 @@ import { formatCatalogItem, loadCatalog, parseCatalog } from "./catalog.js";
 import { describeRead, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
-import { getAutoload, getAutosync, getSkippedHere } from "./user-settings.js";
 
 export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<string> {
 	const paths = await getPaths(ctx);
-	const [userSettings, userCatalog, userSkips, projectSettings, projectConstruct] = await Promise.all([
-		readJson(paths.userSettingsPath),
+	const [userCatalog, projectSettings, projectConstruct] = await Promise.all([
 		readJson(paths.userCatalogPath),
-		readJson(paths.userSkipsPath),
 		readJson(paths.projectSettingsPath),
 		readJson(paths.projectConstructPath),
 	]);
 
-	const autoload = getAutoload(userSettings);
-	const autosync = getAutosync(userSettings);
 	const catalog = parseCatalog(userCatalog);
 	const catalogPreview = catalog.data.items.slice(0, 5).map(formatCatalogItem);
-	const skippedHere = getSkippedHere(userSkips, paths.cwd, paths.realCwd);
 	const packages = getPackages(projectSettings);
 	const packageSources = new Set(packages.map((pkg) => pkg.source));
 	const managed = getManagedItems(projectConstruct, packageSources);
@@ -52,15 +46,11 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		"",
 		"User Construct state",
 		"--------------------",
-		`Settings: ${describeRead(userSettings)}`,
-		`Autoload: ${autoload.note}`,
-		`Automatic sync: ${autosync.note}`,
+		"Automatic sync: off (manual; use /construct sync)",
 		`Construct library: ${describeRead(userCatalog)}`,
 		`Library items: ${catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
 		...catalog.warnings.map((warning) => `! ${warning}`),
-		`Skips: ${describeRead(userSkips)}`,
-		`Skipped here: ${skippedHere ? "yes" : "no"}`,
 		"",
 		"Project Pi state",
 		"----------------",

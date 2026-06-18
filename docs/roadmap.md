@@ -44,8 +44,6 @@ Example:
 The friendly flow should be:
 
 ```text
-Load it into the Construct? y/n
-
 Found project profile: web-app-standard
 Apply 5 items to this project?
 
@@ -116,13 +114,13 @@ Current code implements the initial package loop:
 - Project-local package load via `pi install <source> -l --approve`.
 - `.pi/construct.json` metadata writes.
 - Disable, enable, and remove for Construct-managed package items.
-- Autoload user setting plus conservative TUI-only auto-offer.
+- No active autoload/startup behavior; manual commands only.
 - Disposable smoke test in `scripts/smoke.sh`.
 
 Need to simplify/adjust from the current code:
 
 - Treat the catalog as the Construct **library**: a remembered list of package sources.
-- Sync package declarations from the current project into the library on `/construct status` and `/construct load`.
+- Keep package adoption in explicit `/construct sync`, not status/load or lifecycle hooks.
 - Make `/construct load` the main toggle/menu flow.
 - Treat disable as “remove/uninstall from this project, keep in Construct library.”
 - Treat forget as “remove from Construct library, do not touch project.”
@@ -137,18 +135,16 @@ Build the smallest useful Construct loop for our local workflow:
 1. Global extension with `/construct` command surface.
 2. `/construct` and `/construct status` print useful current project state.
 3. User-local Construct files:
-   - `~/.pi/agent/construct/settings.json`
    - `~/.pi/agent/construct/catalog.json`
-   - `~/.pi/agent/construct/skips.json`
 4. Project-local Construct metadata: `.pi/construct.json`.
 5. Project-local Pi source of truth: `.pi/settings.json`.
 6. Construct library is the reusable list of package sources seen/added by us.
-7. `/construct status` reads `.pi/settings.json`, remembers package sources in the library, and reports enabled/available/disabled state.
+7. `/construct status` reads `.pi/settings.json` and reports enabled/available/disabled state without writing files.
 8. `/construct load` loads/toggles library items into the current `ctx.cwd`.
 9. Enable uses `pi install <source> -l --approve`.
 10. Disable removes the package declaration from this project and leaves the source in the Construct library.
 11. Forget removes a source from the Construct library and does not touch project files.
-12. `/construct autoload on|off` toggles auto-offer only; no auto-install.
+12. No autoload/startup behavior in the active MVP.
 13. Backup `.pi/settings.json` before direct edits.
 14. Ask for `/reload` or call `ctx.reload()` from command flow.
 
@@ -239,7 +235,7 @@ Current checkpoint completed:
 - [x] Automatic/invisible sync is disabled for MVP; `/construct sync` is manual and `/construct sync status` reports that state.
 - [x] Local path sources are normalized for cross-project library memory.
 - [x] Unloaded Construct-managed items remain reloadable by id even without a global library entry.
-- [x] Old `enable`/`disable`/`remove`/`autosync` verbs remain compatibility/power-user paths but are no longer the primary MVP surface.
+- [x] Old `enable`/`disable`/`remove` verbs remain compatibility/power-user paths but are no longer the primary MVP surface; `autoload`/`autosync` were removed.
 - [x] `/construct library`, `/construct remember`, and `/construct forget` are the public library verbs; `/construct catalog` remains a compatibility alias.
 - [x] `npm run check`, `./scripts/e2e-smoke.sh`, `./scripts/smoke.sh`, and `./scripts/install-smoke.sh` pass.
 
@@ -247,7 +243,7 @@ Next refactor order when we come back:
 
 1. **Command audit and stale wording cleanup**
    - Audit the public surface in a disposable `HOME` and project: `/construct`, `status`, `load`, `unload`, `toggle`, `sync`, `sync status`, `library`, `remember`, `forget`, and `reload`.
-   - Audit compatibility/debug paths: `catalog`, `catalog add`, `catalog remove`, `on`, `off`, `wipe`, `autoload`, `autosync`, and old `enable`/`disable`/`remove`.
+   - Audit compatibility/debug paths: `catalog`, `catalog add`, `catalog remove`, `on`, `off`, `wipe`, and old `enable`/`disable`/`remove`.
    - Search output/docs/code for stale public wording: prefer `library`, `remember`, `forget`, `toggle`, `loadout`, `Construct-managed`, `local-only`, and `adopted`; avoid public `catalog` and `wipe` except compatibility notes.
    - Keep `catalog.json` as the on-disk schema/file name for now; the user-facing language is library.
 
@@ -271,7 +267,7 @@ Next refactor order when we come back:
    - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 
 5. **Manual interactive TUI test**
-   - Verify fuzzy search typing, Backspace, Space, Enter, Esc, and readable section headers in `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
+   - Verify fuzzy search typing, Space, Enter, Esc, and readable section headers in `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
 
 6. **Restore/profile model**
    - Today, the project remembers actual loaded packages in `.pi/settings.json` and advisory Construct state in `.pi/construct.json`; there is no named profile command yet.
@@ -511,10 +507,9 @@ Actions: Apply to this project / Add to picker / View script / Cancel
 MVP decisions already made:
 
 - User-facing verb is `/construct load`, not `/construct init` or `/construct arm`.
-- `/construct status` should include autoload status; no separate status command is needed for autoload.
-- Autoload means auto-offer only, never auto-install.
+- `/construct status` should be read-only and report missing Construct metadata without creating it.
+- No active autoload/startup behavior in the MVP.
 - Target project is `ctx.cwd` for MVP; do not guess git root.
-- Skips are user-local and only written for `don't ask for this project`.
 - Pinning is not an MVP policy. Preserve source strings exactly and let Pi's existing npm/git source semantics handle pinned versions/refs.
 - Profiles/export are post-MVP.
 

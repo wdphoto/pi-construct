@@ -119,6 +119,8 @@ source = pathlib.Path(sys.argv[2]).resolve()
 settings = json.loads((project / ".pi/settings.json").read_text())
 construct = json.loads((project / ".pi/construct.json").read_text())
 assert settings.get("packages") == [], settings
+assert (source / "package.json").exists(), "unload must not delete local package source"
+assert (source / "extensions/noop.ts").exists(), "unload must not delete local extension source"
 items = construct.get("items", {})
 assert any(item.get("requestedSource") == str(source) and item.get("enabled") is False for item in items.values()), construct
 assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after single unload"
@@ -142,6 +144,8 @@ source = pathlib.Path(sys.argv[2]).resolve()
 settings = json.loads((project / ".pi/settings.json").read_text())
 construct = json.loads((project / ".pi/construct.json").read_text())
 assert settings.get("packages") == [], settings
+assert (source / "package.json").exists(), "toggle off must not delete local package source"
+assert (source / "extensions/noop.ts").exists(), "toggle off must not delete local extension source"
 items = construct.get("items", {})
 assert any(item.get("requestedSource") == str(source) and item.get("enabled") is False for item in items.values()), construct
 assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after off"

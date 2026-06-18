@@ -1,11 +1,10 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem } from "../types.js";
 import { dirname } from "node:path";
-import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, syncSourcesToCatalog } from "../catalog.js";
-import { describeRead, isObject, readJson, writeJson } from "../json.js";
+import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog, syncSourcesToCatalog } from "../catalog.js";
+import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
-import { getAutosync } from "../user-settings.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 
 interface SyncCandidate {
@@ -48,38 +47,53 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	const paths = await getPaths(ctx);
 
 	if (subcommand === "status") {
-		const settings = await readJson(paths.userSettingsPath);
-		const autosync = getAutosync(settings);
 		showText(
 			ctx,
 			[
 				"Construct sync",
 				"==============",
-				`Automatic sync: ${autosync.note}`,
-				`Settings: ${describeRead(settings)}`,
+				"Automatic sync: off (manual; use /construct sync)",
 				"",
 				"/construct sync adopts unsynced project package sources into Construct only when you run it.",
-				"Automatic/invisible sync is disabled for the MVP.",
-				"Sync never installs, removes, enables, or copies anything.",
-			].join("\n"),
-		);
-		return;
-	}
-
-	if (subcommand === "on" || subcommand === "off") {
-		showText(
-			ctx,
-			[
-				"Construct automatic sync is disabled for the MVP.",
-				"Use /construct sync manually when you want to adopt existing project package declarations into Construct.",
-				"No settings were changed.",
+				"Sync never installs, removes, enables, reloads, or copies anything.",
 			].join("\n"),
 		);
 		return;
 	}
 
 	if (!["current", "project"].includes(subcommand)) {
-		showText(ctx, "Usage: /construct sync [project|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json. Automatic sync is disabled for the MVP.");
+		showText(ctx, "Usage: /construct sync [project|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json.");
+		return;
+	}
+
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "invalid") {
+		showText(ctx, `Construct sync failed.\nCannot sync because .pi/settings.json is invalid JSON.\n${settingsRead.error}`);
+		return;
+	}
+	if (settingsRead.state === "ok" && !isObject(settingsRead.data)) {
+		showText(ctx, "Construct sync failed.\nCannot sync because .pi/settings.json is not a JSON object.");
+		return;
+	}
+
+	const constructRead = await readJson(paths.projectConstructPath);
+	if (constructRead.state === "invalid") {
+		showText(ctx, `Construct sync failed.\nCannot sync because .pi/construct.json is invalid JSON.\n${constructRead.error}`);
+		return;
+	}
+	if (constructRead.state === "ok" && !isObject(constructRead.data)) {
+		showText(ctx, "Construct sync failed.\nCannot sync because .pi/construct.json is not a JSON object.");
+		return;
+	}
+
+	const catalogRead = await readJson(paths.userCatalogPath);
+	if (catalogRead.state === "invalid") {
+		showText(ctx, `Construct sync failed.\nCannot sync because Construct library catalog is invalid JSON.\n${catalogRead.error}`);
+		return;
+	}
+	const catalogCheck = parseCatalog(catalogRead);
+	if (catalogRead.state === "ok" && catalogCheck.warnings.length > 0) {
+		showText(ctx, [`Construct sync failed.`, `Cannot sync because Construct library catalog has structural warnings. Fix ${paths.userCatalogPath} first.`, ...catalogCheck.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 
@@ -149,7 +163,6 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	});
 
 	let metadataChanged = 0;
-	const constructRead = await readJson(paths.projectConstructPath);
 	try {
 		let construct = parseProjectConstruct(constructRead);
 		for (const source of selectedSources) {
@@ -186,26 +199,3 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	);
 }
 
-export async function handleAutosync(args: string, ctx: ExtensionCommandContext): Promise<void> {
-	const paths = await getPaths(ctx);
-	const settings = await readJson(paths.userSettingsPath);
-	const autosync = getAutosync(settings);
-	const subcommand = args.trim();
-	if (subcommand && subcommand !== "on" && subcommand !== "off" && subcommand !== "status") {
-		showText(ctx, "Usage: /construct autosync [status]\n\nAutomatic sync is disabled for the MVP.");
-		return;
-	}
-	showText(
-		ctx,
-		[
-			"Construct sync compatibility",
-			"============================",
-			`Automatic sync: ${autosync.note}`,
-			`Settings: ${describeRead(settings)}`,
-			"",
-			"Automatic/invisible sync is disabled for the MVP.",
-			"Use /construct sync manually when you want to adopt existing project package declarations into Construct.",
-			"No settings were changed.",
-		].join("\n"),
-	);
-}

@@ -176,29 +176,16 @@ Examples:
   ./local-pi-package
 ```
 
-### Autoload flow
+### Startup behavior
 
-Autoload is startup auto-offer only and user-local:
-
-```text
-/construct autoload on
-/construct autoload off
-```
-
-`/construct status` should include autoload state. `/construct autoload status` may exist as a convenience, but it should not be the only way to see autoload state.
-
-When autoload is on and Construct sees an eligible trusted project with no user-local skip entry, it may offer after Pi trust is verified:
-
-```text
-Load it into the Construct? y/n
-```
+Autoload/startup behavior is removed from the active MVP.
 
 Rules:
 
-- `yes` opens `/construct`, the normal loadout picker.
-- `no` writes user-local skip state for that project, not project files.
-- Autoload must never install anything by itself.
-- Non-interactive modes must not prompt.
+- Construct does not prompt when a project loads.
+- Construct does not send `/construct` for the user.
+- Construct does not sync, install, reload, or write files from lifecycle hooks.
+- A project with no `.pi/construct.json` still opens the full loadout view when the user runs `/construct`; status reports missing metadata without creating it.
 
 ### Project scenarios
 
@@ -256,7 +243,6 @@ Power-user/compatibility commands can remain implemented but should not be the p
 
 - `/construct catalog ...` — low-level Construct library list/add/remove.
 - `/construct enable|disable|remove ...` — older management verbs; prefer load/unload language.
-- `/construct autoload ...` remains for the startup offer; `/construct autosync ...` is a compatibility no-op while invisible sync is disabled.
 
 Next planned behavior should avoid extra command sprawl:
 
@@ -274,9 +260,9 @@ Post-MVP commands can add profile save/apply, import/export, local-file packagin
 
 Scenario: user opens a repo that has no `.pi/settings.json` and no `.pi/construct.json`.
 
-1. User runs `/construct load` or accepts the autoload offer.
+1. User runs `/construct load`.
 2. Construct treats `ctx.cwd` as the target project.
-3. Construct syncs current project package declarations into the user library; likely no-op in an empty project.
+3. Construct does not auto-sync; `/construct sync` is the explicit adoption command.
 4. Construct shows the library grouped by optional `groups`, plus `Enter source manually`.
 5. User toggles one or more items on.
 6. Construct shows the target path and exact files/commands involved before changing anything.
@@ -290,19 +276,17 @@ Scenario: user opens a repo that has no `.pi/settings.json` and no `.pi/construc
 
 Scenario: user previously ran plain Pi commands such as `pi install <source> -l`, or a teammate committed `.pi/settings.json`.
 
-1. User runs `/construct load` or `/construct status`.
+1. User runs `/construct sync`.
 2. Construct reads `.pi/settings.json` and detects package declarations.
-3. Construct adds missing source strings to the user library.
-4. The menu shows those sources as enabled here.
-5. The same sources now appear as available options in other projects.
-6. Nothing is reinstalled just because Construct remembered it.
+3. Construct adds missing source strings to the user library and records advisory project metadata.
+4. The same sources now appear as available options in other projects.
+5. Nothing is reinstalled just because Construct remembered it.
 
 ### `/construct load` in a project already managed by Construct
 
 Scenario: project has `.pi/construct.json`.
 
-1. Construct syncs `.pi/settings.json` package declarations into the user library.
-2. Construct merges library entries, project package declarations, and Construct metadata into one toggle list.
+1. Construct merges library entries, project package declarations, and Construct metadata into one toggle list.
 3. Checked items are enabled here.
 4. Unchecked items are available from the library.
 5. Toggling on enables the package in this project.
@@ -322,39 +306,10 @@ pi install npm:@org/pi-audit-kit -l --approve
 Later, in that project:
 
 ```text
-/construct status
-```
-
-or:
-
-```text
-/construct load
+/construct sync
 ```
 
 Construct sees `npm:@org/pi-audit-kit` in `.pi/settings.json` and adds it to the user library if missing. It is now available in new and old projects through `/construct load`, but it does not install into those projects until toggled on.
-
-### Autoload
-
-1. User explicitly enables auto-offer with `/construct autoload on`.
-2. On `session_start`, after Pi has resolved project trust/resource loading, Construct checks:
-   - `ctx.hasUI` is true.
-   - Project is trusted according to `ctx.isProjectTrusted()` when project-local resources are relevant.
-   - The canonical project path is not in user-local skips.
-   - Autoload is enabled in user-local Construct settings.
-3. If eligible, Construct asks:
-
-   ```text
-   Open Construct for this project?
-     yes
-     not now
-     don't ask for this project
-   ```
-
-4. `yes` opens the same `/construct load` menu.
-5. `not now` writes nothing.
-6. `don't ask for this project` writes only user-local skip state.
-7. Non-interactive modes never prompt.
-8. Autoload may sync package source strings from `.pi/settings.json`, but it must never install or enable packages by itself.
 
 ### Enable / disable / forget
 
