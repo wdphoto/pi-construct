@@ -7,7 +7,7 @@ import { showText, splitArgs } from "../ui.js";
 
 export async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, read, catalog, warnings } = await loadCatalog(ctx);
-	const { command, rest } = splitArgs(args);
+	const { command, rest } = args.trim() ? splitArgs(args) : { command: "list", rest: "" };
 
 	if (command === "status" || command === "list") {
 		showText(
@@ -22,8 +22,11 @@ export async function handleCatalog(args: string, ctx: ExtensionCommandContext):
 				...warnings.map((warning) => `! ${warning}`),
 				"",
 				"Commands:",
-				"- /construct catalog add <source> [id]",
-				"- /construct catalog remove <id-or-source>",
+				"- /construct library",
+				"- /construct remember <source> [id]",
+				"- /construct forget <id-or-source>",
+				"- /construct catalog add <source> [id] (compatibility)",
+				"- /construct catalog remove <id-or-source> (compatibility)",
 			].join("\n"),
 		);
 		return;

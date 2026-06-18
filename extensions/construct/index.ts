@@ -42,7 +42,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Load remembered Pi sources and unload project packages",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "toggle", "sync", "catalog", "reload"];
+			const commands = ["status", "load", "unload", "toggle", "sync", "library", "remember", "forget", "reload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -59,8 +59,18 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			if (command === "catalog") {
+			if (command === "catalog" || command === "library") {
 				await handleCatalog(rest, ctx);
+				return;
+			}
+
+			if (command === "remember") {
+				await handleCatalog(`add ${rest}`, ctx);
+				return;
+			}
+
+			if (command === "forget") {
+				await handleCatalog(`remove ${rest}`, ctx);
 				return;
 			}
 
@@ -148,6 +158,9 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct toggle",
 					"- /construct sync",
 					"- /construct sync on|off|status",
+					"- /construct library",
+					"- /construct remember <source> [id]",
+					"- /construct forget <id-or-source>",
 				].join("\n"),
 			);
 		},

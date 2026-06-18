@@ -37,6 +37,9 @@ Checked means already declared in this project. Unchecked means remembered by Co
 /construct toggle                    # flip the project Construct loadout off/on
 /construct sync
 /construct sync on|off|status
+/construct library
+/construct remember <source> [id]
+/construct forget <id-or-source>
 /construct status
 /construct reload                    # ask Pi to refresh resources after changes
 ```
@@ -119,6 +122,10 @@ MIT
 - `/construct sync on` enables invisible remember-only sync on session shutdown.
 - Autoload means auto-offer only. It never installs packages by itself.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` is advisory metadata.
+- `/construct library` shows the global Construct library: reusable package sources that appear as options in other projects.
+- `/construct remember <source> [id]` adds a package source to that library.
+- `/construct forget <id-or-source>` removes a package source from that library so it stops appearing as a future load option. It does not remove packages from any current project.
+- `/construct catalog ...` remains a compatibility alias for library operations.
 - Old enable/disable/remove commands are compatibility/power-user paths; MVP language is load/unload/sync.
 
 ## Next refactor order

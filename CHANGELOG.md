@@ -13,6 +13,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, toggle-off, toggle-on, and reload.
 - Added `/construct toggle` as the public project loadout switch for Construct-managed packages, with hidden `/construct off` and `/construct on` aliases for testing.
 - Added clearer `/construct sync` output showing selected project-local package sources adopted from `.pi/settings.json`.
+- Added public library verbs: `/construct library`, `/construct remember`, and `/construct forget`; `/construct catalog` remains a compatibility alias.
 
 ### Changed
 - `/construct load` no longer auto-syncs local project packages. Use `/construct sync` as the explicit adoption step for local-only Pi packages.
@@ -22,6 +23,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - `/construct unload` now focuses on loaded Construct-managed project declarations instead of defaulting to unload-all.
 - `/construct unload <source-or-id>` still unloads a single managed package declaration.
 - `/construct wipe` was removed from the primary flow; use `/construct toggle` instead.
+- `/construct catalog` with no subcommand now correctly lists the library instead of treating the dashboard default as a nested subcommand.
 - `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.
 - Refactored the Construct extension into focused modules under `extensions/construct/`.
 

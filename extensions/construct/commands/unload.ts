@@ -273,7 +273,7 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 
 	const { construct, id, source, label } = await resolveUnloadTarget(ctx, paths, query);
 	if (!source) {
-		showText(ctx, "No loaded package selected. Use /construct unload <source-or-id>, or /construct wipe to unload every project package declaration.");
+		showText(ctx, "No loaded Construct-managed package selected. Use /construct unload <source-or-id>, or /construct toggle to turn the managed loadout off/on.");
 		return;
 	}
 
