@@ -103,8 +103,9 @@ MIT
 ## Notes
 
 - Package entry point is `extensions/construct/index.ts`; normal testing should load the package root (`-e .`) so Pi reads `package.json` and labels the extension as `construct`.
-- `/construct` opens the full loadout overview with package sections plus read-only runtime skill/command sections. Themes are intentionally out of scope.
-- `/construct load` shows remembered Construct sources that are not loaded here; Space toggles multiple items, Enter saves, Esc cancels. Direct `/construct load <source-or-id>` also works.
+- `/construct` opens the full loadout overview with package sections plus searchable read-only runtime skill/command sections. Themes are intentionally out of scope.
+- `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync` support fuzzy filtering: type to search, Backspace edits, Space toggles, Enter saves, Esc cancels.
+- `/construct load` shows remembered Construct sources that are not loaded here; direct `/construct load <source-or-id>` also works.
 - `/construct load` does not auto-sync local-only Pi packages. Run `/construct sync` to adopt local project package declarations into Construct.
 - `/construct unload` shows Construct-managed package declarations currently loaded in this project; Space toggles multiple items off, Enter saves, Esc cancels. `/construct unload <source-or-id>` disables one. It does not delete local source files or forget Construct library items.
 - `/construct toggle` flips the project's Construct-managed loadout off/on. Turning off removes only Construct-managed package declarations from `.pi/settings.json`, keeps `.pi/construct.json`, and ignores unsynced local-only Pi packages. Toggling on rearms remembered Construct-managed packages.
@@ -114,7 +115,7 @@ MIT
 - Construct does not auto-reload after load/unload/sync/toggle. Run `/construct reload` or `/reload` when you want Pi to refresh resources.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
-- `/construct sync` adopts package sources from the current project's `.pi/settings.json` into the Construct library and arms them in `.pi/construct.json`. It never installs or removes package declarations.
+- `/construct sync` adopts unsynced package sources from the current project's `.pi/settings.json` into the Construct library and arms them in `.pi/construct.json`. If there is one unsynced item, it adopts immediately; if there are multiple in TUI mode, it shows the same save-based checkbox flow. It never installs or removes package declarations.
 - `/construct sync on` enables invisible remember-only sync on session shutdown.
 - Autoload means auto-offer only. It never installs packages by itself.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` is advisory metadata.
@@ -123,7 +124,7 @@ MIT
 ## Next refactor order
 
 1. Keep refining the full `/construct` overview:
-   - `/construct`, `/construct load`, and `/construct unload` now have save-based multi-toggle TUI flows.
+   - `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync` now have searchable save-based multi-toggle TUI flows.
    - `/construct` groups Construct packages, local-only packages, skill commands, and other commands.
    - Unsynced local-only items are read-only until `/construct sync` adopts them.
    - Runtime skill/command rows are read-only inventory for now; package toggles control the package resources that provide them.

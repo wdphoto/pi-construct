@@ -1,6 +1,6 @@
 # the-construct Planning Notes
 
-> Working name: **the-construct** — a global Pi extension that lets us enter a project and choose the local Pi gear we want to load into that project: extensions, skills, prompt-command templates, themes, and package bundles.
+> Working name: **the-construct** — a global Pi extension that lets us enter a project and choose the local Pi gear we want to load into that project: packages, extensions, skills, and prompt-command templates. Themes are intentionally out of scope.
 
 ## Goal
 
@@ -1362,10 +1362,10 @@ Next refactor order when we come back:
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
-2. **Open questions from the TUI pass**
-   - Should the full `/construct` overview include a one-key "adopt/sync" action for `[!]` unsynced local-only packages, or should adoption remain only `/construct sync`?
-   - Should runtime skill/command rows stay read-only forever, or should package-backed skills become filterable later through Pi package object filters?
-   - Should direct `/construct load <ad-hoc-source>` add to the library automatically, or keep asking before remembering ad-hoc sources?
+2. **Decisions from the TUI pass**
+   - Adoption stays in `/construct sync`, not a one-key dashboard action. If there is one unsynced item, sync adopts it immediately; if there are multiple, sync shows the same searchable save-based checkbox flow.
+   - Runtime skill/command rows should be included in the dashboard and searchable. They are read-only inventory for now; package-backed resource filters can come later only if needed.
+   - Direct `/construct load <ad-hoc-source>` does not need automatic remembering beyond the existing explicit behavior.
    - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.
 
 3. **Pretty listings**

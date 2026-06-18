@@ -7,14 +7,16 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 ## Unreleased
 
 ### Added
-- Added the full `/construct` loadout dashboard with grouped package sections and read-only runtime skill/command inventory.
-- Added checkbox-style TUI pickers for `/construct`, `/construct load`, and `/construct unload`: Space toggles multiple package items, Enter saves, Esc cancels.
+- Added the full `/construct` loadout dashboard with grouped package sections and searchable read-only runtime skill/command inventory.
+- Added fuzzy filtering to checkbox-style TUI pickers: type to search, Backspace edits, Space toggles, Enter saves, Esc cancels.
+- Added checkbox-style TUI pickers for `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
 - Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, toggle-off, toggle-on, and reload.
 - Added `/construct toggle` as the public project loadout switch for Construct-managed packages, with hidden `/construct off` and `/construct on` aliases for testing.
-- Added clearer `/construct sync` output showing the project-local package sources remembered from `.pi/settings.json`.
+- Added clearer `/construct sync` output showing selected project-local package sources adopted from `.pi/settings.json`.
 
 ### Changed
 - `/construct load` no longer auto-syncs local project packages. Use `/construct sync` as the explicit adoption step for local-only Pi packages.
+- `/construct sync` now adopts only unsynced local packages, auto-adopts a single candidate, and opens a searchable save-based picker when multiple candidates are available.
 - `/construct sync` now arms adopted local packages in `.pi/construct.json` so they become Construct-managed for the project.
 - `/construct load` now proceeds after selection/command without a second confirmation page, leaves reload timing to the user, and prints `/construct reload` / `/reload` instructions.
 - `/construct unload` now focuses on loaded Construct-managed project declarations instead of defaulting to unload-all.
