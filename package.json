@@ -1,6 +1,6 @@
 {
   "name": "the-construct",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "A global Pi extension for loading project-local Pi resources.",
   "license": "MIT",

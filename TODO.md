@@ -16,6 +16,8 @@ Current work should keep the MVP manual, explicit, and boring-safe. Do not add l
   - keep `catalog` only for `catalog.json` internals and compatibility notes;
   - keep `wipe`, `autoload`, and `autosync` only in historical/removal notes.
 - [ ] Improve status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+- [ ] Add conflict/doctor visibility for loaded packages that register overlapping tool names; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
+- [ ] Later: support Pi package filters as a conflict-resolution/fine-grained toggle layer, e.g. keep a package declared but set `extensions: []`, `skills: []`, `prompts: []`, or `themes: []` instead of unloading the whole package.
 - [ ] Decide whether hidden compatibility commands (`on`, `off`, old `enable`/`disable`/`remove`) stay long-term or become debug-only documentation.
 
 ## Validation to keep running
@@ -32,6 +34,7 @@ Use disposable `HOME`/project directories for install/discovery checks.
 
 ## Wishlist / later
 
+- Collapse or summarize runtime skill command rows in `/construct` so large skill packages do not flood the dashboard; keep them read-only/inventory-only.
 - Friendly first-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by an explicit `/construct` command.
 - Optional onboarding/startup automation behind an explicit opt-in toggle.
 - Item action menu: load, unload, forget, cancel.

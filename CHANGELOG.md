@@ -2,9 +2,13 @@
 
 All notable changes to the Construct will be documented here.
 
-This project is currently pre-1.0. Until releases are tagged, entries are grouped under `Unreleased`.
+This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
 ## Unreleased
+
+No unreleased changes.
+
+## 0.0.1 - 2026-06-18
 
 ### Added
 - Added the full `/construct` loadout dashboard with grouped package sections and searchable read-only runtime skill/command inventory.
@@ -28,6 +32,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - `/construct catalog` with no subcommand now correctly lists the library instead of treating the dashboard default as a nested subcommand.
 - `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.
 - Refactored the Construct extension into focused modules under `extensions/construct/`.
+- Polished successful load, unload, and sync summaries to be shorter, avoid noisy Pi stdout/stderr, and give clearer reload guidance.
 
 ### Fixed
 - Improved unload behavior for local package sources where Pi records a relative path and Construct stores a normalized path.

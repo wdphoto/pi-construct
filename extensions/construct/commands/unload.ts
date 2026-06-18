@@ -184,15 +184,14 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	showText(
 		ctx,
 		[
-			"Construct unload complete.",
-			`Unloaded project packages: ${rawSources.length}`,
+			"Construct disable complete.",
+			`Disabled in this project: ${rawSources.length}`,
 			...rawSources.map((source) => `- ${source}`),
-			`Project settings: ${paths.projectSettingsPath}`,
-			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
-			metadataChanged > 0 ? `Construct metadata marked unloaded: ${metadataChanged}` : "Construct metadata was not changed.",
+			backupPath ? `Settings backup: ${backupPath}` : undefined,
+			metadataChanged > 0 ? `Construct metadata marked disabled: ${metadataChanged}` : "Construct metadata was not changed.",
 			...removeWarnings.map((warning) => `! ${warning}`),
 			"Sources remain remembered in Construct if they were in the library.",
-			"Reload Pi resources with /construct reload or /reload.",
+			"Reload Pi resources with /construct reload or /reload when ready.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),
@@ -286,12 +285,16 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 		return;
 	}
 
+	if (ctx.hasUI) ctx.ui.setStatus("construct", `Construct: disabling ${label ?? source}`);
+	else showText(ctx, [`Disabling in this project...`, `Source: ${source}`].join("\n"));
+
 	const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
 	let fallbackWarning: string | undefined;
 	if (removal.code !== 0) {
 		try {
 			const removedByEdit = await removeMatchingPackageDeclaration(paths, source);
 			if (!removedByEdit) {
+				if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 				showText(
 					ctx,
 					[
@@ -309,6 +312,7 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 			}
 			fallbackWarning = `pi remove did not match ${source}; removed it by editing .pi/settings.json instead.`;
 		} catch (error) {
+			if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 			const message = error instanceof Error ? error.message : String(error);
 			showText(ctx, `Construct unload failed during fallback settings edit.\n${message}`);
 			return;
@@ -319,26 +323,25 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 		try {
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, id, false));
 		} catch (error) {
+			if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Package unloaded, but Construct metadata update failed for ${id}.\n${message}`);
+			showText(ctx, `Package disabled, but Construct metadata update failed for ${id}.\n${message}`);
 			return;
 		}
 	}
 
+	if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 	showText(
 		ctx,
 		[
-			"Construct unload complete.",
-			label ? `Item: ${label}` : undefined,
+			"Construct disable complete.",
+			label ? `Disabled in this project: ${label}` : "Disabled in this project.",
 			`Source: ${source}`,
-			`Project settings: ${paths.projectSettingsPath}`,
-			backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
-			id ? "Construct metadata marked unloaded." : "Construct metadata was not changed.",
+			backupPath ? `Settings backup: ${backupPath}` : undefined,
+			id ? "Construct metadata marked disabled." : "Construct metadata was not changed.",
 			fallbackWarning ? `! ${fallbackWarning}` : undefined,
 			"The source remains remembered in Construct if it was in the library.",
-			removal.stdout ? `\npi remove stdout:\n${removal.stdout}` : undefined,
-			removal.stderr ? `\npi remove stderr:\n${removal.stderr}` : undefined,
-			"Reload Pi resources with /construct reload or /reload.",
+			"Reload Pi resources with /construct reload or /reload when ready.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),

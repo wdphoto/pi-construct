@@ -219,7 +219,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 				"Try:",
 				"- /construct load npm:@scope/package",
 				"- /construct load --dry-run npm:@scope/package",
-				"- /construct catalog add npm:@scope/package",
+				"- /construct remember npm:@scope/package",
 				"- /construct load <library-id>",
 			].join("\n"),
 		);
@@ -271,10 +271,12 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		return;
 	}
 
-	showText(ctx, [`Loading package project-locally...`, `Source: ${resolved.source}`, backupPath ? `Backup: ${backupPath}` : "Backup: none (.pi/settings.json did not exist)"].join("\n"));
+	if (ctx.hasUI) ctx.ui.setStatus("construct", `Construct: loading ${resolved.item?.id ?? resolved.source}`);
+	else showText(ctx, [`Loading into this project...`, `Source: ${resolved.source}`].join("\n"));
 
 	const install = await pi.exec("pi", ["install", resolved.source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
 	if (install.code !== 0) {
+		if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 		showText(
 			ctx,
 			[
@@ -298,6 +300,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, resolved.source, paths);
 		await writeJson(paths.projectConstructPath, construct);
 	} catch (error) {
+		if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 		const message = error instanceof Error ? error.message : String(error);
 		showText(
 			ctx,
@@ -327,24 +330,21 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 			}
 		}
 	} else if (!resolved.item) {
-		catalogMessage = `${catalogMessage}\nTip: run /construct catalog add ${resolved.source} to reuse this source in future projects.`;
+		catalogMessage = `${catalogMessage}\nTip: run /construct remember ${resolved.source} to reuse this source in future projects.`;
 	}
 
+	if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 	const summary = [
 		"Construct load complete.",
+		`Loaded into this project: ${resolved.item?.id ?? itemId}`,
 		`Source: ${resolved.source}`,
 		declaredSource === resolved.source ? undefined : `Declared package source: ${declaredSource}`,
-		`Managed item: ${itemId}`,
-		`Project settings: ${paths.projectSettingsPath}`,
-		`Construct metadata: ${paths.projectConstructPath}`,
-		backupPath ? `Settings backup: ${backupPath}` : "Settings backup: none (.pi/settings.json did not exist)",
 		catalogMessage || undefined,
-		install.stdout ? `\npi install stdout:\n${install.stdout}` : undefined,
-		install.stderr ? `\npi install stderr:\n${install.stderr}` : undefined,
+		backupPath ? `Settings backup: ${backupPath}` : undefined,
 	]
 		.filter((line): line is string => line !== undefined)
 		.join("\n");
 
-	showText(ctx, `${summary}\n\nPackage declaration is ready. Reload Pi resources with /construct reload or /reload when you want to use it.`);
+	showText(ctx, `${summary}\n\nReload Pi resources with /construct reload or /reload when ready.`);
 
 }

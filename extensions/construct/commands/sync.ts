@@ -156,11 +156,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 
 	const addedBySource = new Map(added.map((item) => [item.source, item]));
 	const { catalog } = await loadCatalog(ctx);
-	const syncedLines = selectedSources.map((source) => {
-		const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
-		const status = addedBySource.has(source) ? "added" : "already remembered";
-		return `- ${item?.id ?? "<unknown>"}: ${source} (${status})`;
-	});
+	const skipped = Math.max(0, selectedSources.length - added.length);
 
 	let metadataChanged = 0;
 	try {
@@ -181,18 +177,12 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		ctx,
 		[
 			"Construct sync complete.",
-			`Project: ${paths.cwd}`,
-			`Project settings: ${paths.projectSettingsPath}`,
-			"",
-			"Local-only package declarations adopted into Construct:",
-			...(syncedLines.length > 0 ? syncedLines : ["- none"]),
-			"",
 			`Added to Construct: ${added.length}`,
-			`Already remembered: ${alreadyKnown}`,
-			metadataChanged > 0 ? `Project Construct items armed: ${metadataChanged}` : undefined,
+			`Skipped/already known: ${Math.max(skipped, alreadyKnown)}`,
+			`Errors: ${warnings.length}`,
+			metadataChanged > 0 ? `Project items armed: ${metadataChanged}` : undefined,
 			...warnings.map((warning) => `! ${warning}`),
-			"",
-			"Sync is adoption-only. It never installs or removes package declarations; it may update the Construct library and .pi/construct.json metadata.",
+			"No /reload needed; sync only updates the Construct library and project metadata.",
 		]
 			.filter((line): line is string => line !== undefined)
 			.join("\n"),
