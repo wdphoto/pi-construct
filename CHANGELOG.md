@@ -13,7 +13,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - Added clearer `/construct sync` output showing the project-local package sources remembered from `.pi/settings.json`.
 
 ### Changed
-- `/construct load` now leaves reload timing to the user and prints `/construct reload` / `/reload` instructions instead of prompting to reload immediately.
+- `/construct load` now proceeds after selection/command without a second confirmation page, leaves reload timing to the user, and prints `/construct reload` / `/reload` instructions.
 - `/construct unload` now unloads all current project package declarations by default.
 - `/construct unload <source-or-id>` still unloads a single package declaration.
 - `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.

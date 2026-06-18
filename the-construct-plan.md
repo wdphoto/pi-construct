@@ -1354,20 +1354,18 @@ Current checkpoint completed:
 
 Next refactor order when we come back:
 
-1. **Permanent e2e smoke script**
-   - Add `scripts/e2e-smoke.sh`.
-   - Test Project A raw `pi install <local-pkg> -l --approve`.
-   - Run `/construct sync` in Project A.
-   - Load the remembered source in Project B with `/construct load <id>`.
-   - Verify a command/resource from the package actually loads in Project B.
-   - Run `/construct unload <id>` and verify the project package declaration is gone.
-   - Run `/construct load <id>` again and verify metadata id reuse and project declaration restoration.
+1. **Save-based picker/menu flow**
+   - Replace the current one-item `ctx.ui.select` flow with a custom save-based TUI.
+   - `/construct load` should list only loadable/unchecked remembered sources. User selects one or more, hits Save, and Construct installs them with no second confirmation page.
+   - `/construct unload` should list only loaded/checked project package declarations. User selects one or more, hits Save, and Construct removes them with no second confirmation page.
+   - `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available. Save reconciles selections to `.pi/settings.json`.
+   - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
+   - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
-2. **Searchable checkbox picker**
-   - Replace current `ctx.ui.select` picker with a searchable checkbox TUI.
-   - Mirror Pi `config` UX where practical: `[x]`/`[ ]`, type-to-filter, space/enter action.
-   - Keep checked items as no-op or confirmed unload; do not make accidental unload easy.
-   - Keep print/non-UI mode deterministic through `/construct load <source-or-id>`.
+2. **Pretty listings**
+   - Clean up status, sync, catalog/library, load, and unload output.
+   - Prefer concise sections, stable ordering, aligned labels where useful, and clear loaded/available/disabled language.
+   - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 
 3. **Library language cleanup**
    - Keep `catalog.json` file/schema compatibility.
@@ -1376,12 +1374,7 @@ Next refactor order when we come back:
      - `/construct forget <id-or-source>` for current `/construct catalog remove`.
    - Do not remove `catalog` commands until aliases and docs are settled.
 
-4. **Unload/detail action menu**
-   - Add an item action menu only after the searchable picker exists.
-   - Actions: load into project, unload from project, forget from library, cancel.
-   - Keep source-level unload based on `pi remove <source> -l --approve`.
-
-5. **Profiles/groups later**
+4. **Profiles/groups later**
    - Add named groups/profiles only after single-source load/unload is solid.
    - Profiles should be lists of remembered source ids, not a new package format.
    - Avoid resource-level filters unless we explicitly need partial package disable behavior.

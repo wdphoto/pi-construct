@@ -191,14 +191,6 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		return;
 	}
 
-	if (ctx.hasUI) {
-		const ok = await ctx.ui.confirm("Load into this project?", preview);
-		if (!ok) {
-			showText(ctx, "Construct load cancelled. No files were changed by Construct.");
-			return;
-		}
-	}
-
 	const constructRead = await readJson(paths.projectConstructPath);
 	try {
 		parseProjectConstruct(constructRead);

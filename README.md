@@ -116,6 +116,11 @@ MIT
 
 ## Next refactor order
 
-1. Tighten the picker/menu flow and keep expanding scripted coverage.
-2. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
-3. Only after that, revisit profiles/groups and resource-level disable filters.
+1. Replace the one-item select picker with a save-based TUI:
+   - `/construct load` should show loadable/unchecked remembered sources only; saving installs selected sources with no second confirmation page.
+   - `/construct unload` should show loaded/checked project package declarations only; saving removes selected sources.
+   - `/construct` should become the all-up loadout view where checked means loaded here and unchecked means available.
+   - Esc/cancel bails; Save does the deed and then reports success plus `/construct reload` / `/reload` guidance.
+2. Clean up and prettify list output for status, sync, catalog/library, load, and unload.
+3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
+4. Only after that, revisit profiles/groups and resource-level disable filters.
