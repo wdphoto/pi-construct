@@ -5,7 +5,7 @@ import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, sync
 import { describeRead, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
-import { getAutosync, writeAutosync } from "../user-settings.js";
+import { getAutosync } from "../user-settings.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 
 interface SyncCandidate {
@@ -55,11 +55,11 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 			[
 				"Construct sync",
 				"==============",
-				`Invisible sync: ${autosync.note}`,
+				`Automatic sync: ${autosync.note}`,
 				`Settings: ${describeRead(settings)}`,
 				"",
-				"/construct sync adopts unsynced project package sources into Construct.",
-				"/construct sync on remembers unsynced project package sources automatically on session shutdown.",
+				"/construct sync adopts unsynced project package sources into Construct only when you run it.",
+				"Automatic/invisible sync is disabled for the MVP.",
 				"Sync never installs, removes, enables, or copies anything.",
 			].join("\n"),
 		);
@@ -67,26 +67,19 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (subcommand === "on" || subcommand === "off") {
-		try {
-			await writeAutosync(paths, subcommand === "on");
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Could not update sync settings.\n${message}`);
-			return;
-		}
 		showText(
 			ctx,
 			[
-				`Construct invisible sync ${subcommand === "on" ? "enabled" : "disabled"}.`,
-				`Settings: ${paths.userSettingsPath}`,
-				"Sync is remember-only. It never installs anything automatically.",
+				"Construct automatic sync is disabled for the MVP.",
+				"Use /construct sync manually when you want to adopt existing project package declarations into Construct.",
+				"No settings were changed.",
 			].join("\n"),
 		);
 		return;
 	}
 
 	if (!["current", "project"].includes(subcommand)) {
-		showText(ctx, "Usage: /construct sync [project|on|off|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json.");
+		showText(ctx, "Usage: /construct sync [project|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json. Automatic sync is disabled for the MVP.");
 		return;
 	}
 
@@ -198,39 +191,21 @@ export async function handleAutosync(args: string, ctx: ExtensionCommandContext)
 	const settings = await readJson(paths.userSettingsPath);
 	const autosync = getAutosync(settings);
 	const subcommand = args.trim();
-	if (subcommand === "status") {
-		showText(
-			ctx,
-			[
-				"Construct sync compatibility",
-				"============================",
-				`Invisible sync: ${autosync.note}`,
-				`Settings: ${describeRead(settings)}`,
-				"",
-				"Use /construct sync on|off|status. This compatibility command will remain hidden.",
-				"Invisible sync remembers package declarations on session shutdown. It never installs anything automatically.",
-			].join("\n"),
-		);
-		return;
-	}
-	if (subcommand && subcommand !== "on" && subcommand !== "off") {
-		showText(ctx, "Usage: /construct sync [on|off|status]");
-		return;
-	}
-	const enabled = subcommand === "on" ? true : subcommand === "off" ? false : !autosync.enabled;
-	try {
-		await writeAutosync(paths, enabled);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Could not update autosync settings.\n${message}`);
+	if (subcommand && subcommand !== "on" && subcommand !== "off" && subcommand !== "status") {
+		showText(ctx, "Usage: /construct autosync [status]\n\nAutomatic sync is disabled for the MVP.");
 		return;
 	}
 	showText(
 		ctx,
 		[
-			`Construct invisible sync ${enabled ? "enabled" : "disabled"}.`,
-			`Settings: ${paths.userSettingsPath}`,
-			"Sync is remember-only. On session shutdown it remembers package sources from .pi/settings.json.",
+			"Construct sync compatibility",
+			"============================",
+			`Automatic sync: ${autosync.note}`,
+			`Settings: ${describeRead(settings)}`,
+			"",
+			"Automatic/invisible sync is disabled for the MVP.",
+			"Use /construct sync manually when you want to adopt existing project package declarations into Construct.",
+			"No settings were changed.",
 		].join("\n"),
 	);
 }

@@ -2,17 +2,14 @@ import type { ConstructPaths, JsonObject, JsonReadResult } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
 
 export function getAutoload(settings: JsonReadResult): { enabled: boolean; note: string } {
-	if (settings.state === "missing") return { enabled: false, note: "off (default; settings file missing)" };
+	if (settings.state === "missing") return { enabled: true, note: "on (default; settings file missing)" };
 	if (settings.state === "invalid") return { enabled: false, note: "off (settings file invalid)" };
 	if (!isObject(settings.data)) return { enabled: false, note: "off (settings file is not an object)" };
-	return settings.data.autoload === true ? { enabled: true, note: "on" } : { enabled: false, note: "off" };
+	return settings.data.autoload === false ? { enabled: false, note: "off" } : { enabled: true, note: "on" };
 }
 
-export function getAutosync(settings: JsonReadResult): { enabled: boolean; note: string } {
-	if (settings.state === "missing") return { enabled: false, note: "off (default; settings file missing)" };
-	if (settings.state === "invalid") return { enabled: false, note: "off (settings file invalid)" };
-	if (!isObject(settings.data)) return { enabled: false, note: "off (settings file is not an object)" };
-	return settings.data.autosync === true ? { enabled: true, note: "on" } : { enabled: false, note: "off" };
+export function getAutosync(_settings: JsonReadResult): { enabled: boolean; note: string } {
+	return { enabled: false, note: "off (disabled for MVP; use /construct sync manually)" };
 }
 
 export function getSkippedHere(skips: JsonReadResult, cwd: string, realCwd: string): boolean {

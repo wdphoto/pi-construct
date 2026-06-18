@@ -19,7 +19,7 @@ export async function handleAutoload(args: string, ctx: ExtensionCommandContext)
 				`Settings: ${describeRead(settings)}`,
 				"",
 				"Autoload means auto-offer only. It never installs packages by itself.",
-				"Use /construct autoload on or /construct autoload off.",
+				"It is on by default; use /construct autoload off to stop the startup offer."
 			].join("\n"),
 		);
 		return;

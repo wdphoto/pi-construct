@@ -196,7 +196,7 @@ export function planned(ctx: ExtensionCommandContext, subcommand: string): void 
 			"- /construct unload [source-or-library-id]",
 			"- /construct toggle",
 			"- /construct sync",
-			"- /construct sync on|off|status",
+			"- /construct sync status",
 			"",
 			"Next phase improves the TUI loadout picker.",
 		].join("\n"),

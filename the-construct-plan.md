@@ -96,12 +96,10 @@ Possible trigger points:
 - **session_shutdown sync**: remember packages on exit. This is less intrusive during startup, but can be missed on crashes and may be surprising if a session changes directories.
 - **post-install detection by diff**: Pi does not currently expose a dedicated "package installed" extension event in the documented API. Construct can approximate this by comparing project/global package declarations against its library on startup, reload, or command execution. If it sees unknown package sources, it can ask: "Add these to your Construct library?" This is detection after the declaration exists, not a true install hook.
 
-Course correction: make `/construct sync` the explicit current-project memory command. Invisible remember-only sync is controlled by the same command:
+Course correction: make `/construct sync` the explicit current-project memory command. Invisible/automatic sync is disabled for the MVP and belongs later:
 
 ```text
 /construct sync
-/construct sync on
-/construct sync off
 /construct sync status
 ```
 
@@ -114,7 +112,7 @@ Sync must not be conflated with autoload. Autoload means "offer to open Construc
 | Manual sync | `/construct sync ...` | Project/global package declarations and explicit extension paths | User-visible, debuggable, safest | User has to remember to run it | Build first |
 | Command-time passive sync | `/construct load`, maybe `/construct status` | Current project package declarations | Already near user intent; no background surprises | Still only learns when Construct is used | Keep for `/construct load`; maybe add to `/construct status` later |
 | Startup autosync | `session_start` | Current trusted project declarations; optionally global declarations | Library is fresh before user opens picker | Writes user state at startup; can feel spooky | Opt-in only, after `/construct sync` exists |
-| Shutdown autosync | `session_shutdown` | Final current project declarations; optionally global declarations | Least intrusive during startup; can happen quietly after normal work | Missed on crash/kill; no good moment to ask; cwd/session changes can confuse target | Maybe best for opt-in silent remember-only sync |
+| Shutdown autosync | `session_shutdown` | Final current project declarations; optionally global declarations | Least intrusive during startup; can happen quietly after normal work | Missed on crash/kill; no good moment to ask; cwd/session changes can confuse target | Later only; disabled for MVP |
 | Reload autosync | `resources_discover` / reload flow | Changed declarations after `/reload` | Catches package changes during active work | Reloads can happen for many reasons; still surprising | Only as part of opt-in autosync |
 | Detection prompt | Startup/reload/command diff finds unknown sources | Unknown sources not in library | Friendly: "Add this to Construct?" | Prompt fatigue; bad for shutdown because user is leaving | Use for command-time/startup, not shutdown |
 
@@ -123,9 +121,9 @@ Recommended order:
 1. Implement explicit `/construct sync` for the current project.
 2. Add source classification and path normalization.
 3. Add optional detection prompt for command-time or startup sync.
-4. Add opt-in silent shutdown sync with `/construct sync on` only if explicit sync proves useful.
+4. Reconsider opt-in silent shutdown sync only if explicit sync proves useful.
 
-Shutdown autosync is attractive because it stays out of the way, but it should be silent and remember-only. If we need to ask the user, startup or command-time is friendlier because the user is present and in context.
+Shutdown autosync is attractive because it stays out of the way, but it is disabled for MVP. If we need to ask the user, startup or command-time is friendlier because the user is present and in context.
 
 ### Low-tech install memory model
 
@@ -441,7 +439,7 @@ Examples:
 
 ### Autoload flow
 
-Autoload is opt-in and user-local:
+Autoload is startup auto-offer only and user-local:
 
 ```text
 /construct autoload on
@@ -450,20 +448,16 @@ Autoload is opt-in and user-local:
 
 `/construct status` should include autoload state. `/construct autoload status` may exist as a convenience, but it should not be the only way to see autoload state.
 
-When autoload is on and Construct sees an eligible trusted project with no user-local skip entry, it may offer:
+When autoload is on and Construct sees an eligible trusted project with no user-local skip entry, it may offer after Pi trust is verified:
 
 ```text
-Open Construct for this project?
-  yes
-  not now
-  don't ask for this project
+Load it into the Construct? y/n
 ```
 
 Rules:
 
-- `yes` opens the same `/construct load` menu.
-- `not now` writes nothing.
-- `don't ask for this project` writes user-local skip state, not project files.
+- `yes` opens `/construct`, the normal loadout picker.
+- `no` writes user-local skip state for that project, not project files.
 - Autoload must never install anything by itself.
 - Non-interactive modes must not prompt.
 
@@ -477,8 +471,8 @@ Rules:
 
 **Existing project with plain Pi package declarations**
 
-- Construct detects packages from `.pi/settings.json`.
-- It adds those package source strings to the Construct library if missing.
+- Construct detects packages from `.pi/settings.json` during explicit `/construct sync`.
+- It adds those package source strings to the Construct library if missing only after that explicit command.
 - It does not reinstall them just because it sees them.
 - The next `/construct load` in any project shows those sources as options.
 
@@ -515,7 +509,7 @@ Current MVP commands:
 - `/construct load --dry-run <source-or-catalog-id>` — preview the package load without writing.
 - `/construct unload [source-or-catalog-id]` — source-level project unload with `pi remove <source> -l --approve`; does not delete local files or forget the library item.
 - `/construct sync` — remember current project package sources in the Construct library; never installs or edits the project.
-- `/construct sync on|off|status` — control invisible remember-only session sync.
+- `/construct sync status` — inspect manual sync state; invisible sync is disabled for MVP.
 - `/construct status` — read-only diagnostics.
 - `/construct reload` — reload resources after changes.
 
@@ -523,7 +517,7 @@ Power-user/compatibility commands can remain implemented but should not be the p
 
 - `/construct catalog ...` — low-level Construct library list/add/remove.
 - `/construct enable|disable|remove ...` — older management verbs; prefer load/unload language.
-- `/construct autoload ...` and `/construct autosync ...` — older/compatibility settings verbs; prefer `/construct sync on|off|status` for invisible sync.
+- `/construct autoload ...` remains for the startup offer; `/construct autosync ...` is a compatibility no-op while invisible sync is disabled.
 
 Next planned behavior should avoid extra command sprawl:
 
@@ -549,14 +543,14 @@ The global `the-construct` extension should be lightweight: commands, user catal
 2. **Autoload layer**
    - Do not participate in Pi's trust prompt for MVP.
    - Do not track Pi trust decisions in Construct state.
-   - Autoload is disabled by default.
-   - If enabled, `session_start` may auto-offer `/construct load` only after Pi trust/resource resolution and only in UI-capable modes.
+   - Autoload is enabled by default as an offer only.
+   - If enabled, `session_start` may auto-offer `/construct` only after Pi trust/resource resolution and only in UI-capable modes.
    - Store autoload settings and per-project skips in user-local Construct files, not in project files.
 
 3. **Construct library/catalog layer**
    - MVP catalog is user-only: `~/.pi/agent/construct/catalog.json`.
    - Catalog entries are package sources the user can load into future projects.
-   - Whenever Construct sees package declarations in the current project's `.pi/settings.json`, it should remember missing source strings here.
+   - `/construct sync` explicitly remembers package declarations from the current project's `.pi/settings.json`.
    - Manual catalog add/remove stays simple; removing from the catalog means “forget from Construct,” not “disable in this project.”
    - No official/bundled/project catalog in MVP unless needed for local testing.
 
@@ -594,7 +588,7 @@ The global `the-construct` extension should be lightweight: commands, user catal
 ```json
 {
   "version": 1,
-  "autoload": false
+  "autoload": true
 }
 ```
 
@@ -602,7 +596,7 @@ Rules:
 
 - User-local only.
 - Does not modify Pi global settings.
-- `autoload: true` means auto-offer `/construct load` in new eligible projects, not auto-install.
+- `autoload` defaults on. `autoload: true` means auto-offer `/construct` in new eligible trusted projects, not auto-install.
 
 ### User Construct skips: `~/.pi/agent/construct/skips.json`
 
@@ -1346,7 +1340,7 @@ Current checkpoint completed:
 - [x] `/construct load [source-or-id]` runs `pi install <source> -l --approve` and records advisory `.pi/construct.json` metadata.
 - [x] `/construct unload [source-or-id]` runs `pi remove <source> -l --approve`, marks Construct metadata unloaded, does not delete source files, and does not forget library items.
 - [x] `/construct sync` adopts unsynced current-project package sources into `~/.pi/agent/construct/catalog.json` and `.pi/construct.json` with clean output.
-- [x] `/construct sync on|off|status` controls invisible remember-only shutdown sync.
+- [x] Automatic/invisible sync is disabled for MVP; `/construct sync` is manual and `/construct sync status` reports that state.
 - [x] Local path sources are normalized for cross-project library memory.
 - [x] Unloaded Construct-managed items remain reloadable by id even without a global library entry.
 - [x] Old `enable`/`disable`/`remove`/`autosync` verbs remain compatibility/power-user paths but are no longer the primary MVP surface.

@@ -7,7 +7,7 @@ import { handleLoad, handleOn } from "./commands/load.js";
 import { handleSync, handleAutosync } from "./commands/sync.js";
 import { handleOff, handleUnload } from "./commands/unload.js";
 import { isObject, readJson } from "./json.js";
-import { maybeAutosyncOnShutdown, maybeOfferAutoload } from "./lifecycle.js";
+import { maybeOfferAutoload } from "./lifecycle.js";
 import { getPaths } from "./paths.js";
 import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
@@ -29,14 +29,6 @@ async function hasEnabledConstructPackage(ctx: { cwd: string }): Promise<{ hasAn
 export default function constructExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		await maybeOfferAutoload(pi, ctx);
-	});
-
-	pi.on("session_shutdown", async (_event, ctx) => {
-		try {
-			await maybeAutosyncOnShutdown(ctx);
-		} catch {
-			// Autosync is best-effort and remember-only. Never block shutdown.
-		}
 	});
 
 	pi.registerCommand("construct", {
@@ -157,7 +149,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct unload [source-or-library-id]",
 					"- /construct toggle",
 					"- /construct sync",
-					"- /construct sync on|off|status",
+					"- /construct sync status",
 					"- /construct library",
 					"- /construct remember <source> [id]",
 					"- /construct forget <id-or-source>",

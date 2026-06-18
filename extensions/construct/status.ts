@@ -54,7 +54,7 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		"--------------------",
 		`Settings: ${describeRead(userSettings)}`,
 		`Autoload: ${autoload.note}`,
-		`Invisible sync: ${autosync.note}`,
+		`Automatic sync: ${autosync.note}`,
 		`Construct library: ${describeRead(userCatalog)}`,
 		`Library items: ${catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),

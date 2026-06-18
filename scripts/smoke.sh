@@ -8,7 +8,8 @@ trap 'rm -rf "$TMP"' EXIT
 HOME_DIR="$TMP/home"
 PROJECT_DIR="$TMP/project"
 PKG_DIR="$TMP/pkg"
-mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions"
+PKG2_DIR="$TMP/pkg-two"
+mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG2_DIR/extensions"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -22,6 +23,21 @@ cat > "$PKG_DIR/package.json" <<'JSON'
 JSON
 
 cat > "$PKG_DIR/extensions/noop.ts" <<'TS'
+export default function noop() {}
+TS
+
+cat > "$PKG2_DIR/package.json" <<'JSON'
+{
+  "name": "construct-fixture-pkg-two",
+  "version": "0.0.0",
+  "type": "module",
+  "pi": {
+    "extensions": ["extensions/noop.ts"]
+  }
+}
+JSON
+
+cat > "$PKG2_DIR/extensions/noop.ts" <<'TS'
 export default function noop() {}
 TS
 
@@ -105,8 +121,8 @@ quiet_pi '/construct autosync on'
 quiet_pi '/construct autosync off'
 quiet_pi '/construct autosync'
 
-printf '== shutdown autosync ==\n'
-python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
+printf '== automatic sync disabled ==\n'
+python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
 import json
 import pathlib
 import sys
@@ -117,7 +133,7 @@ source = sys.argv[2]
 PY
 quiet_pi '/construct status'
 
-python3 - "$PROJECT_DIR" "$HOME_DIR" "$PKG_DIR" <<'PY'
+python3 - "$PROJECT_DIR" "$HOME_DIR" "$PKG2_DIR" <<'PY'
 import json
 import pathlib
 import sys
@@ -134,8 +150,8 @@ catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 assert settings.get("packages") == [source], settings
 assert isinstance(construct.get("items"), dict), construct
 assert user_settings.get("autoload") is False, user_settings
-assert user_settings.get("autosync") is True, user_settings
-assert any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog
+assert user_settings.get("autosync") in (None, False), user_settings
+assert not any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog
 assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup files"
 PY
 

@@ -36,7 +36,7 @@ Checked means already declared in this project. Unchecked means remembered by Co
 /construct unload <source-or-library-id> # turn off one managed package declaration
 /construct toggle                    # flip the project Construct loadout off/on
 /construct sync
-/construct sync on|off|status
+/construct sync status
 /construct library
 /construct remember <source> [id]
 /construct forget <id-or-source>
@@ -119,8 +119,8 @@ MIT
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - `/construct sync` adopts unsynced package sources from the current project's `.pi/settings.json` into the Construct library and arms them in `.pi/construct.json`. If there is one unsynced item, it adopts immediately; if there are multiple in TUI mode, it shows the same save-based checkbox flow. It never installs or removes package declarations.
-- `/construct sync on` enables invisible remember-only sync on session shutdown.
-- Autoload means auto-offer only. It never installs packages by itself.
+- Automatic/invisible sync is disabled for the MVP. Use `/construct sync` manually.
+- Autoload means startup auto-offer only. It asks `Load it into the Construct?` after project trust and never installs packages by itself.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` is advisory metadata.
 - `/construct library` shows the global Construct library: reusable package sources that appear as options in other projects.
 - `/construct remember <source> [id]` adds a package source to that library.
@@ -147,7 +147,7 @@ MIT
    - `/construct catalog`, `catalog add`, `catalog remove`
    - `/construct on`, `/construct off`
    - `/construct wipe`
-   - `/construct autoload`, `/construct autosync`
+   - `/construct autoload`, `/construct autosync` compatibility no-op for autosync
    - old `enable`/`disable`/`remove` paths
 4. Search for stale public wording and update it:
    - prefer `library`, `remember`, `forget`
