@@ -1762,3 +1762,27 @@ Still open:
 - Treat extension commands as part of their parent extension; do not attempt per-command toggles in MVP.
 - Commit `.pi/settings.json` when teams want shared project loadouts; keep `.pi/construct.lock.json` optional/local unless reproducibility needs it.
 - Build the package load/disable/remove loop before profiles, export, project detection, or rich TUI.
+
+## Autoload once-per-project rule
+
+Construct autoload is startup/reload offer-only. It must not auto-install or invisibly sync anything.
+
+The prompt `Load it into the Construct?` should be shown only once per trusted project, not on every reload.
+
+Desired MVP behavior:
+
+1. On `session_start`, after Pi trust is verified and UI is available, Construct may offer `Load it into the Construct? y/n`.
+2. Ask only if this project has no user-local Construct project marker yet.
+3. If user says yes:
+   - open `/construct`;
+   - record a user-local marker for this project, e.g. reason `accepted`.
+4. If user says no:
+   - record a user-local marker for this project, e.g. reason `declined`.
+5. Do not ask again for that project on reload/startup unless the marker is manually cleared.
+6. The marker must live in user-local Construct state, not project files, so Construct does not mutate a project just because it offered.
+
+Implementation note:
+
+- Existing `~/.pi/agent/construct/skips.json` can be reused short-term, but the concept is really `projects.json` / `seen projects`, not only skips.
+- `maybeOfferAutoload` should record the marker on both accept and decline.
+- Keep autoload separate from sync. Recording the marker must not install, sync, copy, enable, or edit `.pi/settings.json`.
