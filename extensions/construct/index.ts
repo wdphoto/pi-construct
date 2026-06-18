@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { handleAutoload } from "./commands/autoload.js";
 import { handleCatalog } from "./commands/catalog.js";
+import { handleDashboard } from "./commands/dashboard.js";
 import { handleEnable, handleDisable, handleRemove } from "./commands/manage.js";
 import { handleLoad, handleOn } from "./commands/load.js";
 import { handleSync, handleAutosync } from "./commands/sync.js";
@@ -47,6 +48,11 @@ export default function constructExtension(pi: ExtensionAPI) {
 		},
 		handler: async (args, ctx) => {
 			const { command, rest } = splitArgs(args);
+
+			if (command === "dashboard") {
+				await handleDashboard(pi, ctx);
+				return;
+			}
 
 			if (command === "status") {
 				showText(ctx, await buildStatus(pi, ctx));

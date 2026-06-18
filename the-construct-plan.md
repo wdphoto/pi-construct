@@ -1357,18 +1357,19 @@ Next refactor order when we come back:
 1. **Save-based picker/menu flow**
    - [x] `/construct load` lists only loadable/unchecked remembered sources. User selects one or more with Space, hits Enter/Save, and Construct installs them with no second confirmation page.
    - [x] `/construct unload` lists only loaded Construct-managed declarations. User unchecks one or more with Space, hits Enter/Save, and Construct disables them with no second confirmation page.
-   - [ ] `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available, red/warning means unsynced local-only and read-only. Save reconciles selections to `.pi/settings.json`.
+   - [x] `/construct` is now the all-up loadout view: checked means loaded here, unchecked means available, warning means unsynced local-only and read-only. Save reconciles Construct package selections to `.pi/settings.json`.
    - [x] Remove the public `wipe` surface in favor of `/construct toggle`; hidden `/construct off` and `/construct on` aliases remain for testing. Toggle only touches Construct-managed items and ignores unsynced local-only Pi packages.
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
 2. **Open questions from the TUI pass**
    - Should the full `/construct` overview include a one-key "adopt/sync" action for `[!]` unsynced local-only packages, or should adoption remain only `/construct sync`?
+   - Should runtime skill/command rows stay read-only forever, or should package-backed skills become filterable later through Pi package object filters?
    - Should direct `/construct load <ad-hoc-source>` add to the library automatically, or keep asking before remembering ad-hoc sources?
    - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.
 
 3. **Pretty listings**
-   - Clean up status, sync, catalog/library, load, unload, and toggle output.
+   - Clean up status, sync, catalog/library, load, unload, toggle, and dashboard output.
    - Prefer concise sections, stable ordering, aligned labels where useful, and clear loaded/available/disabled language.
    - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 

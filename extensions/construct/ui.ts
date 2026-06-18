@@ -3,7 +3,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export function splitArgs(args: string): { command: string; rest: string } {
 	const trimmed = args.trim();
-	if (!trimmed) return { command: "load", rest: "" };
+	if (!trimmed) return { command: "dashboard", rest: "" };
 	const firstSpace = trimmed.search(/\s/);
 	if (firstSpace === -1) return { command: trimmed, rest: "" };
 	return { command: trimmed.slice(0, firstSpace), rest: trimmed.slice(firstSpace).trim() };
@@ -28,6 +28,8 @@ export interface CheckboxPickerItem {
 	description?: string;
 	checked: boolean;
 	disabled?: boolean;
+	section?: string;
+	marker?: string;
 }
 
 export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string, items: CheckboxPickerItem[]): Promise<string[] | undefined> {
@@ -63,15 +65,20 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const end = Math.min(start + maxVisible, items.length);
 			const maxLabelWidth = Math.min(28, Math.max(...items.map((item) => visibleWidth(item.label))));
 
+			let previousSection: string | undefined;
 			for (let index = start; index < end; index += 1) {
 				const item = items[index];
 				if (!item) continue;
+				if (item.section && item.section !== previousSection) {
+					lines.push(theme.fg("accent", item.section));
+					previousSection = item.section;
+				}
 				const isSelected = index === selected;
-				const marker = item.disabled ? "[!]" : checked.has(item.id) ? "[x]" : "[ ]";
+				const marker = item.marker ?? (item.disabled ? "[!]" : checked.has(item.id) ? "[x]" : "[ ]");
 				const cursor = isSelected ? "> " : "  ";
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
-				if (item.disabled) line = theme.fg("warning", line);
+				if (item.disabled) line = theme.fg(item.marker === "[i]" ? "muted" : "warning", line);
 				else if (isSelected) line = theme.bold(line);
 				lines.push(truncateToWidth(line, width));
 			}

@@ -7,7 +7,8 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 ## Unreleased
 
 ### Added
-- Added checkbox-style TUI pickers for `/construct load` and `/construct unload`: Space toggles multiple items, Enter saves, Esc cancels.
+- Added the full `/construct` loadout dashboard with grouped package sections and read-only runtime skill/command inventory.
+- Added checkbox-style TUI pickers for `/construct`, `/construct load`, and `/construct unload`: Space toggles multiple package items, Enter saves, Esc cancels.
 - Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, toggle-off, toggle-on, and reload.
 - Added `/construct toggle` as the public project loadout switch for Construct-managed packages, with hidden `/construct off` and `/construct on` aliases for testing.
 - Added clearer `/construct sync` output showing the project-local package sources remembered from `.pi/settings.json`.

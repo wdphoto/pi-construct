@@ -103,7 +103,7 @@ MIT
 ## Notes
 
 - Package entry point is `extensions/construct/index.ts`; normal testing should load the package root (`-e .`) so Pi reads `package.json` and labels the extension as `construct`.
-- `/construct` currently opens the load picker. Target UX is a full loadout overview.
+- `/construct` opens the full loadout overview with package sections plus read-only runtime skill/command sections. Themes are intentionally out of scope.
 - `/construct load` shows remembered Construct sources that are not loaded here; Space toggles multiple items, Enter saves, Esc cancels. Direct `/construct load <source-or-id>` also works.
 - `/construct load` does not auto-sync local-only Pi packages. Run `/construct sync` to adopt local project package declarations into Construct.
 - `/construct unload` shows Construct-managed package declarations currently loaded in this project; Space toggles multiple items off, Enter saves, Esc cancels. `/construct unload <source-or-id>` disables one. It does not delete local source files or forget Construct library items.
@@ -122,11 +122,12 @@ MIT
 
 ## Next refactor order
 
-1. Finish the full `/construct` overview:
-   - `/construct load` and `/construct unload` now have save-based multi-toggle TUI flows.
-   - `/construct` should become the all-up loadout view where checked means loaded here, unchecked means available, and warning/red means unsynced local-only.
-   - Unsynced local-only items should be read-only until `/construct sync` adopts them.
-2. Clean up and prettify list output for status, sync, catalog/library, load, unload, and toggle.
+1. Keep refining the full `/construct` overview:
+   - `/construct`, `/construct load`, and `/construct unload` now have save-based multi-toggle TUI flows.
+   - `/construct` groups Construct packages, local-only packages, skill commands, and other commands.
+   - Unsynced local-only items are read-only until `/construct sync` adopts them.
+   - Runtime skill/command rows are read-only inventory for now; package toggles control the package resources that provide them.
+2. Clean up and prettify list output for status, sync, catalog/library, load, unload, toggle, and dashboard.
 3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
 4. Define restore/profile behavior: `/construct on` is the simple current-project rearm; named profiles come later.
 5. Only after that, revisit profiles/groups and resource-level disable filters.
