@@ -128,8 +128,8 @@ printf '== project B construct reload remembered package ==\n'
 quiet_construct_pi "$PROJECT_B" '/construct load construct-e2e-package'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
-printf '== project B construct unload all ==\n'
-quiet_construct_pi "$PROJECT_B" '/construct unload'
+printf '== project B construct wipe all ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct wipe'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
 python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'

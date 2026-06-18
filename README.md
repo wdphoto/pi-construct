@@ -32,8 +32,9 @@ Checked means already declared in this project. Unchecked means remembered by Co
 /construct
 /construct load [source-or-library-id]
 /construct load --dry-run <source-or-library-id>
-/construct unload                    # unload all project package declarations
-/construct unload <source-or-library-id> # unload one package declaration
+/construct unload                    # choose loaded package declarations to disable
+/construct unload <source-or-library-id> # disable one package declaration
+/construct wipe                      # unload all project package declarations after warning
 /construct sync
 /construct sync on|off|status
 /construct status
@@ -104,7 +105,8 @@ MIT
 - Package entry point is `extensions/construct/index.ts`; normal testing should load the package root (`-e .`) so Pi reads `package.json` and labels the extension as `construct`.
 - `/construct` opens the remembered-source picker; choosing an unchecked item runs `pi install <source> -l --approve` from the active Pi project.
 - `/construct load` is the explicit/direct-load alias for the same flow.
-- `/construct unload` unloads all current project package declarations by running `pi remove <source> -l --approve` for each one. `/construct unload <source-or-id>` unloads one. It does not delete local source files or forget Construct library items.
+- `/construct unload` shows package declarations currently loaded in this project. `/construct unload <source-or-id>` disables one. It does not delete local source files or forget Construct library items.
+- `/construct wipe` unloads all current project package declarations after a warning by running `pi remove <source> -l --approve` for each one.
 - Construct does not auto-reload after load/unload/sync. Run `/construct reload` or `/reload` when you want Pi to refresh resources.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
@@ -118,9 +120,11 @@ MIT
 
 1. Replace the one-item select picker with a save-based TUI:
    - `/construct load` should show loadable/unchecked remembered sources only; saving installs selected sources with no second confirmation page.
-   - `/construct unload` should show loaded/checked project package declarations only; saving removes selected sources.
+   - `/construct unload` should show loaded/checked project package declarations only; saving disables selected sources.
+   - `/construct wipe` remains the explicit warned action for disabling everything in the project.
    - `/construct` should become the all-up loadout view where checked means loaded here and unchecked means available.
    - Esc/cancel bails; Save does the deed and then reports success plus `/construct reload` / `/reload` guidance.
 2. Clean up and prettify list output for status, sync, catalog/library, load, and unload.
 3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
-4. Only after that, revisit profiles/groups and resource-level disable filters.
+4. Define restore/profile behavior: likely `/construct restore` for the last wiped/known loadout, then named profiles later.
+5. Only after that, revisit profiles/groups and resource-level disable filters.

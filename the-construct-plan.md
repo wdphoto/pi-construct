@@ -1357,7 +1357,8 @@ Next refactor order when we come back:
 1. **Save-based picker/menu flow**
    - Replace the current one-item `ctx.ui.select` flow with a custom save-based TUI.
    - `/construct load` should list only loadable/unchecked remembered sources. User selects one or more, hits Save, and Construct installs them with no second confirmation page.
-   - `/construct unload` should list only loaded/checked project package declarations. User selects one or more, hits Save, and Construct removes them with no second confirmation page.
+   - `/construct unload` should list only loaded/checked project package declarations. User selects one or more, hits Save, and Construct disables them with no second confirmation page.
+   - `/construct wipe` should remain the explicit warned action for disabling every project package declaration.
    - `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available. Save reconciles selections to `.pi/settings.json`.
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
@@ -1374,9 +1375,12 @@ Next refactor order when we come back:
      - `/construct forget <id-or-source>` for current `/construct catalog remove`.
    - Do not remove `catalog` commands until aliases and docs are settled.
 
-4. **Profiles/groups later**
-   - Add named groups/profiles only after single-source load/unload is solid.
-   - Profiles should be lists of remembered source ids, not a new package format.
+4. **Restore/profile model**
+   - Today, the project remembers actual loaded packages in `.pi/settings.json` and advisory Construct state in `.pi/construct.json`; there is no named profile command yet.
+   - After `/construct wipe`, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
+   - Add a simple `/construct restore` or `/construct apply <profile>` only after the save-based picker is stable.
+   - A profile should be a list of remembered source ids/sources plus any Pi package filters, not a new package format.
+   - Consider making `/construct wipe` save a `lastWipe`/`lastLoadout` snapshot before disabling everything, so restore is obvious.
    - Avoid resource-level filters unless we explicitly need partial package disable behavior.
 
 ## What might not work / missing pieces

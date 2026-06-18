@@ -5,7 +5,7 @@ import { findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSources
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { backupProjectSettingsIfPresent, getPackages, packageSource, readSettingsObject } from "../project-settings.js";
-import { getManagedEntry, managedItemChoices, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
+import { getManagedEntry, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
 import { showText } from "../ui.js";
 
 export async function resolveUnloadTarget(
@@ -16,10 +16,22 @@ export async function resolveUnloadTarget(
 	const construct = await readJson(paths.projectConstructPath);
 	let resolvedQuery = query.trim();
 	if (!resolvedQuery && ctx.hasUI) {
-		const choices = [...managedItemChoices(construct), "Cancel"];
+		const settings = await readJson(paths.projectSettingsPath);
+		const packageDeclarations = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim());
+		const choiceToTarget = new Map<string, { id?: string; source: string; label: string }>();
+		const choices = packageDeclarations.map((pkg) => {
+			const managed = getManagedEntry(construct, pkg.source);
+			const label = managed?.id ?? pkg.source;
+			const choice = managed ? `${managed.id}: ${pkg.source}` : pkg.source;
+			choiceToTarget.set(choice, { id: managed?.id, source: pkg.source, label });
+			return choice;
+		});
+		choices.push("Cancel");
 		if (choices.length === 1) return { construct };
-		const selected = await ctx.ui.select("Construct unload: choose item", choices);
+		const selected = await ctx.ui.select("Construct unload: loaded in this project", choices);
 		if (!selected || selected === "Cancel") return { construct };
+		const target = choiceToTarget.get(selected);
+		if (target) return { construct, ...target };
 		resolvedQuery = selected.split(":", 1)[0];
 	}
 	if (!resolvedQuery) return { construct };
@@ -167,34 +179,15 @@ export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandCon
 export async function handleUnload(args: string, pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const paths = await getPaths(ctx);
 	const query = args.trim();
-	if (!query || query === "all" || query === "--all") {
+	if (query === "all" || query === "--all") {
 		await handleUnloadAll(pi, ctx, paths);
 		return;
 	}
 
 	const { construct, id, source, label } = await resolveUnloadTarget(ctx, paths, query);
 	if (!source) {
-		showText(ctx, "No Construct item/source selected to unload.");
+		showText(ctx, "No loaded package selected. Use /construct unload <source-or-id>, or /construct wipe to unload every project package declaration.");
 		return;
-	}
-
-	if (ctx.hasUI) {
-		const ok = await ctx.ui.confirm(
-			"Unload from this project?",
-			[
-				`Source: ${source}`,
-				`Project: ${paths.cwd}`,
-				"",
-				"This runs:",
-				`pi remove ${source} -l --approve`,
-				"",
-				"It removes the project package declaration only. It does not delete local source files or forget the Construct library item.",
-			].join("\n"),
-		);
-		if (!ok) {
-			showText(ctx, "Construct unload cancelled.");
-			return;
-		}
 	}
 
 	let backupPath: string | undefined;

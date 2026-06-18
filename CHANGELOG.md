@@ -9,13 +9,14 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 ### Added
 - Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, unload-all, and reload.
 - Added picker actions for already-loaded items so a checked item can be unloaded from the current project.
-- Added an unload-all action to the picker flow.
+- Added `/construct wipe` as the explicit unload-all command.
 - Added clearer `/construct sync` output showing the project-local package sources remembered from `.pi/settings.json`.
 
 ### Changed
 - `/construct load` now proceeds after selection/command without a second confirmation page, leaves reload timing to the user, and prints `/construct reload` / `/reload` instructions.
-- `/construct unload` now unloads all current project package declarations by default.
+- `/construct unload` now focuses on loaded project declarations instead of defaulting to unload-all.
 - `/construct unload <source-or-id>` still unloads a single package declaration.
+- Unload-all behavior moved to `/construct wipe`.
 - `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.
 - Refactored the Construct extension into focused modules under `extensions/construct/`.
 
