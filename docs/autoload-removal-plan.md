@@ -65,6 +65,8 @@ Use disposable homes/projects only.
 npm run check
 ./scripts/smoke.sh
 ./scripts/e2e-smoke.sh
+./scripts/invalid-drift-smoke.sh
+./scripts/install-smoke.sh
 ```
 
 Targeted new-project check:

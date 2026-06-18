@@ -62,11 +62,18 @@ Use this before adding more features. The bias is manual, explicit, and idiomati
 
 ## Test gaps
 
-- Add a test that project startup does not prompt, send `/construct`, or create Construct metadata.
-- Add a test that `/construct` opens the full loadout view and `/construct status` remains read-only when `.pi/construct.json` is missing.
+Covered now:
+
+- New-project `/construct` opens the full loadout view and `/construct status` remains read-only when `.pi/construct.json` is missing.
+- No Construct lifecycle/autoload/autosync wiring remains in `extensions` or `scripts`.
+- Invalid user catalog, project settings, project construct metadata, and drift checks are covered by `scripts/invalid-drift-smoke.sh`.
+- Project A raw local package install -> `/construct sync` -> Project B load/unload/toggle is covered by `scripts/e2e-smoke.sh`.
+
+Still useful later:
+
 - Add a local extension-file install smoke if Pi supports it.
 - Add git and npm source parsing/dry-run tests without network where possible.
-- Add invalid JSON tests for user catalog, user settings, project settings, and project construct metadata.
+- Add a true startup/no-output regression check if the harness gets a good way to observe session start without explicit commands.
 
 ## Course-correction questions
 

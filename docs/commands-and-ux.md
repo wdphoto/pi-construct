@@ -85,12 +85,13 @@ A direct source should also work without opening the picker:
 /construct load npm:@scope/pi-browser-tools
 ```
 
-Before showing the menu, Construct syncs the current project into the user-local Construct library:
+Construct does not sync just because the menu opens. Use `/construct sync` when you want to adopt existing project package declarations into the user-local Construct library:
 
 - read `.pi/settings.json` package declarations;
-- remember package source strings in `~/.pi/agent/construct/catalog.json` if missing;
-- do not install, enable, copy, execute, or rewrite anything just because it was detected;
-- mark local/relative path sources as less portable, but still list them for us.
+- remember selected package source strings in `~/.pi/agent/construct/catalog.json` if missing;
+- arm advisory `.pi/construct.json` metadata for the current project;
+- do not install, remove, reload, copy, execute, or rewrite `.pi/settings.json` just because a source was detected;
+- normalize local/relative path sources for cross-project use.
 
 Menu sketch:
 
@@ -231,23 +232,26 @@ Primary command:
 Current MVP commands:
 
 - `/construct` — main picker/install-memory interface.
-- `/construct load [source-or-catalog-id]` — explicit/direct load path; installs the source project-locally with `pi install <source> -l --approve`.
-- `/construct load --dry-run <source-or-catalog-id>` — preview the package load without writing.
-- `/construct unload [source-or-catalog-id]` — source-level project unload with `pi remove <source> -l --approve`; does not delete local files or forget the library item.
-- `/construct sync` — remember current project package sources in the Construct library; never installs or edits the project.
+- `/construct load [source-or-library-id]` — explicit/direct load path; installs the source project-locally with `pi install <source> -l --approve`.
+- `/construct load --dry-run <source-or-library-id>` — preview the package load without writing.
+- `/construct unload [source-or-library-id]` — source-level project unload with `pi remove <source> -l --approve`; does not delete local files or forget the library item.
+- `/construct toggle` — flip this project's Construct-managed loadout off/on; unsynced local-only Pi packages are ignored.
+- `/construct library`, `/construct remember`, `/construct forget` — public library commands.
+- `/construct sync` — remember current project package sources in the Construct library and arm advisory `.pi/construct.json` metadata; never installs, removes, reloads, or edits `.pi/settings.json`.
 - `/construct sync status` — inspect manual sync state; invisible sync is disabled for MVP.
 - `/construct status` — read-only diagnostics.
 - `/construct reload` — reload resources after changes.
 
 Power-user/compatibility commands can remain implemented but should not be the primary MVP surface:
 
-- `/construct catalog ...` — low-level Construct library list/add/remove.
-- `/construct enable|disable|remove ...` — older management verbs; prefer load/unload language.
+- `/construct catalog ...` — compatibility alias for library list/add/remove.
+- `/construct enable|disable|remove ...` — older management verbs; prefer load/unload/toggle language.
+- `/construct on|off` — hidden/testing aliases behind `/construct toggle`.
 
 Next planned behavior should avoid extra command sprawl:
 
-- Improve `/construct` from a simple select picker into a searchable checkbox UI.
-- `/construct catalog` can later become `/construct remember`/`forget`, but only after MVP load/unload/sync is solid.
+- Polish the current searchable checkbox flows and command output before adding new commands.
+- Keep user-facing language on library/remember/forget; keep `catalog` mostly as file/schema/compatibility wording.
 - Future profiles are named groups of library items, not a separate package system.
 
 Post-MVP commands can add profile save/apply, import/export, local-file packaging, and richer TUI dashboards only when the simple library/toggle flow is solid.

@@ -10,7 +10,7 @@ WARNING: I don't know what I'm doing. Take that as you will.
    ```bash
    pi install <source> -l
    ```
-2. To store that tool in the construct for other projects, you simply sync. The Construct now that source when it sees project B.
+2. To store that tool in the Construct library for other projects, run `/construct sync`. The Construct remembers that package source for future projects.
 3. In project B, run:
    ```text
    /construct
@@ -128,34 +128,17 @@ MIT
 
 ## Next pickup checklist
 
-1. Push/check latest local commits if needed, then start with a disposable `HOME` and project.
-2. Do a command audit for the public surface:
+1. Start with a disposable `HOME` and project; do not use live global Pi config.
+2. Manual interactive TUI pass:
    - `/construct`
-   - `/construct status`
    - `/construct load`
    - `/construct unload`
-   - `/construct toggle`
-   - `/construct sync`
-   - `/construct sync status`
-   - `/construct library`
-   - `/construct remember <source> [id]`
-   - `/construct forget <id-or-source>`
-   - `/construct reload`
-3. Also verify compatibility/debug commands still behave intentionally:
-   - `/construct catalog`, `catalog add`, `catalog remove`
-   - `/construct on`, `/construct off`
-   - `/construct wipe`
-   - old `enable`/`disable`/`remove` paths
+   - multi-item `/construct sync`
+   - verify fuzzy search typing, Space toggles, Enter saves, Esc cancels, and readable section headers.
+3. Pretty-print command output for status, sync, library, load, unload, toggle, and dashboard.
 4. Search for stale public wording and update it:
-   - prefer `library`, `remember`, `forget`
-   - avoid public `catalog` except as a compatibility alias
-   - avoid `wipe`
-   - prefer `toggle`, `loadout`, `Construct-managed`, `local-only`, `adopted`
-5. Pretty-print command output for status, sync, library, load, unload, toggle, and dashboard.
-6. Manual interactive TUI test:
-   - fuzzy search typing
-   - Space toggles
-   - Enter saves
-   - Esc cancels
-   - section headers remain readable
-7. Later: improve skill visibility and maybe package-backed skill filters. Keep runtime skill/command rows read-only until package-level UX feels solid.
+   - prefer `library`, `remember`, `forget`, `toggle`, `loadout`, `Construct-managed`, `local-only`, `adopted`;
+   - keep `catalog` only for `catalog.json` internals and compatibility notes;
+   - keep `wipe`, `autoload`, and `autosync` only in historical/removal notes.
+5. Improve status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+6. Later: improve skill visibility and maybe package-backed skill filters. Keep runtime skill/command rows read-only until package-level UX feels solid.

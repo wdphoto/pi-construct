@@ -171,22 +171,22 @@ Construct can distinguish where things came from by reading settings and, at run
 - global auto-discovered loose resources: paths under `~/.pi/agent/extensions`, `~/.pi/agent/skills`, etc.;
 - runtime commands/tools: `pi.getCommands()` and `pi.getAllTools()` expose `sourceInfo` with `path`, `scope`, `origin`, and source metadata.
 
-For MVP sync, only package declarations should enter `catalog.json` automatically. Loose local paths can be reported in `/construct status` or a future `/construct doctor`, with suggestions like "package this if you want it reusable."
+For MVP sync, only package declarations should enter `catalog.json`, and only when the user explicitly runs `/construct sync` or `/construct remember`. Loose local paths can be reported in `/construct status` or a future `/construct doctor`, with suggestions like "package this if you want it reusable."
 
 ### Feasibility concerns to discuss
 
 The install-memory plan is possible with documented Pi APIs, but these are the concerns to resolve deliberately:
 
 1. **Lifecycle automation has no active MVP path.** If startup/shutdown/reload automation returns, it must be opt-in, remember-only, and best-effort.
-2. **No true install event.** Pi does not document a `package_installed` event. Construct learns after the fact by reading `packages` declarations from settings. That means raw installs are remembered on next sync/startup/shutdown, not at install time.
+2. **No true install event.** Pi does not document a `package_installed` event. Construct learns after the fact by reading `packages` declarations from settings. That means raw installs are remembered on the next explicit `/construct sync`, not at install time.
 3. **Only package declarations are replayable.** Sources in `packages` can be replayed as `pi install <source> -l --approve`. Loose resources under `.pi/extensions`, `.pi/prompts`, `.pi/skills`, etc. are detectable but not automatically reusable install memories.
 4. **Local paths need normalization.** Relative local package sources are resolved relative to the settings file that declared them. Construct should store absolute/real paths in the user library to make replay from another project work.
 5. **Global sync can pollute the library.** `~/.pi/agent/settings.json` packages may be always-on personal tools, not project loadouts. `/construct sync global` should stay explicit if it is added later.
 6. **Deduplication is harder than exact strings.** Pi deduplicates by npm package name, git repo without ref, and local resolved path. Construct currently mostly uses exact sources plus path normalization. Npm/git identity normalization is a follow-up.
 7. **Toggle UI maps to package declarations, not resources.** The simple `[x]/[ ]` list should toggle whole package sources in `.pi/settings.json`. Fine-grained extension/skill/prompt filtering should use Pi filters later, not be invented now.
 8. **Disable/remove wording matters.** Removing a project package declaration is not uninstalling caches or deleting code. The UI must say "remove from this project" or "disable in this project," not "uninstall".
-9. **Concurrent settings writes are possible.** Autosync writes user Construct state while Pi/package commands may write settings. Use conservative read/parse/write, avoid project writes during sync, and consider backup/locking only if collisions appear.
-10. **TUI quicksearch is feasible but custom.** Pi's `SettingsList` supports toggles and fuzzy search by label, so the desired searchable toggle list is feasible. It will require replacing the current `ctx.ui.select` picker with a custom `SettingsList` UI.
+9. **Concurrent settings writes are possible.** Pi/package commands may write settings while Construct also updates advisory metadata. Use conservative read/parse/write, avoid `.pi/settings.json` edits during sync, and consider backup/locking only if collisions appear.
+10. **TUI quicksearch is implemented but still needs manual UX passes.** The current custom checkbox picker supports fuzzy typing, Space toggles, Enter saves, and Esc cancels for the dashboard/load/unload/sync flows.
 11. **Construct metadata can drift.** `.pi/settings.json` is source of truth. `.pi/construct.json` is advisory and can become stale if users edit settings by hand. Status/toggle UI should compute current checked state from settings, not only metadata.
 12. **Trust boundaries remain Pi's job.** Project package declarations load after trust. Construct must not bypass trust or silently install project code before Pi's normal trust flow.
 13. **Extension environment assumptions can be messy.** Some packages expect environment variables, shell setup, local CLIs, credentials, MCP servers, language runtimes, or project-specific files. Construct should remember and replay package declarations, but it should not try to infer, copy, or synthesize env vars/secrets. Future diagnostics can report likely missing setup, but secrets stay out of Construct state.

@@ -12,7 +12,7 @@ The global `the-construct` extension should be lightweight: commands, user catal
 
 1. **Command layer**
    - Register `/construct` and MVP subcommands.
-   - `/construct` and `/construct status` should print the useful current state; do not require rich TUI for MVP.
+   - `/construct` should open the loadout dashboard in TUI mode and print a useful dashboard in print mode; `/construct status` stays read-only text.
    - Guard interactive flows with `ctx.hasUI` / `ctx.mode === "tui"` as appropriate.
 
 2. **Startup behavior**
@@ -25,13 +25,13 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - MVP catalog is user-only: `~/.pi/agent/construct/catalog.json`.
    - Catalog entries are package sources the user can load into future projects.
    - `/construct sync` explicitly remembers package declarations from the current project's `.pi/settings.json`.
-   - Manual catalog add/remove stays simple; removing from the catalog means “forget from Construct,” not “disable in this project.”
+   - Public commands should say library/remember/forget; `catalog.json` and `/construct catalog ...` remain compatibility/internal language.
    - No official/bundled/project catalog in MVP unless needed for local testing.
 
 4. **Project state layer**
    - Target project is `ctx.cwd` for MVP. Do not guess git root.
    - Project settings: `.pi/settings.json` remains the source Pi already understands.
-   - Construct metadata: `.pi/construct.json` tracks only items Construct loaded/disabled/removed for this project.
+   - Construct metadata: `.pi/construct.json` tracks advisory Construct-managed items, including items loaded directly and items adopted by explicit `/construct sync`.
    - No lock file in MVP.
 
 5. **Declaration/reconciler layer**
@@ -41,7 +41,7 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - After initial add, treat `.pi/settings.json` as the durable declaration. Construct should not rerun `pi install -l` every startup.
    - Use direct JSON edits only when needed for Construct metadata and simple enable/disable bookkeeping.
    - Always create a timestamped backup before editing `.pi/settings.json` directly.
-   - After changes, run `ctx.reload()` from a command context or prompt the user to `/reload`.
+   - After changes, do not auto-reload; tell the user to run `/construct reload` or `/reload` when ready.
 
 6. **Inventory layer**
    - Read `.pi/settings.json` to know current project package declarations.
@@ -51,8 +51,8 @@ The global `the-construct` extension should be lightweight: commands, user catal
    - Use `pi.getCommands()`, `pi.getAllTools()`, and `pi.getActiveTools()` for status/diagnostics only; runtime inventory is not the source of truth.
 
 7. **UI layer**
-   - MVP path: `ctx.ui.select`, `ctx.ui.confirm`, `ctx.ui.input`, and clear text status.
-   - Rich TUI `SettingsList` can wait until after package load/enable/disable/remove is solid.
+   - Current MVP has a custom searchable checkbox TUI for `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
+   - Text/print mode remains deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
    - Non-TUI/RPC/print modes should never block unexpectedly; status can print, prompts should skip or require explicit command input.
 
 ## Data model draft
@@ -111,7 +111,7 @@ Rules:
 - Metadata only. `.pi/settings.json` remains the Pi source of truth.
 - If metadata and `.pi/settings.json` disagree, `/construct status` reports drift and settings win.
 - Do not store secrets, env values, auth material, or generated package cache paths.
-- Do not write `.pi/construct.json` for `not now` or `don't ask` answers.
+- Do not write `.pi/construct.json` from read-only commands such as `/construct status` or from lifecycle/startup behavior.
 - `managedReason` can be `loaded`, `synced`, `enabled`, or future values. Syncing records that Construct noticed an existing declaration; it should not imply Construct originally installed the package.
 
 <!-- Source: the-construct-plan.md lines 781-966: Construct library, inventory, and profile model -->
@@ -126,12 +126,12 @@ Sources for the `/construct load` menu:
    - Stored at `~/.pi/agent/construct/catalog.json`.
    - Contains package sources we have seen or added.
    - This is the list shown in future projects.
-   - Construct may automatically add package sources it detects in trusted project `.pi/settings.json`. This is a remember-only action.
+   - Construct adds package sources from project `.pi/settings.json` only when the user explicitly runs `/construct sync` or `/construct remember`.
 
 2. **Current project package declarations**
    - Read from `.pi/settings.json` `packages`.
    - Anything declared here is enabled in the current project.
-   - If a package source is missing from the user library, Construct should add it so it appears in future `/construct load` menus.
+   - If a package source is missing from the user library, `/construct sync` can adopt it explicitly so it appears in future `/construct load` menus.
 
 3. **Project Construct metadata**
    - Read from `.pi/construct.json`.
@@ -149,20 +149,21 @@ Sources for the `/construct load` menu:
 
 ### Library sync principle
 
-Construct should remember project-level package sources automatically because this tool is for our own local workflow and we want future projects to see what we have used before.
+Construct remembers project-level package sources only from explicit user actions. This keeps the library useful without background writes.
 
 Rules:
 
-- Sync runs during `/construct status`, `/construct load`, and other explicit Construct commands.
-- Sync reads package declarations from the current trusted project's `.pi/settings.json`.
-- Sync appends missing package sources to the user library.
+- `/construct sync` reads package declarations from the current project's `.pi/settings.json`.
+- `/construct remember <source> [id]` adds one explicit source to the library.
+- Sync appends missing package sources to the user library and arms advisory `.pi/construct.json` metadata for the current project.
 - Sync never installs anything.
+- Sync never removes package declarations.
 - Sync never enables anything in another project.
-- Sync never copies project-local files.
-- Sync dedupes by exact source string.
-- Local/relative/absolute path package sources can be remembered, but should be labeled `local path` because they may not work from other projects.
+- Sync never reloads or copies project-local files.
+- Sync dedupes by normalized/exact source string in the current MVP.
+- Local/relative/absolute path package sources can be remembered, but should be labeled `local path` because they may not work from other machines.
 
-This replaces separate “scan/promote/adopt/remember” commands for now. We can add more control later if the library gets noisy, but the first version should optimize for a tiny personal toolbelt.
+This replaces separate “scan/promote/adopt/learn” commands for now. We can add more control later if the library gets noisy, but the first version should optimize for a tiny personal toolbelt.
 
 ### Enable/disable model
 

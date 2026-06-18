@@ -169,7 +169,7 @@ Pi can discover packages/resources/settings, but it cannot always know:
 - whether a prompt/skill is generic or repo-specific.
 - whether a package should be pinned or floating.
 
-So Construct needs explicit recipes/profiles. Detection is useful, but management should require intent. Promotion may be manual or automatic only when the user has enabled library sync, and library sync must stay limited to safe package source strings.
+So Construct needs explicit recipes/profiles. Detection is useful, but management should require intent. Promotion into the reusable library is manual in the MVP (`/construct sync` or `/construct remember`) and must stay limited to safe package source strings.
 
 ### 2. Extension config is not standardized
 
@@ -256,7 +256,7 @@ For these, Construct should detect and label the item, then offer future export/
 
 If library sync is too aggressive, the user catalog becomes cluttered. To keep it maintainable:
 
-- sync only runs during explicit Construct commands.
+- adoption only runs during explicit `/construct sync` or `/construct remember` commands.
 - remembered entries should be removable/forgettable.
 - dedupe by exact source string.
 - label local/private/questionable entries clearly, especially local paths.

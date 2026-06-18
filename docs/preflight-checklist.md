@@ -13,9 +13,9 @@ Use this for a manual check and cleanup pass before adding more features. Work o
 
 ## 0. Current cleanup target
 
-**Target:** verify the autoload removal refactor and clean up stale surface area.
+**Target:** keep the completed autoload-removal refactor from drifting while polishing the MVP surface.
 
-Definition of done:
+Definition of done for the completed pass:
 
 - No Construct lifecycle hook prompts, opens `/construct`, syncs, reloads, installs, or writes files.
 - `/construct autoload` and `/construct autosync` are gone, including completions/help/tests.
@@ -23,6 +23,11 @@ Definition of done:
 - `/construct sync` remains the explicit adoption command.
 - Docs agree with code.
 - Smoke checks pass in disposable environments.
+
+Next pass target:
+
+- Manual interactive TUI check for `/construct`, `/construct load`, `/construct unload`, and multi-item `/construct sync`.
+- Output/wording polish for status, sync, library, load, unload, toggle, and dashboard.
 
 ## 1. Static code sweep — no startup behavior
 
@@ -52,7 +57,7 @@ rg -n "autoload|autosync|sync on|sync off|compatibility no-op" README.md docs th
 
 Expected:
 
-- Autoload/autosync appear only in changelog/removal-plan/roadmap wording, not as active commands.
+- Autoload/autosync appear only in historical/removal/checklist wording, not as active commands, completions, or help suggestions.
 - Help/completions mention only active public commands:
   - `/construct`
   - `/construct status`
@@ -171,7 +176,7 @@ Expected:
 - Autoload removal code refactor is in place.
 - First-run dashboard/status smoke coverage is in place.
 - 2026-06-18: **1. Static code sweep — no startup behavior** passed. `rg` found no lifecycle/autoload/autosync/skips/user-settings wiring in `extensions` or `scripts`.
-- 2026-06-18: **2. Public command surface sweep** passed. Autoload/autosync references are limited to changelog/removal-plan/roadmap/checklist wording; command completions/help list only active commands.
+- 2026-06-18: **2. Public command surface sweep** passed. Autoload/autosync references are limited to historical/removal/checklist wording; command completions/help list only active commands.
 - 2026-06-18: **3. Startup silence and new-project command behavior** passed. `/construct` opens the full loadout view, first-run messaging moved to `TODO.md` Wishlist, and manual check confirmed no `.pi/construct.json` was created in `pi-pavlov`.
 - 2026-06-18: **4. Manual sync adoption** passed via disposable temp project/package. `/construct sync` adopted one package into catalog, wrote `.pi/construct.json`, and left `.pi/settings.json` unchanged.
 - 2026-06-18: **5. Load/unload/toggle safety** passed via `./scripts/e2e-smoke.sh`. Added assertions that unload/toggle-off do not delete local package or extension source files.
