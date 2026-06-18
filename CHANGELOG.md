@@ -8,8 +8,8 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 
 ### Added
 - Added checkbox-style TUI pickers for `/construct load` and `/construct unload`: Space toggles multiple items, Enter saves, Esc cancels.
-- Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, off, and reload.
-- Added `/construct off` and `/construct on` as the simple project loadout toggle commands for Construct-managed packages.
+- Added a permanent end-to-end smoke test for Project A raw local Pi install, `/construct sync`, Project B load, reload, single unload, reload, toggle-off, toggle-on, and reload.
+- Added `/construct toggle` as the public project loadout switch for Construct-managed packages, with hidden `/construct off` and `/construct on` aliases for testing.
 - Added clearer `/construct sync` output showing the project-local package sources remembered from `.pi/settings.json`.
 
 ### Changed
@@ -18,7 +18,7 @@ This project is currently pre-1.0. Until releases are tagged, entries are groupe
 - `/construct load` now proceeds after selection/command without a second confirmation page, leaves reload timing to the user, and prints `/construct reload` / `/reload` instructions.
 - `/construct unload` now focuses on loaded Construct-managed project declarations instead of defaulting to unload-all.
 - `/construct unload <source-or-id>` still unloads a single managed package declaration.
-- `/construct wipe` was removed from the primary flow; use `/construct off` instead.
+- `/construct wipe` was removed from the primary flow; use `/construct toggle` instead.
 - `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.
 - Refactored the Construct extension into focused modules under `extensions/construct/`.
 

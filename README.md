@@ -34,12 +34,11 @@ Checked means already declared in this project. Unchecked means remembered by Co
 /construct load --dry-run <source-or-library-id>
 /construct unload                    # choose loaded Construct packages to turn off
 /construct unload <source-or-library-id> # turn off one managed package declaration
-/construct off                       # turn off all Construct-managed packages
-/construct on                        # rearm Construct-managed packages that are off
+/construct toggle                    # flip the project Construct loadout off/on
 /construct sync
 /construct sync on|off|status
 /construct status
-/construct reload
+/construct reload                    # ask Pi to refresh resources after changes
 ```
 
 Low-level library/power-user commands still exist for now:
@@ -108,10 +107,11 @@ MIT
 - `/construct load` shows remembered Construct sources that are not loaded here; Space toggles multiple items, Enter saves, Esc cancels. Direct `/construct load <source-or-id>` also works.
 - `/construct load` does not auto-sync local-only Pi packages. Run `/construct sync` to adopt local project package declarations into Construct.
 - `/construct unload` shows Construct-managed package declarations currently loaded in this project; Space toggles multiple items off, Enter saves, Esc cancels. `/construct unload <source-or-id>` disables one. It does not delete local source files or forget Construct library items.
-- `/construct off` turns off all Construct-managed packages in this project and ignores unsynced local-only Pi packages.
-- `/construct on` rearms Construct-managed packages that are off in this project.
-- `/construct wipe` was removed from the primary flow; use `/construct off` for the non-destructive toggle behavior.
-- Construct does not auto-reload after load/unload/sync. Run `/construct reload` or `/reload` when you want Pi to refresh resources.
+- `/construct toggle` flips the project's Construct-managed loadout off/on. Turning off removes only Construct-managed package declarations from `.pi/settings.json`, keeps `.pi/construct.json`, and ignores unsynced local-only Pi packages. Toggling on rearms remembered Construct-managed packages.
+- Hidden `/construct off` and `/construct on` aliases remain for testing, but the public flow is `/construct toggle`.
+- `/construct wipe` was removed from the primary flow.
+- `/construct reload` does not toggle anything. It just asks Pi to refresh resources after settings changed, like Pi's normal `/reload`.
+- Construct does not auto-reload after load/unload/sync/toggle. Run `/construct reload` or `/reload` when you want Pi to refresh resources.
 - Target project is `ctx.cwd`; MVP does not guess git root.
 - Existing `.pi/settings.json` is backed up before Construct/Pi package changes.
 - `/construct sync` adopts package sources from the current project's `.pi/settings.json` into the Construct library and arms them in `.pi/construct.json`. It never installs or removes package declarations.
@@ -126,7 +126,7 @@ MIT
    - `/construct load` and `/construct unload` now have save-based multi-toggle TUI flows.
    - `/construct` should become the all-up loadout view where checked means loaded here, unchecked means available, and warning/red means unsynced local-only.
    - Unsynced local-only items should be read-only until `/construct sync` adopts them.
-2. Clean up and prettify list output for status, sync, catalog/library, load, unload, on, and off.
+2. Clean up and prettify list output for status, sync, catalog/library, load, unload, and toggle.
 3. Add library `remember`/`forget` aliases if we want to retire user-facing `catalog` language.
 4. Define restore/profile behavior: `/construct on` is the simple current-project rearm; named profiles come later.
 5. Only after that, revisit profiles/groups and resource-level disable filters.

@@ -128,8 +128,8 @@ printf '== project B construct reload remembered package ==\n'
 quiet_construct_pi "$PROJECT_B" '/construct load construct-e2e-package'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
-printf '== project B construct off all ==\n'
-quiet_construct_pi "$PROJECT_B" '/construct off'
+printf '== project B construct toggle off ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct toggle'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
 python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'
@@ -147,8 +147,8 @@ assert any(item.get("requestedSource") == str(source) and item.get("enabled") is
 assert list((project / ".pi").glob("settings.json.bak.*")), "expected settings backup after off"
 PY
 
-printf '== project B construct on rearms loadout ==\n'
-quiet_construct_pi "$PROJECT_B" '/construct on'
+printf '== project B construct toggle on rearms loadout ==\n'
+quiet_construct_pi "$PROJECT_B" '/construct toggle'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
 python3 - "$PROJECT_B" "$PKG_DIR" <<'PY'

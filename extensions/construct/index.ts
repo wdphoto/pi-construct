@@ -5,9 +5,25 @@ import { handleEnable, handleDisable, handleRemove } from "./commands/manage.js"
 import { handleLoad, handleOn } from "./commands/load.js";
 import { handleSync, handleAutosync } from "./commands/sync.js";
 import { handleOff, handleUnload } from "./commands/unload.js";
+import { isObject, readJson } from "./json.js";
 import { maybeAutosyncOnShutdown, maybeOfferAutoload } from "./lifecycle.js";
+import { getPaths } from "./paths.js";
 import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
+
+async function hasEnabledConstructPackage(ctx: { cwd: string }): Promise<{ hasAny: boolean; hasEnabled: boolean }> {
+	const paths = await getPaths(ctx);
+	const construct = await readJson(paths.projectConstructPath);
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return { hasAny: false, hasEnabled: false };
+	let hasAny = false;
+	let hasEnabled = false;
+	for (const value of Object.values(construct.data.items)) {
+		if (!isObject(value) || value.kind !== "package") continue;
+		hasAny = true;
+		if (value.enabled !== false) hasEnabled = true;
+	}
+	return { hasAny, hasEnabled };
+}
 
 export default function constructExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
@@ -25,7 +41,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Load remembered Pi sources and unload project packages",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "on", "off", "sync", "catalog", "reload"];
+			const commands = ["status", "load", "unload", "toggle", "sync", "catalog", "reload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -52,6 +68,18 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			if (command === "toggle") {
+				const state = await hasEnabledConstructPackage(ctx);
+				if (!state.hasAny) {
+					showText(ctx, "No Construct-managed packages are remembered for this project yet. Use /construct sync or /construct load first.");
+					return;
+				}
+				if (state.hasEnabled) await handleOff(pi, ctx);
+				else await handleOn(pi, ctx);
+				return;
+			}
+
+			// Hidden testing/debug aliases. Public UX should use /construct toggle.
 			if (command === "off") {
 				await handleOff(pi, ctx);
 				return;
@@ -63,7 +91,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 			}
 
 			if (command === "wipe") {
-				showText(ctx, "/construct wipe was removed. Use /construct off to turn off Construct-managed packages; unsynced local Pi packages are ignored.");
+				showText(ctx, "/construct wipe was removed. Use /construct toggle to flip Construct-managed packages off/on. Unsynced local Pi packages are ignored.");
 				return;
 			}
 
@@ -111,8 +139,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct status",
 					"- /construct load <source-or-library-id>",
 					"- /construct unload [source-or-library-id]",
-					"- /construct off",
-					"- /construct on",
+					"- /construct toggle",
 					"- /construct sync",
 					"- /construct sync on|off|status",
 				].join("\n"),

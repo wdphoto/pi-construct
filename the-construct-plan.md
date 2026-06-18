@@ -1358,7 +1358,7 @@ Next refactor order when we come back:
    - [x] `/construct load` lists only loadable/unchecked remembered sources. User selects one or more with Space, hits Enter/Save, and Construct installs them with no second confirmation page.
    - [x] `/construct unload` lists only loaded Construct-managed declarations. User unchecks one or more with Space, hits Enter/Save, and Construct disables them with no second confirmation page.
    - [ ] `/construct` should become the all-up loadout view: checked means loaded here, unchecked means available, red/warning means unsynced local-only and read-only. Save reconciles selections to `.pi/settings.json`.
-   - [ ] Rename/remove the `wipe` surface in favor of `/construct off` and `/construct on`; off/on should only touch Construct-managed items and ignore unsynced local-only Pi packages.
+   - [x] Remove the public `wipe` surface in favor of `/construct toggle`; hidden `/construct off` and `/construct on` aliases remain for testing. Toggle only touches Construct-managed items and ignores unsynced local-only Pi packages.
    - Esc/cancel bails. Save does the deed. Success output should be a short notification with `/construct reload` / `/reload` guidance.
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
@@ -1368,7 +1368,7 @@ Next refactor order when we come back:
    - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.
 
 3. **Pretty listings**
-   - Clean up status, sync, catalog/library, load, unload, on, and off output.
+   - Clean up status, sync, catalog/library, load, unload, and toggle output.
    - Prefer concise sections, stable ordering, aligned labels where useful, and clear loaded/available/disabled language.
    - Keep verbose command stdout/stderr available only when useful for errors or diagnostics.
 
@@ -1381,10 +1381,10 @@ Next refactor order when we come back:
 
 5. **Restore/profile model**
    - Today, the project remembers actual loaded packages in `.pi/settings.json` and advisory Construct state in `.pi/construct.json`; there is no named profile command yet.
-   - After `/construct off`, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
-   - Add `/construct on` as the simple restore/rearm command before adding named profiles.
+   - After `/construct toggle` turns a loadout off, Construct metadata should remain so previously managed items can be loaded again from the picker or by id.
+   - `/construct toggle` is the simple current-project restore/rearm command before named profiles.
    - A profile should be a list of remembered source ids/sources plus any Pi package filters, not a new package format.
-   - Consider making `/construct wipe` save a `lastWipe`/`lastLoadout` snapshot before disabling everything, so restore is obvious.
+   - Consider making toggle-off save a `lastLoadout` snapshot before disabling everything, so restore is obvious even if metadata drifts.
    - Avoid resource-level filters unless we explicitly need partial package disable behavior.
 
 ## What might not work / missing pieces

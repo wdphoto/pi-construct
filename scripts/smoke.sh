@@ -68,8 +68,8 @@ catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 assert any(item.get("source") == source for item in catalog.get("items", [])), catalog
 PY
 
-printf '== construct off managed project packages ==\n'
-quiet_pi '/construct off'
+printf '== construct toggle managed project packages off ==\n'
+quiet_pi '/construct toggle'
 python3 - "$PROJECT_DIR" <<'PY'
 import json
 import pathlib
