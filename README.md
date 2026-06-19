@@ -111,7 +111,7 @@ After changing the loadout, reload Pi when you are ready:
 After it is published to npm:
 
 ```bash
-pi install npm:the-construct
+pi install npm:pi-construct
 ```
 
 For now, publishing is manual because npm may require 2FA:
@@ -124,6 +124,12 @@ Before publishing, run:
 
 ```bash
 npm run release:verify
+```
+
+Run the full disposable Pi smoke suite separately when you want deeper validation:
+
+```bash
+npm run smoke:all
 ```
 
 ## Development

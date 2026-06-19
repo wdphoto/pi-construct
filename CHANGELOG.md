@@ -6,6 +6,13 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.6 - 2026-06-19
+
+### Changed
+- Renamed the npm package from `the-construct` to `pi-construct`.
+- Made `npm run release:verify` publish-safe and lightweight: typecheck plus npm pack dry run only.
+- Added `npm run smoke:all` for the full disposable Pi smoke suite.
+
 ## 0.0.5 - 2026-06-19
 
 ### Changed

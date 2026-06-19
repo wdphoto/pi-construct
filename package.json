@@ -1,6 +1,6 @@
 {
-  "name": "the-construct",
-  "version": "0.0.5",
+  "name": "pi-construct",
+  "version": "0.0.6",
   "description": "A minimal Pi loadout menu for project-local packages.",
   "license": "MIT",
   "type": "module",
@@ -32,8 +32,9 @@
   "scripts": {
     "check": "tsc --noEmit",
     "pack:dry-run": "npm pack --dry-run",
-    "release:verify": "npm run check && npm run smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke && npm run pack:dry-run",
-    "prepublishOnly": "npm run check && npm run pack:dry-run",
+    "release:verify": "npm run check && npm run pack:dry-run",
+    "smoke:all": "npm run smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke",
+    "prepublishOnly": "npm run release:verify",
     "smoke": "./scripts/smoke.sh",
     "install-smoke": "./scripts/install-smoke.sh",
     "e2e-smoke": "./scripts/e2e-smoke.sh",
