@@ -1,8 +1,8 @@
 # The Construct
 
-The Construct is a Pi extension for grabbing the tools you need.
+The Construct is a global Pi extension for grabbing the tools you need on each project.
 
-It is deliberately not a package manager. Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember package sources and turn them on or off.
+Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember local package sources and turn them on or off for a project at the local level.
 
 ## How it works
 
@@ -20,9 +20,9 @@ It is deliberately not a package manager. Pi still owns package install/removal,
 /construct sync        # choose current project packages to remember
 /construct sync auto   # remember all new current project packages
 /construct sync off    # explain that automatic sync is off
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct profile list          # WIP, not public yet
+/construct profile save <name>   # WIP, not public yet
+/construct profile apply <name>  # WIP, not public yet
 /construct reload      # reload Pi resources
 ```
 
@@ -35,15 +35,19 @@ Project: /Users/you/project
 
 ON — Construct packages
 -----------------------
-[x] pi-web-access  https://github.com/nicobailon/pi-web-access
+[x] pi-web-access  npm:pi-web-access
+[x] pi-subagents   npm:pi-subagents
 
 OFF — Construct packages
 ------------------------
-[ ] pi-subagents  https://github.com/nicobailon/pi-subagents
+[ ] pi-lens         npm:pi-lens
+[ ] pi-chrome       npm:pi-chrome
 
 AVAILABLE — Construct library
 -----------------------------
-[ ] agent-skills  https://github.com/addyosmani/agent-skills
+[ ] pi-mcp-adapter       npm:pi-mcp-adapter
+[ ] pi-powerline-footer  npm:pi-powerline-footer
+[ ] pi-ask-user          npm:pi-ask-user
 
 LOCAL-ONLY — not in Construct
 -----------------------------
@@ -52,10 +56,12 @@ LOCAL-ONLY — not in Construct
 SKILL COMMANDS — runtime, read-only
 -----------------------------------
 [i] /review  github.com/mattpocock/skills
+[i] /wf      npm:@juicesharp/rpiv-pi
 
 COMMANDS — runtime, read-only
 -----------------------------
 [i] /construct  the-construct/extensions/construct/index.ts
+[i] /rewind     npm:@ayulab/pi-rewind
 
 Space toggles Construct packages in TUI. Local-only and runtime items are read-only.
 Run /construct sync to adopt local-only packages.
@@ -77,23 +83,13 @@ Ask Construct to remember that project package declaration:
 
 Use `/construct sync auto` only when you explicitly want to adopt every new package declaration in the current project.
 
-Optionally save the current Construct-managed loadout as a named profile:
-
-```text
-/construct profile save www
-```
-
 Later, in another project, run:
 
 ```text
 /construct
 ```
 
-The menu shows remembered packages and lets you turn them on or off for the current project. To turn on a saved group with fewer clicks:
-
-```text
-/construct profile apply www
-```
+The menu shows remembered packages and lets you turn them on or off for the current project.
 
 After changing the loadout, reload Pi when you are ready:
 
