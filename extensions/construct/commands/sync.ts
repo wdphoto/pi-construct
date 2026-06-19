@@ -171,7 +171,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 			return;
 		}
 		const adoptableSources = new Set(candidates.adoptable.map((candidate) => candidate.source));
-		selectedSources = selected.filter((source) => adoptableSources.has(source));
+		selectedSources = selected.selectedIds.filter((source) => adoptableSources.has(source));
 	} else {
 		showText(
 			ctx,

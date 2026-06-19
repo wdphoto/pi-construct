@@ -119,7 +119,7 @@ grep -Fq 'Unknown /construct subcommand: load' <<<"$LOAD_OUTPUT"
 UNLOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct unload construct-e2e-package' 2>&1)"
 grep -Fq 'Unknown /construct subcommand: unload' <<<"$UNLOAD_OUTPUT"
 
-printf '== reload command remains available ==\n'
+printf '== hidden reload helper remains available ==\n'
 quiet_construct_pi "$PROJECT_B" '/construct reload'
 
 printf 'e2e smoke ok\n'

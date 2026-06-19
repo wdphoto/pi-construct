@@ -5,8 +5,8 @@ Current work should keep Construct manual, explicit, and boring-safe. Do not add
 ## Current state — 2026-06-19 command-surface reset
 
 - `/construct` is the product. Keep the extra slash-command surface minimal and quiet.
-- Public support commands are `/construct status`, `/construct sync`, `/construct sync auto`, `/construct sync off`, `/construct profile list/save/apply`, and `/construct reload`.
-- Removed public load/unload/toggle/library/remember/forget/catalog/enable/disable/remove/on/off/wipe command paths.
+- Public support commands are `/construct status`, `/construct sync`, `/construct sync auto`, `/construct sync off`, and `/construct profile list/save/apply`.
+- Removed public load/unload/toggle/library/remember/forget/catalog/enable/disable/remove/on/off/reload/wipe command paths.
 - Package load/unload still exists internally for the `/construct` dashboard to apply menu diffs.
 - `/construct status` is read-only and does not create `.pi/construct.json`.
 - `/construct sync` is manual adoption only; `/construct sync auto` is the explicit adopt-all shortcut.
@@ -40,14 +40,15 @@ Current work should keep Construct manual, explicit, and boring-safe. Do not add
    - set the package name/version/release notes deliberately;
    - confirm what files ship in `files`;
    - document the publish/release flow once chosen.
-6. [ ] Make the one `/construct` menu excellent:
+6. [x] Make the one `/construct` menu cleaner:
    - fuzzy typing/filtering;
    - Space toggles;
-   - Enter saves;
-   - Esc cancels;
+   - Enter applies;
+   - Esc cancels/returns;
    - subtle hints only;
-   - minimal success/error summaries.
-7. [ ] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
+   - in-panel apply progress and summaries;
+   - Enter-to-reload after successful dashboard changes.
+7. [x] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
 8. [ ] Decide how local-only rows behave in the one-menu model:
    - read-only with a hint to run `/construct sync`;
    - or selectable adoption from the same menu.

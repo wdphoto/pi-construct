@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSet
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, progressStatus, setConstructStatus, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
 type DashboardSection = "Enabled" | "Available" | "Project-only";
@@ -128,7 +128,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warn
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${item.marker ?? (item.checked ? "[x]" : "[ ]")} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("Space toggles Construct packages. Enter saves. Esc cancels.", "Project-only rows are read-only; run /construct sync to adopt them.", "Runtime commands and tools are listed in /construct status.");
+	lines.push("Space toggles Construct packages. Enter applies. Esc cancels.", "Project-only rows are read-only; run /construct sync to adopt them.", "Runtime commands and tools are listed in /construct status.");
 	return lines.join("\n");
 }
 
@@ -149,53 +149,87 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		disabled: item.disabled,
 		marker: item.marker,
 	}));
-	const selectedIds = await pickCheckboxes(ctx, `Construct loadout — ${dashboardSummary(packages)}`, pickerItems);
-	if (!selectedIds) {
+	const pickerResult = await pickCheckboxes(ctx, `Construct loadout — ${dashboardSummary(packages)}`, pickerItems, {
+		confirmHint: "Enter applies",
+		onSubmit: async (ids, update) => {
+			const selected = new Set(ids);
+			const toLoad = packages.filter((item) => !item.disabled && !item.checked && selected.has(item.id));
+			const toUnload = packages.filter((item) => !item.disabled && item.checked && !selected.has(item.id));
+			if (toLoad.length === 0 && toUnload.length === 0) {
+				return { title: "No Construct package changes selected", lines: ["No files were changed."] };
+			}
+
+			type Step = { action: "Turn on" | "Turn off"; item: DashboardPackage; state: "pending" | "running" | "done" | "failed"; error?: string };
+			const steps: Step[] = [
+				...toLoad.map((item): Step => ({ action: "Turn on", item, state: "pending" })),
+				...toUnload.map((item): Step => ({ action: "Turn off", item, state: "pending" })),
+			];
+			const loaded: DashboardPackage[] = [];
+			const unloaded: DashboardPackage[] = [];
+			const failures: string[] = [];
+
+			function progressLines(): string[] {
+				const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
+				return [
+					`${complete}/${steps.length} changes complete`,
+					"",
+					...steps.map((step) => {
+						const marker = step.state === "done" ? "✓" : step.state === "failed" ? "!" : step.state === "running" ? "→" : " ";
+						const suffix = step.error ? ` — ${step.error}` : "";
+						return `${marker} ${step.action} ${step.item.label}  ${step.item.displaySource}${suffix}`;
+					}),
+				];
+			}
+
+			update("Applying Construct loadout", progressLines());
+			for (const step of steps) {
+				step.state = "running";
+				update("Applying Construct loadout", progressLines());
+				if (step.action === "Turn on") {
+					const result = await loadPackageIntoProject(pi, paths, { source: step.item.source, item: { id: step.item.id, kind: "package", source: step.item.source } });
+					if (result.ok) {
+						loaded.push(step.item);
+						step.state = "done";
+					} else {
+						step.state = "failed";
+						step.error = result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
+						failures.push(`${step.item.id}: ${step.error}`);
+					}
+				} else {
+					const result = await unloadPackageFromProject(pi, paths, { source: step.item.source, id: step.item.id });
+					if (result.ok) {
+						unloaded.push(step.item);
+						step.state = "done";
+					} else {
+						step.state = "failed";
+						step.error = result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
+						failures.push(`${step.item.id}: ${step.error}`);
+					}
+				}
+				update("Applying Construct loadout", progressLines());
+			}
+
+			const appliedChanges = loaded.length + unloaded.length;
+			return {
+				title: failures.length > 0 ? "Construct loadout applied with errors" : "Construct loadout changes applied",
+				confirmHint: appliedChanges > 0 ? "Press Enter to reload Pi · Esc returns to session" : "Press Enter/Esc to return to session",
+				confirmAction: appliedChanges > 0 ? "reload" : undefined,
+				lines: [
+					toLoad.length > 0 ? `Turned on: ${loaded.length}/${toLoad.length}` : undefined,
+					...loaded.map((item) => `+ ${item.label}: ${item.source}`),
+					toUnload.length > 0 ? `Turned off: ${unloaded.length}/${toUnload.length}` : undefined,
+					...unloaded.map((item) => `- ${item.label}: ${item.source}`),
+					failures.length > 0 ? `Failures: ${failures.length}` : undefined,
+					...failures.map((failure) => `! ${failure}`),
+				].filter((line): line is string => line !== undefined),
+			};
+		},
+	});
+	if (!pickerResult) {
 		showText(ctx, "Construct dashboard closed. No files were changed.");
 		return;
 	}
-
-	const selected = new Set(selectedIds);
-	const toLoad = packages.filter((item) => !item.disabled && !item.checked && selected.has(item.id));
-	const toUnload = packages.filter((item) => !item.disabled && item.checked && !selected.has(item.id));
-	if (toLoad.length === 0 && toUnload.length === 0) {
-		showText(ctx, "No Construct package changes selected. No files were changed.");
-		return;
+	if (pickerResult.closeAction === "confirm" && pickerResult.confirmAction === "reload") {
+		await ctx.reload();
 	}
-
-	const loaded: DashboardPackage[] = [];
-	const unloaded: DashboardPackage[] = [];
-	const failures: string[] = [];
-	const totalChanges = toLoad.length + toUnload.length;
-	let progress = 0;
-	try {
-		for (const item of toLoad) {
-			setConstructStatus(ctx, progressStatus("loading", ++progress, totalChanges, item.label));
-			const result = await loadPackageIntoProject(pi, paths, { source: item.source, item: { id: item.id, kind: "package", source: item.source } });
-			if (result.ok) loaded.push(item);
-			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
-		}
-		for (const item of toUnload) {
-			setConstructStatus(ctx, progressStatus("unloading", ++progress, totalChanges, item.label));
-			const result = await unloadPackageFromProject(pi, paths, { source: item.source, id: item.id });
-			if (result.ok) unloaded.push(item);
-			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
-		}
-	} finally {
-		setConstructStatus(ctx, undefined);
-	}
-	await showSummary(
-		ctx,
-		[
-			"Construct loadout changes applied.",
-			toLoad.length > 0 ? `Turned on: ${loaded.length}/${toLoad.length}` : undefined,
-			...loaded.map((item) => `+ ${item.label}: ${item.source}`),
-			toUnload.length > 0 ? `Turned off: ${unloaded.length}/${toUnload.length}` : undefined,
-			...unloaded.map((item) => `- ${item.label}: ${item.source}`),
-			...failures.map((failure) => `! ${failure}`),
-			"Reload Pi resources with /construct reload or /reload when ready.",
-		]
-			.filter((line): line is string => line !== undefined)
-			.join("\n"),
-	);
 }

@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `sync`, `profile`, and `reload`.
+- Support commands are `status`, `sync`, and `profile`.
 - No lifecycle/startup behavior.
 - No separate load/unload/toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -24,7 +24,6 @@ Protect the manual product model:
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>
-/construct reload
 ```
 
 ## New-project behavior
@@ -61,12 +60,13 @@ Check in real TUI usage:
 
 - fuzzy search works;
 - Space toggles package rows;
-- Enter saves;
+- Enter applies;
 - Esc cancels;
 - package rows stay primary;
-- local-only/runtime rows are clear and do not flood the view;
-- summaries are minimal and actionable;
-- reload guidance is present after changes.
+- project-only rows are clear, read-only, and do not flood the view;
+- runtime inventory stays out of the dashboard and remains visible in status;
+- summaries are readable and actionable;
+- after changes, Enter reloads Pi and Esc returns to the session.
 
 ## Design review prompts
 

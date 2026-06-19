@@ -86,7 +86,8 @@ Support commands:
 - `/construct profile list`
 - `/construct profile save <name>`
 - `/construct profile apply <name>`
-- `/construct reload`
+
+Use Pi's normal `/reload` after loadout changes. Do not advertise `/construct reload`; it may exist only as a hidden compatibility helper.
 
 Do not re-add load/unload/toggle/library/remember/forget/catalog compatibility commands without an explicit product decision. The current bias is one quiet menu plus minimal support commands.
 

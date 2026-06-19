@@ -6,7 +6,7 @@ This file is now the index for the Construct plan. The detailed notes were split
 
 - [Product model](docs/product-model.md) — current workflow, hard boundaries, manual sync, no startup behavior.
 - [Safety and maintenance](docs/safety-and-maintenance.md) — no auto-install, trust boundaries, backups, known risks.
-- [Commands and UX](docs/commands-and-ux.md) — `/construct`, sync, profile, and reload flows.
+- [Commands and UX](docs/commands-and-ux.md) — `/construct`, sync, profile, and reload guidance.
 - [Architecture and data model](docs/architecture.md) — layers, user/project state, catalog, settings.
 - [Idiomatic Pi model](docs/pi-model.md) — Pi primitives Construct should build on instead of replacing.
 - [Roadmap and future work](docs/roadmap.md) — phase plan, profiles/export ideas, open questions.

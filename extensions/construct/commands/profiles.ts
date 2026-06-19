@@ -146,7 +146,7 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 			`Turned on: ${loaded.length}/${sources.length}`,
 			...loaded.map(({ source, item }) => `+ ${item?.id ?? deriveId(source)}: ${source}`),
 			...failures.map((failure) => `! ${failure}`),
-			"Reload Pi resources with /construct reload or /reload when ready.",
+			"Reload Pi resources with /reload when ready.",
 		].join("\n"),
 	);
 }

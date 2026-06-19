@@ -4,7 +4,7 @@
 
 The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources like extensions and skills.
 
-Run `/construct`, select your loadout with the spacebar then hit Enter to save and `/reload` Pi.
+Run `/construct`, select your loadout with the spacebar, then hit Enter to apply changes. If changes were made, the final panel lets you press Enter to reload Pi or Esc to return to the session.
 
 ```text
 Construct loadout
@@ -27,8 +27,9 @@ Project-only
 ------------
 [!] local-tooling   /Users/you/dev/local-tooling
 
-Space toggles Construct packages. Enter saves. Esc cancels.
+Space toggles Construct packages. Enter applies. Esc cancels.
 Project-only rows are read-only; run /construct sync to adopt them.
+After changes: Enter reloads Pi, Esc returns to the session.
 Runtime commands and tools are listed in /construct status.
 ```
 
@@ -50,11 +51,7 @@ Use `/construct sync auto` only when you explicitly want to adopt every new pack
 
 In another project, run `/construct`. The menu shows remembered packages and lets you toggle them on or off for that project.
 
-After changing the loadout, reload Pi when you are ready:
-
-```text
-/reload
-```
+After applying loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when you are ready.
 
 ## How it works
 
@@ -70,10 +67,9 @@ After changing the loadout, reload Pi when you are ready:
 /construct sync        # choose current project packages to remember
 /construct sync auto   # remember all new current project packages
 /construct sync off    # explain that automatic sync is off
-/construct profile list          # WIP, not public yet
-/construct profile save <name>   # WIP, not public yet
-/construct profile apply <name>  # WIP, not public yet
-/construct reload      # reload Pi resources
+/construct profile list          # list saved package groups
+/construct profile save <name>   # save active Construct-managed packages
+/construct profile apply <name>  # turn on a saved package group
 ```
 
 ## Install

@@ -96,6 +96,24 @@ export interface CheckboxPickerItem {
 	marker?: string;
 }
 
+export interface CheckboxPickerApplyResult {
+	title: string;
+	lines: string[];
+	confirmHint?: string;
+	confirmAction?: "reload";
+}
+
+export interface CheckboxPickerResult {
+	selectedIds: string[];
+	closeAction?: "confirm" | "cancel";
+	confirmAction?: "reload";
+}
+
+export interface CheckboxPickerOptions {
+	confirmHint?: string;
+	onSubmit?: (selectedIds: string[], update: (title: string, lines: string[]) => void) => Promise<CheckboxPickerApplyResult>;
+}
+
 function fuzzyMatches(text: string, query: string): boolean {
 	const normalizedText = text.toLowerCase();
 	const normalizedQuery = query.trim().toLowerCase();
@@ -110,13 +128,29 @@ function fuzzyMatches(text: string, query: string): boolean {
 	return true;
 }
 
-export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string, items: CheckboxPickerItem[]): Promise<string[] | undefined> {
+export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string, items: CheckboxPickerItem[], options: CheckboxPickerOptions = {}): Promise<CheckboxPickerResult | undefined> {
 	if (ctx.mode !== "tui") return undefined;
 
-	return ctx.ui.custom<string[] | undefined>((tui, theme, keybindings, done) => {
+	return ctx.ui.custom<CheckboxPickerResult | undefined>((tui, theme, keybindings, done) => {
 		const checked = new Set(items.filter((item) => item.checked).map((item) => item.id));
 		let query = "";
 		let selected = 0;
+		let phase: "pick" | "applying" | "done" = "pick";
+		let submittedIds: string[] | undefined;
+		let applyTitle = "Applying changes…";
+		let applyLines: string[] = ["Preparing changes…"];
+		let applyConfirmHint = "Press Enter/Esc to return to session";
+		let applyConfirmAction: "reload" | undefined;
+		let applyScroll = 0;
+		let applyStartedAt = Date.now();
+		let spinnerTick = 0;
+		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+		const animationTimer = setInterval(() => {
+			if (phase !== "applying") return;
+			spinnerTick += 1;
+			invalidate();
+			tui.requestRender();
+		}, 120);
 		let cachedWidth: number | undefined;
 		let cachedLines: string[] | undefined;
 
@@ -137,7 +171,37 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return filteredItems()[selected];
 		}
 
+		function setApplyState(nextTitle: string, nextLines: string[]): void {
+			applyTitle = nextTitle;
+			applyLines = nextLines;
+			applyScroll = 0;
+			invalidate();
+			tui.requestRender();
+		}
+
+		function renderApply(width: number): string[] {
+			const maxVisible = 16;
+			const maxScroll = Math.max(0, applyLines.length - maxVisible);
+			applyScroll = Math.min(applyScroll, maxScroll);
+			const visible = applyLines.slice(applyScroll, applyScroll + maxVisible);
+			const elapsedSeconds = Math.max(0, Math.floor((Date.now() - applyStartedAt) / 1000));
+			const heading = phase === "applying" ? `${spinnerFrames[spinnerTick % spinnerFrames.length]} ${applyTitle} · ${elapsedSeconds}s` : applyTitle;
+			const lines = [theme.fg("accent", theme.bold(heading)), ""];
+			for (const line of visible) {
+				if (line.startsWith("!")) lines.push(theme.fg("warning", line));
+				else if (line.startsWith("+")) lines.push(theme.fg("success", line));
+				else if (line.startsWith("-")) lines.push(theme.fg("muted", line));
+				else if (line.startsWith("Reload")) lines.push(theme.fg("warning", line));
+				else if (line.trimStart().startsWith("/")) lines.push(theme.fg("accent", theme.bold(line)));
+				else lines.push(line);
+			}
+			if (applyLines.length > maxVisible) lines.push("", theme.fg("muted", `  (${applyScroll + 1}-${Math.min(applyScroll + maxVisible, applyLines.length)}/${applyLines.length})`));
+			lines.push("", phase === "applying" ? theme.fg("muted", "  Applying package changes…") : theme.fg("accent", `  ${applyConfirmHint}`));
+			return lines.map((line) => truncateToWidth(line, width));
+		}
+
 		function render(width: number): string[] {
+			if (phase !== "pick") return renderApply(width);
 			if (cachedLines && cachedWidth === width) return cachedLines;
 			const visibleItems = filteredItems();
 			if (selected >= visibleItems.length) selected = Math.max(0, visibleItems.length - 1);
@@ -181,13 +245,40 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (start > 0 || end < visibleItems.length || query) lines.push(theme.fg("muted", `  (${selected + 1}/${visibleItems.length}${query ? ` of ${items.length}` : ""})`));
 			const item = selectedItem();
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
-			lines.push("", theme.fg("muted", "  Type to search/filter · Space toggles · Enter saves · Esc cancels"));
+			lines.push("", theme.fg("muted", `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`));
 			cachedWidth = width;
 			cachedLines = lines.map((line) => truncateToWidth(line, width));
 			return cachedLines;
 		}
 
+		function close(result: CheckboxPickerResult | undefined): void {
+			clearInterval(animationTimer);
+			done(result);
+		}
+
 		function handleInput(data: string): void {
+			if (phase !== "pick") {
+				if (keybindings.matches(data, "tui.select.up")) {
+					applyScroll = Math.max(0, applyScroll - 1);
+					invalidate();
+					tui.requestRender();
+					return;
+				}
+				if (keybindings.matches(data, "tui.select.down")) {
+					applyScroll = Math.min(Math.max(0, applyLines.length - 16), applyScroll + 1);
+					invalidate();
+					tui.requestRender();
+					return;
+				}
+				if (phase === "done" && keybindings.matches(data, "tui.select.confirm")) {
+					close({ selectedIds: submittedIds ?? [], closeAction: "confirm", confirmAction: applyConfirmAction });
+				}
+				if (phase === "done" && keybindings.matches(data, "tui.select.cancel")) {
+					close({ selectedIds: submittedIds ?? [], closeAction: "cancel", confirmAction: applyConfirmAction });
+				}
+				return;
+			}
+
 			if (keybindings.matches(data, "tui.select.up")) {
 				const visibleCount = filteredItems().length;
 				if (visibleCount > 0) selected = selected === 0 ? visibleCount - 1 : selected - 1;
@@ -222,11 +313,32 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.confirm")) {
-				done([...checked]);
+				submittedIds = [...checked];
+				if (!options.onSubmit) {
+					close({ selectedIds: submittedIds });
+					return;
+				}
+				phase = "applying";
+				applyStartedAt = Date.now();
+				spinnerTick = 0;
+				setApplyState("Applying Construct changes", ["Preparing changes…"]);
+				void (async () => {
+					try {
+						const result = await options.onSubmit!(submittedIds ?? [], setApplyState);
+						phase = "done";
+						applyConfirmHint = result.confirmHint ?? "Press Enter/Esc to return to session";
+						applyConfirmAction = result.confirmAction;
+						setApplyState(result.title, result.lines);
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						phase = "done";
+						setApplyState("Construct changes failed", [`! ${message}`]);
+					}
+				})();
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.cancel")) {
-				done(undefined);
+				close(undefined);
 				return;
 			}
 			if (data.length === 1 && data >= " " && data !== "\u007f") {
@@ -237,6 +349,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 		}
 
-		return { render, handleInput, invalidate };
+		return { render, handleInput, invalidate, dispose: () => clearInterval(animationTimer) };
 	});
 }

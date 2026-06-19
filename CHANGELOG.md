@@ -6,13 +6,21 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.7 - 2026-06-19
+
 ### Added
 - Added regression coverage for duplicate Construct sync ids and `requestedSource` local path normalization.
+- Added in-panel dashboard apply progress with a spinner, elapsed time, per-package progress, and verbose results.
+- Added Enter-to-reload behavior after successful dashboard loadout changes; Esc returns to the session without reloading.
 
 ### Changed
+- Streamlined `/construct` into a package-first dashboard with `Enabled`, `Available`, and `Project-only` sections.
+- Removed runtime skill/command inventory from the default dashboard; runtime diagnostics remain available in `/construct status`.
 - Refreshed README install/uninstall examples for npm, git, and local filepath installs.
 - Reframed active docs from early-stage language to the current product model.
-- Successful dashboard, sync, and profile action summaries now render in a focused TUI panel instead of a footer-style notification.
+- Successful dashboard apply now stays in one focused TUI flow instead of using footer status plus a separate summary panel.
+- Successful sync and profile action summaries now render in a focused TUI panel instead of a footer-style notification.
+- Hid `/construct reload` from public command help and docs; use Pi's normal reload path instead.
 
 ### Fixed
 - Fixed `/construct sync` project metadata updates so multiple selected package sources with the same derived id do not overwrite each other.

@@ -13,10 +13,9 @@ Construct is still centered on one primary command: `/construct`.
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>
-/construct reload      # reload Pi resources
 ```
 
-No separate public load/unload/toggle/library/catalog command family for now.
+No separate public load/unload/toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc returns to the session without reloading.
 
 ## `/construct sync`
 
@@ -65,7 +64,9 @@ Controls:
 
 - type to search/filter;
 - Space toggles enabled package rows;
-- Enter saves selected package diffs;
-- Esc cancels without writing.
+- Enter applies selected package diffs;
+- Esc cancels without writing before apply;
+- after apply, Enter reloads Pi when at least one change succeeded;
+- after apply, Esc returns to the session without reloading.
 
-Keep hints subtle and summaries quiet. Success output should be short and end with reload guidance.
+Keep hints subtle and summaries quiet. Success output should be verbose enough to show changed packages, then end with the Enter-to-reload / Esc-to-return choice.

@@ -6,13 +6,13 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 
 1. **Command layer**
    - Registers `/construct`.
-   - Supports only `status`, `sync`, `profile`, and `reload` subcommands.
+   - Supports public `status`, `sync`, and `profile` subcommands.
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
-   - Merges Construct library entries, current project package declarations, Construct metadata, and runtime inventory.
+   - Merges Construct library entries, current project package declarations, and Construct metadata.
    - Applies package on/off diffs through internal package operations.
-   - Keeps local-only and runtime rows clearly labeled.
+   - Keeps project-only rows clearly labeled and read-only.
 
 3. **Package operation layer**
    - Turns sources on with Pi's native project-local install path:

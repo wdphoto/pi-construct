@@ -24,7 +24,7 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
    ```text
    /construct profile apply www
    ```
-6. Run `/construct reload` or Pi's `/reload` when ready.
+6. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to return and run `/reload` later.
 
 ## Hard rules
 
@@ -49,7 +49,6 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>
-/construct reload
 ```
 
 Separate load/unload/toggle/library/catalog command families are intentionally out of the active product surface.
