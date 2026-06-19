@@ -4,7 +4,7 @@
 
 The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources.
 
-Load in with the `/construct` command, select your loadout with the `spacebar`, and hit `Enter` to apply. `Enter` again will reload Pi or `Esc` to return to the session without the reload.
+Use the `/construct` command, select your loadout with the `spacebar`, and hit `Enter` to apply.
 
 ```text
 Construct Loadout
@@ -47,8 +47,6 @@ Sync that package declaration to Construct:
 /construct sync
 ```
 
-Use `/construct sync auto` only when you explicitly want to adopt every new package declaration in the current project.
-
 In another project, run `/construct`. The menu shows remembered packages and lets you toggle them on or off for that project.
 
 After applying loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when you are ready.
@@ -65,7 +63,7 @@ After applying loadout changes, press Enter on the final Construct panel to relo
 /construct             # open the loadout menu
 /construct status      # read-only diagnostics
 /construct sync        # choose current project packages to remember
-/construct sync auto   # remember all new current project packages
+/construct sync auto   # remember all new project-level resources on exit
 /construct sync off    # explain that automatic sync is off
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
