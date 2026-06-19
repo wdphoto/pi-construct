@@ -10,7 +10,10 @@ Current work should keep the MVP manual, explicit, and boring-safe. Do not add l
   - `/construct unload`
   - multi-item `/construct sync`
   - Verify fuzzy typing/filtering, Space toggles, Enter saves, Esc cancels, and readable section headers.
-- [ ] Polish command output for status, sync, library, load, unload, toggle, and dashboard.
+- [ ] Make `/construct` command output prettier and easier to scan:
+  - status, sync, library, load, unload, toggle, and dashboard;
+  - clearer headings, spacing, success/error states, and next-step hints;
+  - default completion notification sound should be a dinner bell, if Pi/terminal notification APIs support it.
 - [ ] Sweep docs and command output for stale language:
   - prefer `library`, `remember`, `forget`, `toggle`, `loadout`, `Construct-managed`, `local-only`, `adopted`;
   - keep `catalog` only for `catalog.json` internals and compatibility notes;

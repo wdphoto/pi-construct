@@ -1,15 +1,25 @@
 # The Construct
 
-The Construct is a loadout manager for [Pi](https://pi.dev). Sync the local extensions and skills to the Construct and install them in any future Project. 
+The Construct is a rapid loadout manager for [Pi](https://pi.dev). 
 
-Construct does **NOT** replace Pi packages or manage package internals. I'm just trying to get things from A to B that arent global and can be grouped in a construct.profile type thing (down the road).
+Sync local extensions and skills to the Construct and install them in any future Project. It stores a replayable Pi package source, like:
 
-## Basic flow
+ ```text
+   npm:@scope/pi-tools
+   https://github.com/user/pi-package
+   /Users/me/code/local-pi-package
+ ```
+ 
+This does **NOT** replace Pi packages or manage package internals. 
 
-In one project, install a Pi package normally:
+I'm just trying to get things from point A to B, C and D that arent global and can be grouped in a construct.profile type thing (down the road).
+
+## Basics
+
+While in a project, install your local Pi package normally:
 
 ```bash
-pi install <source> -l
+pi install -l <source>
 ```
 
 Then adopt that project package into your Construct library:
@@ -24,11 +34,7 @@ In another project, open the loadout picker:
 /construct
 ```
 
-Check the packages you want, save, then reload Pi resources when ready:
-
-```text
-/construct reload
-```
+Check the packages you want, save, then `/reload`. 
 
 ## Example `/construct` output
 
