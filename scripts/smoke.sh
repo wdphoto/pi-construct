@@ -55,7 +55,7 @@ quiet_pi() {
 printf '== new-project dashboard/status ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
-[[ "$DASHBOARD_OUTPUT" == *"AVAILABLE — Construct library"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"Available"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing:"* ]]
 python3 - "$PROJECT_DIR" <<'PY'
@@ -96,7 +96,7 @@ PY
 
 printf '== dashboard sees managed package ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
-[[ "$DASHBOARD_OUTPUT" == *"ON — Construct packages"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"Enabled"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
 
 printf '== automatic sync disabled ==\n'

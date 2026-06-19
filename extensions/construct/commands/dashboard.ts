@@ -8,14 +8,39 @@ import { getPackages } from "../project-settings.js";
 import { pickCheckboxes, progressStatus, setConstructStatus, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
+type DashboardSection = "Enabled" | "Available" | "Project-only";
+
 interface DashboardPackage {
 	id: string;
 	label: string;
 	source: string;
-	section: "ON — Construct packages" | "OFF — Construct packages" | "AVAILABLE — Construct library" | "LOCAL-ONLY — not in Construct";
+	displaySource: string;
+	section: DashboardSection;
 	checked: boolean;
 	disabled?: boolean;
 	marker?: string;
+	description?: string;
+}
+
+const dashboardSections: DashboardSection[] = ["Enabled", "Available", "Project-only"];
+
+function sectionRank(section: DashboardSection): number {
+	return dashboardSections.indexOf(section);
+}
+
+function compactSource(source: string): string {
+	const trimmed = source.trim().replace(/\/+$/, "");
+	const githubUrl = trimmed.match(/^https?:\/\/github\.com\/([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (githubUrl) return `github:${githubUrl[1]}`;
+	const gitGithub = trimmed.match(/^git:(?:github\.com[:/])?([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (gitGithub) return `github:${gitGithub[1]}`;
+	const sshGithub = trimmed.match(/^git@github\.com:([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (sshGithub) return `github:${sshGithub[1]}`;
+	return source;
+}
+
+function sortDashboardPackages(packages: DashboardPackage[]): DashboardPackage[] {
+	return packages.sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.label.localeCompare(b.label) || a.source.localeCompare(b.source));
 }
 
 async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
@@ -50,7 +75,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: item.id,
 			label: item.id,
 			source: item.source,
-			section: active ? "ON — Construct packages" : "OFF — Construct packages",
+			displaySource: compactSource(item.source),
+			section: active ? "Enabled" : "Available",
 			checked: active,
 		});
 	}
@@ -61,7 +87,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: item.id,
 			label: item.id,
 			source: item.source,
-			section: "AVAILABLE — Construct library",
+			displaySource: compactSource(item.source),
+			section: "Available",
 			checked: false,
 		});
 	}
@@ -73,83 +100,56 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: `local:${normalized}`,
 			label: deriveId(normalized),
 			source: normalized,
-			section: "LOCAL-ONLY — not in Construct",
+			displaySource: compactSource(normalized),
+			section: "Project-only",
 			checked: true,
 			disabled: true,
 			marker: "[!]",
+			description: "Active in this project, but not managed by Construct yet. Run /construct sync to adopt it.",
 		});
 	}
 
+	sortDashboardPackages(packages);
 	return { paths, packages, warnings };
 }
 
-function runtimeItems(pi: ExtensionAPI): CheckboxPickerItem[] {
-	const commands = pi.getCommands();
-	const skillCommands = commands
-		.filter((command) => command.source === "skill")
-		.sort((a, b) => a.name.localeCompare(b.name))
-		.map((command): CheckboxPickerItem => ({
-			id: `skill-command:${command.name}`,
-			label: `/${command.name}`,
-			value: command.sourceInfo.source === "cli" ? command.sourceInfo.path : command.sourceInfo.source,
-			section: "SKILL COMMANDS — runtime, read-only",
-			checked: true,
-			disabled: true,
-			marker: "[i]",
-		}));
-	const otherCommands = commands
-		.filter((command) => command.source !== "skill")
-		.sort((a, b) => a.name.localeCompare(b.name))
-		.slice(0, 12)
-		.map((command): CheckboxPickerItem => ({
-			id: `command:${command.name}`,
-			label: `/${command.name}`,
-			value: command.sourceInfo.source === "cli" ? command.sourceInfo.path : command.sourceInfo.source,
-			section: "COMMANDS — runtime, read-only",
-			checked: true,
-			disabled: true,
-			marker: "[i]",
-		}));
-	return [...skillCommands, ...otherCommands];
+function dashboardSummary(packages: DashboardPackage[]): string {
+	const enabled = packages.filter((item) => item.section === "Enabled").length;
+	const available = packages.filter((item) => item.section === "Available").length;
+	const projectOnly = packages.filter((item) => item.section === "Project-only").length;
+	return `${enabled} enabled · ${available} available · ${projectOnly} project-only`;
 }
 
-function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], runtime: CheckboxPickerItem[], warnings: string[]): string {
-	const lines: string[] = ["Construct loadout", "=================", `Project: ${paths.cwd}`, ""];
-	for (const section of ["ON — Construct packages", "OFF — Construct packages", "AVAILABLE — Construct library", "LOCAL-ONLY — not in Construct"] as const) {
+function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
+	const lines: string[] = ["Construct loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		lines.push(section, "-".repeat(section.length));
-		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${item.marker ?? (item.checked ? "[x]" : "[ ]")} ${item.label}  ${item.source}`) : ["- none"]), "");
+		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${item.marker ?? (item.checked ? "[x]" : "[ ]")} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
 	}
-	const skillItems = runtime.filter((item) => item.section?.startsWith("SKILL"));
-	const commandItems = runtime.filter((item) => item.section?.startsWith("COMMAND"));
-	lines.push("SKILL COMMANDS — runtime, read-only", "-----------------------------------", ...(skillItems.length > 0 ? skillItems.map((item) => `${item.marker} ${item.label}  ${item.value}`) : ["- none"]), "");
-	lines.push("COMMANDS — runtime, read-only", "-----------------------------", ...(commandItems.length > 0 ? commandItems.map((item) => `${item.marker} ${item.label}  ${item.value}`) : ["- none"]), "");
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("Space toggles Construct packages in TUI. Local-only and runtime items are read-only.", "Run /construct sync to adopt local-only packages.");
+	lines.push("Space toggles Construct packages. Enter saves. Esc cancels.", "Project-only rows are read-only; run /construct sync to adopt them.", "Runtime commands and tools are listed in /construct status.");
 	return lines.join("\n");
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings } = await buildDashboardPackages(ctx);
-	const runtime = runtimeItems(pi);
 	if (ctx.mode !== "tui") {
-		showText(ctx, dashboardText(paths, packages, runtime, warnings));
+		showText(ctx, dashboardText(paths, packages, warnings));
 		return;
 	}
 
-	const pickerItems: CheckboxPickerItem[] = [
-		...packages.map((item) => ({
-			id: item.id,
-			label: item.label,
-			value: item.source,
-			section: item.section,
-			checked: item.checked,
-			disabled: item.disabled,
-			marker: item.marker,
-		})),
-		...runtime,
-	];
-	const selectedIds = await pickCheckboxes(ctx, "Construct loadout — packages, skills, commands", pickerItems);
+	const pickerItems: CheckboxPickerItem[] = packages.map((item) => ({
+		id: item.id,
+		label: item.label,
+		value: item.displaySource,
+		description: item.description,
+		section: item.section,
+		checked: item.checked,
+		disabled: item.disabled,
+		marker: item.marker,
+	}));
+	const selectedIds = await pickCheckboxes(ctx, `Construct loadout — ${dashboardSummary(packages)}`, pickerItems);
 	if (!selectedIds) {
 		showText(ctx, "Construct dashboard closed. No files were changed.");
 		return;

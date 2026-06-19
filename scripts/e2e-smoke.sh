@@ -85,7 +85,7 @@ PY
 
 printf '== project B dashboard shows remembered package as available ==\n'
 DASHBOARD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct' 2>&1)"
-grep -Fq 'AVAILABLE — Construct library' <<<"$DASHBOARD_OUTPUT"
+grep -Fq 'Available' <<<"$DASHBOARD_OUTPUT"
 grep -Fq 'construct-e2e-package' <<<"$DASHBOARD_OUTPUT"
 test ! -e "$PROJECT_B/.pi/construct.json"
 

@@ -10,39 +10,26 @@ Run `/construct`, select your loadout with the spacebar then hit Enter to save a
 Construct loadout
 =================
 Project: /Users/you/project
+2 enabled · 3 available · 1 project-only
 
-ON — Construct packages
------------------------
+Enabled
+-------
 [x] pi-web-access  npm:pi-web-access
 [x] pi-subagents   npm:pi-subagents
 
-OFF — Construct packages
-------------------------
+Available
+---------
 [ ] pi-lens         npm:pi-lens
 [ ] pi-chrome       npm:pi-chrome
+[ ] pi-ask-user     npm:pi-ask-user
 
-AVAILABLE — Construct library
------------------------------
-[ ] pi-mcp-adapter       npm:pi-mcp-adapter
-[ ] pi-powerline-footer  npm:pi-powerline-footer
-[ ] pi-ask-user          npm:pi-ask-user
+Project-only
+------------
+[!] local-tooling   /Users/you/dev/local-tooling
 
-LOCAL-ONLY — not in Construct
------------------------------
-[!] local-tooling  /Users/you/dev/local-tooling
-
-SKILL COMMANDS — runtime, read-only
------------------------------------
-[i] /review  github.com/mattpocock/skills
-[i] /wf      npm:@juicesharp/rpiv-pi
-
-COMMANDS — runtime, read-only
------------------------------
-[i] /construct  pi-construct/extensions/construct/index.ts
-[i] /rewind     npm:@ayulab/pi-rewind
-
-Space toggles Construct packages in TUI. Local-only and runtime items are read-only.
-Run /construct sync to adopt local-only packages.
+Space toggles Construct packages. Enter saves. Esc cancels.
+Project-only rows are read-only; run /construct sync to adopt them.
+Runtime commands and tools are listed in /construct status.
 ```
 
 ## Basic workflow

@@ -55,11 +55,11 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 
 Sections:
 
-- `ON — Construct packages`
-- `OFF — Construct packages`
-- `AVAILABLE — Construct library`
-- `LOCAL-ONLY — not in Construct`
-- runtime skills/commands as read-only inventory
+- `Enabled` — Construct-managed packages active in this project.
+- `Available` — remembered packages that can be enabled here.
+- `Project-only` — active project package declarations that Construct has not adopted yet; read-only in the dashboard.
+
+Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and diagnostics.
 
 Controls:
 
