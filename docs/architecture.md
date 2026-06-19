@@ -56,6 +56,14 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
       "source": "npm:@org/pi-browser-tools",
       "description": "Browser automation extension and skills",
       "groups": ["website"]
+    },
+    {
+      "id": "agent-tools",
+      "name": "Agent tools",
+      "kind": "package",
+      "source": "git:github.com/org/pi-agent-tools",
+      "description": "Project helpers from a git package",
+      "groups": ["website"]
     }
   ],
   "profiles": [
@@ -63,8 +71,8 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
       "id": "www",
       "name": "www",
       "kind": "profile",
-      "items": ["browser-tools"],
-      "sources": ["npm:@org/pi-browser-tools"]
+      "items": ["browser-tools", "agent-tools"],
+      "sources": ["npm:@org/pi-browser-tools", "git:github.com/org/pi-agent-tools"]
     }
   ]
 }
@@ -87,6 +95,13 @@ Rules:
     "browser-tools": {
       "kind": "package",
       "source": "npm:@org/pi-browser-tools",
+      "enabled": true,
+      "loadedAt": "2026-06-15T00:00:00.000Z",
+      "updatedAt": "2026-06-15T00:00:00.000Z"
+    },
+    "agent-tools": {
+      "kind": "package",
+      "source": "git:github.com/org/pi-agent-tools",
       "enabled": true,
       "loadedAt": "2026-06-15T00:00:00.000Z",
       "updatedAt": "2026-06-15T00:00:00.000Z"

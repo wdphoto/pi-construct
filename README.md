@@ -15,13 +15,13 @@ Project: /Users/you/project
 Enabled
 -------
 [x] pi-web-access  npm:pi-web-access
-[x] pi-subagents   npm:pi-subagents
+[x] pi-subagents   git:github.com/your-org/pi-subagents
 
 Available
 ---------
-[ ] pi-lens         npm:pi-lens
+[ ] pi-lens         git:github.com/your-org/pi-lens
 [ ] pi-chrome       npm:pi-chrome
-[ ] pi-ask-user     npm:pi-ask-user
+[ ] pi-ask-user     git:github.com/your-org/pi-ask-user
 
 Project-only
 ------------
@@ -67,9 +67,9 @@ After applying loadout changes, press Enter on the final Construct panel to relo
 /construct sync        # choose current project packages to remember
 /construct sync auto   # remember all new current project packages
 /construct sync off    # explain that automatic sync is off
-/construct profile list          # list saved package groups
-/construct profile save <name>   # save active Construct-managed packages
-/construct profile apply <name>  # turn on a saved package group
+/construct profile list          # WIP, not public yet
+/construct profile save <name>   # WIP, not public yet
+/construct profile apply <name>  # WIP, not public yet
 ```
 
 ## Install
