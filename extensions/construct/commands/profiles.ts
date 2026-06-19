@@ -7,7 +7,7 @@ import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
 import { getPackages } from "../project-settings.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
-import { progressStatus, setConstructStatus, showText, splitArgs } from "../ui.js";
+import { progressStatus, setConstructStatus, showSummary, showText, splitArgs } from "../ui.js";
 
 function profileId(name: string): string {
 	return deriveId(name);
@@ -98,7 +98,7 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	};
 	const profiles = [...catalog.profiles.filter((profile) => profile.id !== id), nextProfile].sort((a, b) => a.id.localeCompare(b.id));
 	await writeJson(catalogPaths.userCatalogPath, { ...catalog, version: 1, profiles });
-	showText(ctx, [`Construct profile saved: ${id}`, `Packages: ${sources.length}`, ...sources.map((source) => `- ${source}`)].join("\n"));
+	await showSummary(ctx, [`Construct profile saved: ${id}`, `Packages: ${sources.length}`, ...sources.map((source) => `- ${source}`)].join("\n"));
 }
 
 async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
@@ -139,7 +139,7 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 	} finally {
 		setConstructStatus(ctx, undefined);
 	}
-	showText(
+	await showSummary(
 		ctx,
 		[
 			`Construct profile applied: ${profile.id}`,

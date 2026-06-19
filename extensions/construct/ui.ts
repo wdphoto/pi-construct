@@ -21,6 +21,62 @@ export function showText(ctx: ExtensionCommandContext, text: string): void {
 	console.error(text);
 }
 
+export async function showSummary(ctx: ExtensionCommandContext, text: string): Promise<void> {
+	if (ctx.mode !== "tui") {
+		showText(ctx, text);
+		return;
+	}
+
+	await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
+		const [heading = "Construct", ...body] = text.split("\n");
+		const maxVisible = 16;
+		let scroll = 0;
+		let cachedWidth: number | undefined;
+		let cachedLines: string[] | undefined;
+
+		function invalidate() {
+			cachedWidth = undefined;
+			cachedLines = undefined;
+		}
+
+		function render(width: number): string[] {
+			if (cachedLines && cachedWidth === width) return cachedLines;
+			const maxScroll = Math.max(0, body.length - maxVisible);
+			scroll = Math.min(scroll, maxScroll);
+			const visible = body.slice(scroll, scroll + maxVisible);
+			const lines = [theme.fg("accent", theme.bold(heading)), ""];
+			for (const line of visible) {
+				lines.push(line.startsWith("!") ? theme.fg("warning", line) : line);
+			}
+			if (body.length > maxVisible) lines.push("", theme.fg("muted", `  (${scroll + 1}-${Math.min(scroll + maxVisible, body.length)}/${body.length})`));
+			lines.push("", theme.fg("muted", "  Enter/Esc closes"));
+			cachedWidth = width;
+			cachedLines = lines.map((line) => truncateToWidth(line, width));
+			return cachedLines;
+		}
+
+		function handleInput(data: string): void {
+			if (keybindings.matches(data, "tui.select.up")) {
+				scroll = Math.max(0, scroll - 1);
+				invalidate();
+				tui.requestRender();
+				return;
+			}
+			if (keybindings.matches(data, "tui.select.down")) {
+				scroll = Math.min(Math.max(0, body.length - maxVisible), scroll + 1);
+				invalidate();
+				tui.requestRender();
+				return;
+			}
+			if (keybindings.matches(data, "tui.select.confirm") || keybindings.matches(data, "tui.select.cancel")) {
+				done(undefined);
+			}
+		}
+
+		return { render, handleInput, invalidate };
+	});
+}
+
 export function setConstructStatus(ctx: ExtensionCommandContext, text: string | undefined): void {
 	if (ctx.hasUI) ctx.ui.setStatus("construct", text);
 }

@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSet
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, progressStatus, setConstructStatus, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, progressStatus, setConstructStatus, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
 interface DashboardPackage {
@@ -184,7 +184,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	} finally {
 		setConstructStatus(ctx, undefined);
 	}
-	showText(
+	await showSummary(
 		ctx,
 		[
 			"Construct loadout changes applied.",

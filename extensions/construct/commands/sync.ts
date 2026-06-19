@@ -6,7 +6,7 @@ import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { managedPackageSourceIdentity } from "../sources.js";
-import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
 
 interface SyncCandidate {
 	id: string;
@@ -228,7 +228,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		warnings.push(`Could not update project Construct metadata: ${message}`);
 	}
 
-	showText(
+	await showSummary(
 		ctx,
 		[
 			"Construct sync complete.",
