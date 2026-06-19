@@ -1,43 +1,70 @@
 # Commands and UX
 
-Construct is still centered on one primary command: `/construct`.
+Construct is centered on one primary command: `/construct`.
 
 ## Public command surface
 
 ```text
 /construct             # one loadout menu / dashboard
 /construct status      # read-only diagnostics
-/construct sync        # choose current project packages to remember
-/construct sync auto   # remember all new current project packages
-/construct sync off    # explain that automatic sync is off
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct load        # add current project resources to the Construct
+/construct unload      # remove resources from the Construct
+/construct autoload    # toggle exit prompt for loading new resources
+/construct profile list          # WIP, not public yet
+/construct profile save <name>   # WIP, not public yet
+/construct profile apply <name>  # WIP, not public yet
 ```
 
-No separate public load/unload/toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc returns to the session without reloading.
+No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc returns to the session without reloading.
 
-## `/construct sync`
+## `/construct load`
 
-Sync means manual adoption of existing Pi package declarations.
+Load means adding existing project-level Pi package declarations to the Construct.
 
-- `/construct sync` opens the adoption menu in TUI mode.
-- `/construct sync auto` adopts every available current-project package declaration without a menu.
-- `/construct sync on` is an alias for `/construct sync`.
-- `/construct sync off` is a harmless explanation: automatic sync is off.
-- Sync status belongs in `/construct status`, not a separate `sync status` subcommand.
-- `/construct status full` prints the longer diagnostic view for debugging.
+- `/construct load` opens the picker in TUI mode.
+- `/construct load` adds all currently loadable project package declarations in print mode.
+- Load reads `.pi/settings.json` and can write:
+  - `~/.pi/agent/construct/catalog.json`
+  - `.pi/construct.json`
+- Load never installs, removes, reloads, copies files, executes package code, or edits `.pi/settings.json`.
 
-Sync reads `.pi/settings.json` and can write:
+## `/construct unload`
 
-- `~/.pi/agent/construct/catalog.json`
-- `.pi/construct.json`
+Unload means removing resources from the Construct library.
 
-Sync never installs, removes, reloads, copies files, executes package code, or edits `.pi/settings.json`.
+- `/construct unload` opens a picker in TUI mode.
+- `/construct unload <id-or-source>` removes matching library resources in print mode.
+- Unload removes matching entries from the user Construct library.
+- Unload prunes matching entries from saved profiles.
+- Unload removes matching advisory metadata from the current project's `.pi/construct.json` when present.
+- Unload never edits `.pi/settings.json` and never uninstalls a package from a project.
+
+If an unloaded package is still active in `.pi/settings.json`, it becomes `Project-only` in the dashboard.
+
+## `/construct autoload`
+
+Autoload is off by default. When enabled, it runs only on session quit and always asks before loading anything.
+
+```text
+/construct autoload        # toggle on/off
+/construct autoload on     # explicit on
+/construct autoload off    # explicit off
+/construct autoload status # show current state
+```
+
+Autoload rules:
+
+- trusted projects only;
+- TUI only;
+- quit/exit only, not reload or session switching;
+- always requires confirmation;
+- never installs packages;
+- never edits `.pi/settings.json`;
+- only writes the Construct library and `.pi/construct.json` after confirmation.
 
 ## Profiles
 
-Profiles are named groups of Construct library packages.
+Profiles are WIP named groups of Construct library packages.
 
 ```text
 /construct profile save www
@@ -57,7 +84,7 @@ Sections:
 
 - `Enabled` — Construct-managed packages active in this project.
 - `Available` — remembered packages that can be enabled here.
-- `Project-only` — active project package declarations that Construct has not adopted yet; read-only in the dashboard.
+- `Project-only` — active project package declarations that Construct has not loaded yet; read-only in the dashboard.
 
 Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 

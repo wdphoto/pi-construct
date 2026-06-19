@@ -54,7 +54,7 @@ quiet_pi() {
 
 printf '== new-project dashboard/status ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
-[[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"Construct Loadout"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Available"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
@@ -66,7 +66,7 @@ project = pathlib.Path(sys.argv[1])
 assert not (project / ".pi/construct.json").exists(), "status should not create Construct metadata"
 PY
 
-printf '== library sync ==\n'
+printf '== library load ==\n'
 mkdir -p "$PROJECT_DIR/.pi"
 python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
 import json
@@ -77,9 +77,9 @@ project = pathlib.Path(sys.argv[1])
 source = sys.argv[2]
 (project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
 PY
-SYNC_PROMPT_OUTPUT="$(run_pi '/construct sync')"
-[[ "$SYNC_PROMPT_OUTPUT" == *"Construct sync needs a selection."* ]]
-quiet_pi '/construct sync auto'
+LOAD_OUTPUT="$(run_pi '/construct load')"
+[[ "$LOAD_OUTPUT" == *"Construct load complete."* ]]
+[[ "$LOAD_OUTPUT" == *"Added to Construct: 1"* ]]
 python3 - "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR" <<'PY'
 import json
 import pathlib
@@ -99,7 +99,7 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Enabled"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
 
-printf '== automatic sync disabled ==\n'
+printf '== autoload disabled ==\n'
 python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
 import json
 import pathlib
@@ -127,13 +127,28 @@ catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 
 assert settings.get("packages") == [source], settings
 assert isinstance(construct.get("items"), dict), construct
-assert not user_settings_path.exists(), "status/sync should not create Construct user settings"
+assert not user_settings_path.exists(), "status/load should not create Construct user settings"
 assert not any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog
 PY
 
+printf '== autoload toggle ==\n'
+AUTOLOAD_OUTPUT="$(run_pi '/construct autoload status')"
+[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload: off"* ]]
+AUTOLOAD_OUTPUT="$(run_pi '/construct autoload on')"
+[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload is now on."* ]]
+STATUS_OUTPUT="$(run_pi '/construct status')"
+[[ "$STATUS_OUTPUT" == *"Autoload: on"* ]]
+AUTOLOAD_OUTPUT="$(run_pi '/construct autoload off')"
+[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload is now off."* ]]
+STATUS_OUTPUT="$(run_pi '/construct status')"
+[[ "$STATUS_OUTPUT" == *"Autoload: off"* ]]
+
 printf '== removed command surface ==\n'
-UNKNOWN_OUTPUT="$(run_pi '/construct load whatever')"
-[[ "$UNKNOWN_OUTPUT" == *"Unknown /construct subcommand: load"* ]]
-[[ "$UNKNOWN_OUTPUT" == *"/construct sync [auto]"* ]]
+UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
+[[ "$UNKNOWN_OUTPUT" == *"Unknown /construct subcommand: sync"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct load"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct unload"* ]]
+RELOAD_OUTPUT="$(run_pi '/construct reload')"
+[[ "$RELOAD_OUTPUT" == *"Unknown /construct subcommand: reload"* ]]
 
 printf 'smoke ok\n'

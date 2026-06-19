@@ -29,7 +29,7 @@ Project-only
 
 Space toggles. Enter applies. Esc cancels.
 
-Run `/construct sync` to sync new project-level resources to the Construct.
+Run `/construct load` to add project-level resources to the Construct.
 
 ```
 
@@ -41,10 +41,10 @@ Install a Pi package locally in your project:
 pi install <source> -l --approve
 ```
 
-Sync that package declaration to the Construct:
+Load that package declaration into the Construct:
 
 ```text
-/construct sync
+/construct load
 ```
 
 In another project, run `/construct`. The menu shows remembered packages and lets you toggle them on or off for that project.
@@ -62,9 +62,9 @@ After applying loadout changes, press Enter on the final Construct panel to relo
 ```text
 /construct             # open the loadout menu
 /construct status      # read-only diagnostics
-/construct sync        # choose current project packages to remember
-/construct sync auto   # remember all new project-level resources on exit
-/construct sync off    # explain that automatic sync is off
+/construct load        # add current project resources to the Construct
+/construct unload      # remove resources from the Construct
+/construct autoload    # toggle exit prompt for loading new resources
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
 /construct profile apply <name>  # WIP, not public yet
@@ -88,7 +88,7 @@ pi install https://github.com/wdphoto/pi-construct
 
 ## Uninstall
 
-Remove Construct using the same source form you installed with:
+Remove the Construct extension using the same source form you installed with:
 
 ```bash
 pi remove npm:pi-construct

@@ -2,13 +2,13 @@
 
 ## Decision
 
-Construct should have **no active startup/autoload behavior** in the current product.
+Construct should have **no active startup behavior** in the current product.
 
 - Do not open Construct when a project loads.
 - Do not prompt `Load it into the Construct?` on startup.
-- Do not sync, install, remove, reload, or write Construct state from lifecycle hooks.
-- Keep `/construct sync` as the explicit public adoption command.
-- Future automation can return later as an explicit opt-in roadmap item.
+- Do not load, install, remove, reload, or write Construct state from lifecycle hooks.
+- Keep `/construct load` as the explicit public adoption command.
+- Current autoload is opt-in, exit-only, and always confirmed.
 
 ## Implemented fix
 
@@ -16,11 +16,11 @@ Active autoload code was removed instead of kept as legacy compatibility:
 
 - Removed the `session_start` registration from `extensions/construct/index.ts`.
 - Removed the `maybeOfferAutoload()` lifecycle flow.
-- Removed the `/construct autoload` command.
+- Removed old active autoload behavior.
 - Removed `/construct autosync` compatibility command.
 - Removed user-local skip handling and autoload settings helpers.
 - Removed `userSkipsPath` from Construct paths/types.
-- Updated status/sync output to make manual sync the current model.
+- Updated status/load output to make manual load the current model.
 
 ## Old local data
 
@@ -49,13 +49,19 @@ Main loadout/dashboard command. It opens the full loadout view whether or not `.
 
 Read-only project/user status. Missing `.pi/construct.json` is reported as a missing metadata file; status does not create it and does not mention any active autoload capability.
 
-### `/construct sync`
+### `/construct load`
 
 Public/default adoption command.
 
 - Reads current project `.pi/settings.json` package declarations.
 - Updates Construct library and `.pi/construct.json` metadata only because the user explicitly ran the command.
 - Does not install, remove, reload, or run in the background.
+
+### `/construct autoload`
+
+Opt-in exit prompt. It is off by default. When on, it checks for project-only resources during session quit and asks before loading them into the Construct.
+
+It does not run on startup, reload, or session switching. It never installs packages or edits `.pi/settings.json`.
 
 ## Validation
 

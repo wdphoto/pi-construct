@@ -6,18 +6,19 @@ Construct is intentionally small, but profiles now exist as a low-click grouping
 
 - `/construct` one-menu loadout dashboard.
 - `/construct status` read-only diagnostics.
-- `/construct sync` manual adoption menu.
-- `/construct sync auto` explicit adopt-all shortcut.
-- `/construct profile save/apply/list` for named groups of remembered packages.
-- No startup/autoload behavior.
-- No separate public load/unload/toggle/library/catalog command family.
+- `/construct load` adds current project resources to the Construct.
+- `/construct unload` removes resources from the Construct.
+- `/construct autoload` toggles an exit prompt; default off.
+- `/construct profile save/apply/list` are WIP named groups of remembered packages.
+- No silent startup/autoload behavior.
+- No separate public toggle/library/catalog command family.
 
-Package load/unload remains an internal dashboard/profile operation, not separate user-facing slash commands.
+Dashboard package on/off remains the project arming flow; `/construct unload` removes resources from the Construct library, not from `.pi/settings.json`.
 
 ## Current cleanup priorities
 
 1. Fold profiles into the main `/construct` TUI as first-class selectable rows/groups.
-2. Decide whether project-only rows should remain read-only or become adoptable from the dashboard.
+2. Decide whether project-only rows should remain read-only or become loadable from the dashboard.
 3. Bring profile apply into the newer in-panel progress/result flow.
 4. Improve normalized path drift reporting.
 5. Add conflict/doctor visibility for duplicate tools/resources.

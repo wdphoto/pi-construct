@@ -60,14 +60,12 @@ resolved = entry if entry.is_absolute() else (project / ".pi" / entry).resolve()
 assert resolved == source, settings
 PY
 
-printf '== project A construct sync remembers raw install ==\n'
-SYNC_MENU_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync' 2>&1)"
-grep -Fq 'Construct sync needs a selection.' <<<"$SYNC_MENU_OUTPUT"
-SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync auto' 2>&1)"
-grep -Fq 'Construct sync complete.' <<<"$SYNC_OUTPUT"
-grep -Fq 'Added to Construct: 1' <<<"$SYNC_OUTPUT"
-grep -Fq 'Errors: 0' <<<"$SYNC_OUTPUT"
-grep -Fq 'No /reload needed' <<<"$SYNC_OUTPUT"
+printf '== project A construct load remembers raw install ==\n'
+LOAD_OUTPUT="$(construct_pi "$PROJECT_A" '/construct load' 2>&1)"
+grep -Fq 'Construct load complete.' <<<"$LOAD_OUTPUT"
+grep -Fq 'Added to Construct: 1' <<<"$LOAD_OUTPUT"
+grep -Fq 'Errors: 0' <<<"$LOAD_OUTPUT"
+grep -Fq 'No /reload needed' <<<"$LOAD_OUTPUT"
 
 python3 - "$HOME_DIR" "$PROJECT_A" "$PKG_DIR" <<'PY'
 import json
@@ -113,13 +111,31 @@ assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else pr
 assert any((item.get("source") == source or item.get("requestedSource") == source) and item.get("enabled") is True for item in construct.get("items", {}).values()), construct
 PY
 
-printf '== removed load/unload command surface ==\n'
-LOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct load construct-e2e-package' 2>&1)"
-grep -Fq 'Unknown /construct subcommand: load' <<<"$LOAD_OUTPUT"
+printf '== unload removes package from Construct only ==\n'
 UNLOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct unload construct-e2e-package' 2>&1)"
-grep -Fq 'Unknown /construct subcommand: unload' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Construct unload complete.' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Removed from Construct: 1' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Project package declarations were not changed.' <<<"$UNLOAD_OUTPUT"
+python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+source = str(pathlib.Path(sys.argv[3]).resolve())
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert not any(item.get("source") == source for item in catalog.get("items", [])), catalog
+assert not any(source in profile.get("sources", []) for profile in catalog.get("profiles", [])), catalog
+assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else project / ".pi" / entry).resolve()) == source for entry in settings.get("packages", [])), settings
+assert not construct.get("items"), construct
+PY
 
-printf '== hidden reload helper remains available ==\n'
-quiet_construct_pi "$PROJECT_B" '/construct reload'
+printf '== removed sync/reload command surface ==\n'
+SYNC_OUTPUT="$(construct_pi "$PROJECT_B" '/construct sync' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: sync' <<<"$SYNC_OUTPUT"
+RELOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct reload' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: reload' <<<"$RELOAD_OUTPUT"
 
 printf 'e2e smoke ok\n'

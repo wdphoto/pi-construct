@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
-import { deriveId, findCatalogItem, loadCatalog, parseCatalog, syncSourcesToCatalog } from "../catalog.js";
+import { deriveId, findCatalogItem, loadCatalog, parseCatalog, addSourcesToCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
@@ -66,13 +66,13 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	const paths = await getPaths(ctx);
 	const sources = await activeManagedSources(paths);
 	if (sources.length === 0) {
-		showText(ctx, "Construct profile not saved. No active Construct-managed packages found in this project. Run /construct sync first if these packages are local-only.");
+		showText(ctx, "Construct profile not saved. No active Construct-managed packages found in this project. Run /construct load first if these packages are local-only.");
 		return;
 	}
 
-	const sync = await syncSourcesToCatalog(ctx, sources);
-	if (sync.warnings.length > 0) {
-		showText(ctx, ["Construct profile not saved.", ...sync.warnings.map((warning) => `! ${warning}`)].join("\n"));
+	const load = await addSourcesToCatalog(ctx, sources);
+	if (load.warnings.length > 0) {
+		showText(ctx, ["Construct profile not saved.", ...load.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 

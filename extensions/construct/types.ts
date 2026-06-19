@@ -10,6 +10,7 @@ export interface ConstructPaths {
 	realCwd: string;
 	constructDir: string;
 	userCatalogPath: string;
+	userSettingsPath: string;
 	projectSettingsPath: string;
 	projectConstructPath: string;
 }
@@ -40,7 +41,7 @@ export interface CatalogData {
 	profiles: CatalogProfile[];
 }
 
-export interface SyncResult {
+export interface LoadResult {
 	added: CatalogItem[];
 	alreadyKnown: number;
 	warnings: string[];

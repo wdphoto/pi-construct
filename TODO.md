@@ -2,45 +2,35 @@
 
 Current work should keep Construct manual, explicit, and boring-safe. Do not add lifecycle/startup automation unless we deliberately reopen that design.
 
-## Current state — 2026-06-19 command-surface reset
+## Current state — 2026-06-19 load/unload surface
 
-- `/construct` is the product. Keep the extra slash-command surface minimal and quiet.
-- Public support commands are `/construct status`, `/construct sync`, `/construct sync auto`, `/construct sync off`, and `/construct profile list/save/apply`.
-- Removed public load/unload/toggle/library/remember/forget/catalog/enable/disable/remove/on/off/reload/wipe command paths.
-- Package load/unload still exists internally for the `/construct` dashboard to apply menu diffs.
+- `/construct` is the product. It arms/disarms the current project from resources already in the Construct.
+- Public support commands are `/construct status`, `/construct load`, `/construct unload`, `/construct autoload`, and WIP `profile` commands.
+- Removed public sync/toggle/library/remember/forget/catalog/enable/disable/remove/on/off/reload/wipe command paths.
+- `/construct load` adds current project package declarations to the Construct library and arms current-project metadata.
+- `/construct unload` removes resources from the Construct library and current-project metadata, but never edits `.pi/settings.json`.
+- `/construct autoload` toggles an exit confirmation prompt; it is off by default and never writes without confirmation.
 - `/construct status` is read-only and does not create `.pi/construct.json`.
-- `/construct sync` is manual adoption only; `/construct sync auto` is the explicit adopt-all shortcut.
 - `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` remains advisory metadata.
 
 ## Now / next
 
-1. [x] Redesign `/construct sync` semantics:
-   - Fold `/construct sync status` into `/construct status`; status should explain that sync is manual, when it runs, and what files it may write.
-   - `/construct sync` opens the sync/adoption menu, like `/construct`: show package declarations from current `.pi/settings.json` that are not yet Construct-managed, let the user select what to sync, and apply only the selection.
-   - `/construct sync auto` adopts every available current-project package declaration without opening the menu. Keep `-a` / `--all` as hidden compatibility aliases if useful, but docs/output should prefer `auto`.
-   - `/construct sync on` is just an alias for `/construct sync`; do not imply a persistent “on” state.
-   - `/construct sync off` should be a harmless no-op/help path: automatic sync is off because Construct only syncs when explicitly invoked.
-   - Sync runs only from explicit commands, never on startup/dashboard/status. It reads `.pi/settings.json`, updates `~/.pi/agent/construct/catalog.json` and selected `.pi/construct.json` metadata, and never installs/removes/reloads/edits `.pi/settings.json`.
-2. [x] Add basic profiles/loadouts:
+1. [x] Rename the adoption flow from sync to load:
+   - `/construct load` is the explicit command for adding current project resources to the Construct.
+   - Print mode loads all current project package declarations because the command itself is explicit.
+   - TUI mode opens a picker.
+   - Load reads `.pi/settings.json`, updates `~/.pi/agent/construct/catalog.json` and selected `.pi/construct.json` metadata, and never installs/removes/reloads/edits `.pi/settings.json`.
+2. [x] Add unload from the Construct:
+   - `/construct unload` opens a picker in TUI mode.
+   - `/construct unload <id-or-source>` removes matching library resources in print mode.
+   - Unload prunes saved profile refs and current-project Construct metadata.
+   - Unload does not uninstall packages or edit `.pi/settings.json`.
+3. [x] Keep profiles WIP:
    - `/construct profile save <name>` saves active Construct-managed packages from the current project.
    - `/construct profile apply <name>` turns on the saved package group in the current project.
    - `/construct profile list` shows saved profiles.
-   - Example profiles: `www`, `golang`, `pi-projects`.
-   - Profiles store library item ids/sources, not copied package code.
-   - Future polish: fold profiles into the main `/construct` menu so applying a stack is a first-class selectable row.
-3. [x] Fix sync source identity edge cases:
-   - duplicate derived/catalog ids no longer overwrite project metadata during one sync pass;
-   - sync reuses shared source identity normalization for managed metadata;
-   - `requestedSource` local paths normalize relative to project cwd.
-4. [x] Fix post-save loadout output placement:
-   - dashboard/sync/profile success summaries now use a focused TUI summary panel;
-   - print mode still writes normal command output.
-5. [ ] Add npm package/release follow-through:
-   - decide whether this stays private for now or gets published;
-   - set the package name/version/release notes deliberately;
-   - confirm what files ship in `files`;
-   - document the publish/release flow once chosen.
-6. [x] Make the one `/construct` menu cleaner:
+   - Public README copy still marks profiles WIP.
+4. [x] Make the one `/construct` menu cleaner:
    - fuzzy typing/filtering;
    - Space toggles;
    - Enter applies;
@@ -48,13 +38,19 @@ Current work should keep Construct manual, explicit, and boring-safe. Do not add
    - subtle hints only;
    - in-panel apply progress and summaries;
    - Enter-to-reload after successful dashboard changes.
-7. [x] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
-8. [ ] Decide how local-only rows behave in the one-menu model:
-   - read-only with a hint to run `/construct sync`;
-   - or selectable adoption from the same menu.
-9. [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
-10. [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
-11. [ ] Sweep old docs under `docs/` after the new one-menu direction settles. Keep historical notes if useful, but active docs should not advertise removed commands.
+5. [ ] Decide how project-only rows behave in the one-menu model:
+   - read-only with a hint to run `/construct load`;
+   - or selectable load from the same menu.
+6. [x] Add autoload as an opt-in exit prompt:
+   - off by default;
+   - toggled by `/construct autoload` or explicit on/off;
+   - runs only on session quit;
+   - always confirms before writing;
+   - never installs/removes/reloads/edits `.pi/settings.json`.
+7. [ ] Bring profile apply into the newer in-panel progress/result flow.
+8. [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+9. [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance.
+10. [ ] Sweep historical docs after the load/unload direction settles. Keep changelog history, but active docs should not advertise removed commands.
 
 ## Validation to keep running
 

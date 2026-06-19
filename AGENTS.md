@@ -80,16 +80,16 @@ Primary public commands:
 Support commands:
 
 - `/construct status`
-- `/construct sync`
-- `/construct sync auto`
-- `/construct sync off`
-- `/construct profile list`
-- `/construct profile save <name>`
-- `/construct profile apply <name>`
+- `/construct load`
+- `/construct unload`
+- `/construct autoload`
+- `/construct profile list` (WIP)
+- `/construct profile save <name>` (WIP)
+- `/construct profile apply <name>` (WIP)
 
-Use Pi's normal `/reload` after loadout changes. Do not advertise `/construct reload`; it may exist only as a hidden compatibility helper.
+Use Pi's normal `/reload` after loadout changes. Do not advertise or re-add `/construct reload`; dashboard Enter can call `ctx.reload()` internally.
 
-Do not re-add load/unload/toggle/library/remember/forget/catalog compatibility commands without an explicit product decision. The current bias is one quiet menu plus minimal support commands.
+Do not re-add toggle/library/remember/forget/catalog compatibility commands without an explicit product decision. The current bias is one quiet menu plus minimal support commands.
 
 ## Naming
 

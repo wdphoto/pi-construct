@@ -6,6 +6,20 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.8 - 2026-06-19
+
+### Added
+- Added `/construct load` as the explicit command for adding current project resources to the Construct.
+- Added `/construct unload` for removing resources from the Construct library without uninstalling project packages.
+- Added `/construct autoload` as an off-by-default exit prompt that always confirms before loading project resources.
+
+### Changed
+- Replaced current public sync wording with load/unload terminology across README, docs, command output, and smoke coverage.
+- `/construct status` now describes manual load state instead of sync state.
+
+### Removed
+- Removed `/construct sync` and `/construct reload` from the active command surface.
+
 ## 0.0.7 - 2026-06-19
 
 ### Added

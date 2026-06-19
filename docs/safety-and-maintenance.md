@@ -8,7 +8,7 @@
 - Keep a backup of `.pi/settings.json` before direct edits.
 - Treat skills as powerful: they can tell the model to execute scripts.
 - Treat extensions as full-code-execution: they run with user permissions.
-- Learn/sync mode must never install, execute, or validate remote package code; it only records source strings already declared by trusted project config.
+- Load mode must never install, execute, or validate remote package code; it only records source strings already declared by trusted project config.
 - `defaultProjectTrust: "always"` is a personal-machine convenience, not something Construct should recommend for shared/untrusted repos.
 
 ## Conflicts and maintenance risks

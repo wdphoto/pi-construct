@@ -27,7 +27,7 @@ printf '== installed extension command smoke ==\n'
   STATUS_OUTPUT="$(HOME="$HOME_DIR" pi -p '/construct status' 2>&1)"
   [[ "$STATUS_OUTPUT" == *"Construct status"* ]]
   DASHBOARD_OUTPUT="$(HOME="$HOME_DIR" pi -p '/construct' 2>&1)"
-  [[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
+  [[ "$DASHBOARD_OUTPUT" == *"Construct Loadout"* ]]
 )
 
 printf 'install smoke ok\n'

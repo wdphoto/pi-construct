@@ -105,7 +105,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: true,
 			disabled: true,
 			marker: "[!]",
-			description: "Active in this project, but not managed by Construct yet. Run /construct sync to adopt it.",
+			description: "Active in this project, but not managed by Construct yet. Run /construct load to add it.",
 		});
 	}
 
@@ -121,14 +121,14 @@ function dashboardSummary(packages: DashboardPackage[]): string {
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
-	const lines: string[] = ["Construct loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		lines.push(section, "-".repeat(section.length));
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${item.marker ?? (item.checked ? "[x]" : "[ ]")} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("Space toggles Construct packages. Enter applies. Esc cancels.", "Project-only rows are read-only; run /construct sync to adopt them.", "Runtime commands and tools are listed in /construct status.");
+	lines.push("Space toggles. Enter applies. Esc cancels.", "", "Run /construct load to add new project-level resources to the Construct.");
 	return lines.join("\n");
 }
 
@@ -149,7 +149,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		disabled: item.disabled,
 		marker: item.marker,
 	}));
-	const pickerResult = await pickCheckboxes(ctx, `Construct loadout — ${dashboardSummary(packages)}`, pickerItems, {
+	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		confirmHint: "Enter applies",
 		onSubmit: async (ids, update) => {
 			const selected = new Set(ids);
@@ -181,10 +181,10 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				];
 			}
 
-			update("Applying Construct loadout", progressLines());
+			update("Applying Construct Loadout", progressLines());
 			for (const step of steps) {
 				step.state = "running";
-				update("Applying Construct loadout", progressLines());
+				update("Applying Construct Loadout", progressLines());
 				if (step.action === "Turn on") {
 					const result = await loadPackageIntoProject(pi, paths, { source: step.item.source, item: { id: step.item.id, kind: "package", source: step.item.source } });
 					if (result.ok) {
@@ -206,12 +206,12 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 						failures.push(`${step.item.id}: ${step.error}`);
 					}
 				}
-				update("Applying Construct loadout", progressLines());
+				update("Applying Construct Loadout", progressLines());
 			}
 
 			const appliedChanges = loaded.length + unloaded.length;
 			return {
-				title: failures.length > 0 ? "Construct loadout applied with errors" : "Construct loadout changes applied",
+				title: failures.length > 0 ? "Construct Loadout applied with errors" : "Construct Loadout changes applied",
 				confirmHint: appliedChanges > 0 ? "Press Enter to reload Pi · Esc returns to session" : "Press Enter/Esc to return to session",
 				confirmAction: appliedChanges > 0 ? "reload" : undefined,
 				lines: [

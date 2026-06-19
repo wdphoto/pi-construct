@@ -6,7 +6,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 
 1. **Command layer**
    - Registers `/construct`.
-   - Supports public `status`, `sync`, and `profile` subcommands.
+   - Supports public `status`, `load`, `unload`, `autoload`, and WIP `profile` subcommands.
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
@@ -29,7 +29,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
    - Contains remembered package source strings and saved profiles.
-   - Updated only by explicit `/construct sync` and `/construct profile save` commands.
+   - Updated only by explicit `/construct load`, `/construct unload`, and `/construct profile save` commands.
 
 5. **Project metadata layer**
    - Project-local file: `.pi/construct.json`.
@@ -81,7 +81,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 Rules:
 
 - `source` is replayed by dashboard operations through Pi's normal project-local package install.
-- Preserve source strings exactly except local path normalization during adoption.
+- Preserve source strings exactly except local path normalization during load.
 - Unknown item fields should be preserved where possible for forward compatibility.
 
 ### Project metadata: `.pi/construct.json`
@@ -118,4 +118,4 @@ Rules:
 
 ## Startup behavior
 
-Construct has no lifecycle/startup behavior. It does not prompt, sync, install, reload, or write files just because Pi starts.
+Construct has no lifecycle/startup behavior. It does not prompt, load, install, reload, or write files just because Pi starts.

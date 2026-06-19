@@ -1,13 +1,14 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { formatCatalogItem, normalizeSourceForLibrary, parseCatalog } from "./catalog.js";
-import { describeRead, readJson } from "./json.js";
+import { describeRead, isObject, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
 
 interface StatusData {
 	paths: Awaited<ReturnType<typeof getPaths>>;
 	userCatalog: Awaited<ReturnType<typeof readJson>>;
+	userSettings: Awaited<ReturnType<typeof readJson>>;
 	projectSettings: Awaited<ReturnType<typeof readJson>>;
 	projectConstruct: Awaited<ReturnType<typeof readJson>>;
 	catalog: ReturnType<typeof parseCatalog>;
@@ -34,8 +35,9 @@ function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
 
 async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<StatusData> {
 	const paths = await getPaths(ctx);
-	const [userCatalog, projectSettings, projectConstruct] = await Promise.all([
+	const [userCatalog, userSettings, projectSettings, projectConstruct] = await Promise.all([
 		readJson(paths.userCatalogPath),
+		readJson(paths.userSettingsPath),
 		readJson(paths.projectSettingsPath),
 		readJson(paths.projectConstructPath),
 	]);
@@ -52,6 +54,7 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 	return {
 		paths,
 		userCatalog,
+		userSettings,
 		projectSettings,
 		projectConstruct,
 		catalog,
@@ -74,6 +77,10 @@ function compactRead(result: Awaited<ReturnType<typeof readJson>>): string {
 	if (result.state === "ok") return "ok";
 	if (result.state === "missing") return "missing";
 	return "invalid JSON";
+}
+
+function autoloadEnabled(data: StatusData): boolean {
+	return data.userSettings.state === "ok" && isObject(data.userSettings.data) && data.userSettings.data.autoload === true;
 }
 
 function buildCompactStatus(data: StatusData, argumentWarnings: string[]): string {
@@ -101,13 +108,15 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "profile")}`,
 		`Project packages: ${data.packages.length}`,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
-		"Sync: manual only (/construct sync)",
+		`Autoload: ${autoloadEnabled(data) ? "on" : "off"}`,
+		"Load: manual only (/construct load)",
 		"",
 		"Files",
 		"-----",
 		`Project settings: ${compactRead(data.projectSettings)}`,
 		`Construct metadata: ${compactRead(data.projectConstruct)}`,
 		`Construct library: ${compactRead(data.userCatalog)}`,
+		`Construct settings: ${compactRead(data.userSettings)}`,
 		"",
 		"Runtime",
 		"-------",
@@ -151,9 +160,10 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		"",
 		"User Construct state",
 		"--------------------",
-		"Automatic sync: off (manual; use /construct sync)",
-		"Sync writes: user library and selected .pi/construct.json metadata only",
+		`Autoload: ${autoloadEnabled(data) ? "on" : "off"} (prompts on session exit)`,
+		"Load writes: user library and selected .pi/construct.json metadata only",
 		`Construct library: ${describeRead(data.userCatalog)}`,
+		`Construct settings: ${describeRead(data.userSettings)}`,
 		`Library items: ${data.catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
 		`Profiles: ${data.catalog.data.profiles.length}`,

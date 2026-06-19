@@ -7,23 +7,23 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `sync`, and `profile`.
+- Support commands are `status`, `load`, `unload`, `autoload`, and WIP `profile`.
 - No lifecycle/startup behavior.
-- No separate load/unload/toggle/library/catalog command family.
+- No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
-- Mutating checks must back up `.pi/settings.json` before direct edits.
+- Mutating project loadout checks must back up `.pi/settings.json` before direct edits.
 
 ## Public command surface
 
 ```text
 /construct
 /construct status
-/construct sync
-/construct sync auto
-/construct sync off
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct load
+/construct unload
+/construct autoload
+/construct profile list          # WIP, not public yet
+/construct profile save <name>   # WIP, not public yet
+/construct profile apply <name>  # WIP, not public yet
 ```
 
 ## New-project behavior
@@ -34,20 +34,41 @@ Expected:
 - `/construct status` reports missing Construct metadata.
 - `.pi/construct.json` is not created.
 
-## Manual sync adoption
+## Manual load
 
 Expected:
 
-- `/construct sync` asks in TUI mode or instructs in print mode.
-- `/construct sync auto` adopts current project package sources.
-- `/construct sync off` does not write anything.
-- Sync writes the user library and `.pi/construct.json` only because the user explicitly ran sync.
-- Sync does not install, remove, reload, copy, execute, or alter `.pi/settings.json`.
+- `/construct load` asks in TUI mode.
+- `/construct load` explicitly loads current project package sources in print mode.
+- Load writes the user library and `.pi/construct.json` only because the user explicitly ran load.
+- Load does not install, remove, reload, copy, execute, or alter `.pi/settings.json`.
+
+## Manual unload
+
+Expected:
+
+- `/construct unload` asks in TUI mode.
+- `/construct unload <id-or-source>` removes matching resources from the Construct library.
+- Unload prunes matching profile entries and current-project Construct metadata.
+- Unload does not remove package declarations from `.pi/settings.json`.
+- Unload does not uninstall project packages.
+
+## Autoload
+
+Expected:
+
+- Autoload is off by default.
+- `/construct autoload` toggles on/off.
+- `/construct autoload on|off|status` works explicitly.
+- Autoload runs only on quit/exit, not reload or session switch.
+- Autoload requires confirmation before writing.
+- Autoload does not install, execute, reload, or alter `.pi/settings.json`.
 
 ## Profiles
 
 Expected:
 
+- Profile commands remain WIP in public copy.
 - `/construct profile save <name>` saves active Construct-managed package sources from the current project.
 - `/construct profile list` shows saved profiles.
 - `/construct profile apply <name>` turns those package sources on in the current project.
@@ -77,7 +98,7 @@ Before adding new behavior, ask:
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
 - Do profiles still store only library ids/sources and apply explicitly?
-- Would local-only package adoption be clearer as read-only guidance or as a dashboard action?
+- Would project-only package loading be clearer as read-only guidance or as a dashboard action?
 
 ## Local development
 
