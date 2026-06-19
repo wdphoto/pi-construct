@@ -2,33 +2,11 @@
 
 # The Construct
 
-The Construct is a global Pi extension for grabbing the tools you need for every project.
+![construct clip](url)
 
-Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember package sources and turn them on or off for a project at the local level.
+The Construct is a global [Pi](https://pi.dev) extension for managing project-level tooling.
 
-## How it works
-
-- `.pi/settings.json` is the source of truth.
-- `.pi/construct.json` is advisory metadata for Construct's UI.
-- `~/.pi/agent/construct/catalog.json` is your user-local Construct library.
-- Nothing happens automatically on startup.
-- No auto-sync, auto-load, auto-disable, or auto-reload.
-
-## Commands
-
-```text
-/construct             # open the loadout menu
-/construct status      # read-only diagnostics
-/construct sync        # choose current project packages to remember
-/construct sync auto   # remember all new current project packages
-/construct sync off    # explain that automatic sync is off
-/construct profile list          # WIP, not public yet
-/construct profile save <name>   # WIP, not public yet
-/construct profile apply <name>  # WIP, not public yet
-/construct reload      # reload Pi resources
-```
-
-## Example `/construct` output
+Run `/construct`, select your loadout with the spacebar, then hit Enter to save and `/reload` Pi.
 
 ```text
 Construct loadout
@@ -62,7 +40,7 @@ SKILL COMMANDS — runtime, read-only
 
 COMMANDS — runtime, read-only
 -----------------------------
-[i] /construct  the-construct/extensions/construct/index.ts
+[i] /construct  pi-construct/extensions/construct/index.ts
 [i] /rewind     npm:@ayulab/pi-rewind
 
 Space toggles Construct packages in TUI. Local-only and runtime items are read-only.
@@ -71,13 +49,13 @@ Run /construct sync to adopt local-only packages.
 
 ## Basic workflow
 
-Install a Pi package in a project the normal Pi way:
+Install a Pi package locally in your project:
 
 ```bash
 pi install <source> -l --approve
 ```
 
-Ask Construct to remember that project package declaration:
+Sync that package declaration to Construct:
 
 ```text
 /construct sync
@@ -85,53 +63,57 @@ Ask Construct to remember that project package declaration:
 
 Use `/construct sync auto` only when you explicitly want to adopt every new package declaration in the current project.
 
-Later, in another project, run:
-
-```text
-/construct
-```
-
-The menu shows remembered packages and lets you turn them on or off for the current project.
+In another project, run `/construct`. The menu shows remembered packages and lets you toggle them on or off for that project.
 
 After changing the loadout, reload Pi when you are ready:
 
 ```text
-/construct reload
+/reload
 ```
 
-## Safety rules
+## How it works
 
-- Construct toggles whole Pi package declarations in the MVP.
-- `/construct sync` only remembers existing package declarations.
-- `/construct sync` does not install, remove, reload, execute package code, or edit `.pi/settings.json`.
-- Turning a package off removes the project package declaration only.
-- Turning a package off does not delete local source files, npm caches, git clones, or library entries.
-- Read-only commands should not create `.pi/construct.json`.
+- `.pi/settings.json` is the source of truth.
+- `.pi/construct.json` is advisory metadata for Construct's UI.
+- `~/.pi/agent/construct/catalog.json` is your user-local Construct library.
 
-## Install from npm
+## Commands
 
-After it is published to npm:
+```text
+/construct             # open the loadout menu
+/construct status      # read-only diagnostics
+/construct sync        # choose current project packages to remember
+/construct sync auto   # remember all new current project packages
+/construct sync off    # explain that automatic sync is off
+/construct profile list          # WIP, not public yet
+/construct profile save <name>   # WIP, not public yet
+/construct profile apply <name>  # WIP, not public yet
+/construct reload      # reload Pi resources
+```
+
+## Install
+
+Install from npm:
 
 ```bash
 pi install npm:pi-construct
 ```
 
-For now, publishing is manual because npm may require 2FA:
+Install from git:
 
 ```bash
-npm publish
+pi install git:github.com/wdphoto/pi-construct
+# or
+pi install https://github.com/wdphoto/pi-construct
 ```
 
-Before publishing, run:
+Install from a local checkout or filepath:
 
 ```bash
-npm run release:verify
-```
-
-Run the full disposable Pi smoke suite separately when you want deeper validation:
-
-```bash
-npm run smoke:all
+pi install /path/to/pi-construct
+pi install ./relative/path/to/pi-construct
+# or, from the repo root
+pi install .
 ```
 
 ## Development
@@ -166,6 +148,18 @@ Do not use live global Pi config for tests unless you explicitly mean to.
 ## Repository-local `.pi/`
 
 This repo does not need to commit local `.pi/` state right now. Treat `.pi/settings.json` and `.pi/construct.json` here as personal/dev-machine loadout unless that changes deliberately.
+
+## Uninstall
+
+Remove Construct using the same source form you installed with:
+
+```bash
+pi remove npm:pi-construct
+pi remove git:github.com/wdphoto/pi-construct
+pi remove /path/to/pi-construct
+```
+
+`pi uninstall <source>` is also supported as an alias for `pi remove <source>`.
 
 ## License
 
