@@ -24,7 +24,6 @@ This is a Pi-native project. Before reaching for external web docs, use Pi's ins
 
 - Entry point: `extensions/construct/index.ts`.
 - Main command: `/construct`.
-- Quiet alias: `/construct run` opens the same loadout dashboard but is not advertised.
 - Dashboard implementation: `extensions/construct/commands/dashboard.ts`.
 - Load/unload implementation:
   - `extensions/construct/commands/load.ts`

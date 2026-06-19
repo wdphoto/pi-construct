@@ -10,7 +10,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [ ] Design and implement the known-project index under `~/.pi/agent/construct/`.
 - [ ] Label assignment counts carefully as “known projects” so we do not imply a full filesystem scan.
 - [ ] Research Pi's native `pi config` and resource-configuration flows, then decide which UI/language patterns Construct should mirror.
-- [ ] Keep `/construct run` as a quiet alias only; `/construct` and “Construct Loadout” remain the public language.
+- [x] Remove the quiet `/construct run` alias; `/construct` and “Construct Loadout” remain the public language.
 - [ ] Sweep active docs for stale `sync`, `reload`, `roadmap`, and old-plan language. Keep historical changelog entries intact.
 
 ## v0.0.x — shareable loadouts

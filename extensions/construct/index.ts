@@ -18,14 +18,12 @@ export default function constructExtension(pi: ExtensionAPI) {
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
 		handler: async (args, ctx) => {
-			const { command, rest } = splitArgs(args);
-
-			// Quiet alias: /construct with no args is the public shape; /construct run is
-			// accepted as the literal form without adding another advertised command.
-			if (command === "dashboard" || command === "run") {
+			if (!args.trim()) {
 				await handleDashboard(pi, ctx);
 				return;
 			}
+
+			const { command, rest } = splitArgs(args);
 
 			if (command === "status") {
 				showText(ctx, await buildStatus(pi, ctx, rest));
