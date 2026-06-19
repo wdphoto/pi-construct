@@ -1,12 +1,10 @@
-<img width="498" height="278" alt="morfeo-the-construct" src="https://github.com/user-attachments/assets/ccd93aca-1b89-416e-a67e-aa151cfe8f7f" />
-
 # The Construct
 
-![construct clip](url)
+<img width="498" height="278" alt="morfeo-the-construct" src="https://github.com/user-attachments/assets/ccd93aca-1b89-416e-a67e-aa151cfe8f7f" />
 
-The Construct is a global [Pi](https://pi.dev) extension for managing project-level tooling.
+The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources like extensions and skills.
 
-Run `/construct`, select your loadout with the spacebar, then hit Enter to save and `/reload` Pi.
+Run `/construct`, select your loadout with the spacebar then hit Enter to save and `/reload` Pi.
 
 ```text
 Construct loadout
