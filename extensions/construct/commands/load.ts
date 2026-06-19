@@ -6,7 +6,7 @@ import { getPaths } from "../paths.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { looksLikePackageSource } from "../project-settings.js";
 import { loadPackageIntoProject } from "../package-ops.js";
-import { pickCheckboxes, showText } from "../ui.js";
+import { pickCheckboxes, progressStatus, setConstructStatus, showText } from "../ui.js";
 
 export function parseLoadFlags(args: string): { dryRun: boolean; query: string } {
 	const tokens = args.split(/\s+/).filter(Boolean);
@@ -140,10 +140,16 @@ export async function handleOn(pi: ExtensionAPI, ctx: ExtensionCommandContext): 
 	}
 	const loaded: CatalogItem[] = [];
 	const failures: string[] = [];
-	for (const item of candidates) {
-		const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
-		if (result.ok) loaded.push(item);
-		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+	let progress = 0;
+	try {
+		for (const item of candidates) {
+			setConstructStatus(ctx, progressStatus("loading", ++progress, candidates.length, item.id));
+			const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
+			if (result.ok) loaded.push(item);
+			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		}
+	} finally {
+		setConstructStatus(ctx, undefined);
 	}
 	showText(
 		ctx,
@@ -192,10 +198,16 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		}
 		const loaded: CatalogItem[] = [];
 		const failures: string[] = [];
-		for (const item of selected) {
-			const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
-			if (result.ok) loaded.push(item);
-			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		let progress = 0;
+		try {
+			for (const item of selected) {
+				setConstructStatus(ctx, progressStatus("loading", ++progress, selected.length, item.name ?? item.id));
+				const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
+				if (result.ok) loaded.push(item);
+				else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+			}
+		} finally {
+			setConstructStatus(ctx, undefined);
 		}
 		showText(
 			ctx,

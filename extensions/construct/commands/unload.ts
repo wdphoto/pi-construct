@@ -7,7 +7,7 @@ import { getPackages } from "../project-settings.js";
 import { getManagedEntry } from "../metadata.js";
 import { unloadPackageFromProject } from "../package-ops.js";
 import { managedPackageSourceIdentity } from "../sources.js";
-import { pickCheckboxes, showText } from "../ui.js";
+import { pickCheckboxes, progressStatus, setConstructStatus, showText } from "../ui.js";
 
 export async function resolveUnloadTarget(
 	ctx: ExtensionCommandContext,
@@ -78,10 +78,16 @@ export async function handleOff(pi: ExtensionAPI, ctx: ExtensionCommandContext):
 	}
 	const unloaded: Array<{ id: string; source: string }> = [];
 	const failures: string[] = [];
-	for (const target of targets) {
-		const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
-		if (result.ok) unloaded.push(target);
-		else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+	let progress = 0;
+	try {
+		for (const target of targets) {
+			setConstructStatus(ctx, progressStatus("unloading", ++progress, targets.length, target.id));
+			const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
+			if (result.ok) unloaded.push(target);
+			else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		}
+	} finally {
+		setConstructStatus(ctx, undefined);
 	}
 	showText(
 		ctx,
@@ -132,10 +138,16 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 		}
 		const unloaded: Array<{ id: string; source: string }> = [];
 		const failures: string[] = [];
-		for (const target of toUnload) {
-			const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
-			if (result.ok) unloaded.push(target);
-			else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		let progress = 0;
+		try {
+			for (const target of toUnload) {
+				setConstructStatus(ctx, progressStatus("unloading", ++progress, toUnload.length, target.id));
+				const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
+				if (result.ok) unloaded.push(target);
+				else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+			}
+		} finally {
+			setConstructStatus(ctx, undefined);
 		}
 		showText(
 			ctx,

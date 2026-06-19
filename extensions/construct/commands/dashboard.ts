@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSet
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, progressStatus, setConstructStatus, showText, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
 interface DashboardPackage {
@@ -166,15 +166,23 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const loaded: DashboardPackage[] = [];
 	const unloaded: DashboardPackage[] = [];
 	const failures: string[] = [];
-	for (const item of toLoad) {
-		const result = await loadPackageIntoProject(pi, paths, { source: item.source, item: { id: item.id, kind: "package", source: item.source } });
-		if (result.ok) loaded.push(item);
-		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
-	}
-	for (const item of toUnload) {
-		const result = await unloadPackageFromProject(pi, paths, { source: item.source, id: item.id });
-		if (result.ok) unloaded.push(item);
-		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+	const totalChanges = toLoad.length + toUnload.length;
+	let progress = 0;
+	try {
+		for (const item of toLoad) {
+			setConstructStatus(ctx, progressStatus("loading", ++progress, totalChanges, item.label));
+			const result = await loadPackageIntoProject(pi, paths, { source: item.source, item: { id: item.id, kind: "package", source: item.source } });
+			if (result.ok) loaded.push(item);
+			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		}
+		for (const item of toUnload) {
+			setConstructStatus(ctx, progressStatus("unloading", ++progress, totalChanges, item.label));
+			const result = await unloadPackageFromProject(pi, paths, { source: item.source, id: item.id });
+			if (result.ok) unloaded.push(item);
+			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+		}
+	} finally {
+		setConstructStatus(ctx, undefined);
 	}
 	showText(
 		ctx,

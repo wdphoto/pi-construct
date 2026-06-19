@@ -215,6 +215,7 @@ Explicitly out of MVP:
 - Local-file packaging/export for `.pi/extensions`, prompts, skills, themes.
 - Resource-level filters only if we truly need partial package enablement.
 - Doctor/update commands.
+- Optional parallel installs/removals for multi-package flows, only after adding locking or safe merge semantics around `.pi/settings.json` and `.pi/construct.json` writes.
 - Project-type recommendations like `website` or `script` once groups are useful.
 
 ## Core development TODO

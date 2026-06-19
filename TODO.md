@@ -43,4 +43,5 @@ Use disposable `HOME`/project directories for install/discovery checks.
 - Optional onboarding/startup automation behind an explicit opt-in toggle.
 - Item action menu: load, unload, forget, cancel.
 - Groups/profiles as lists of remembered library source ids.
+- Optional parallel package installs/removals for multi-select flows. Be careful: `pi install -l` / `pi remove -l` and Construct metadata writes mutate the same `.pi/settings.json` / `.pi/construct.json`, so this needs locking or safe merge semantics before we leave sequential execution.
 - Better package-backed skill visibility while keeping runtime skill/command rows read-only until package-level UX feels solid.

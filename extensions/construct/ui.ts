@@ -21,6 +21,14 @@ export function showText(ctx: ExtensionCommandContext, text: string): void {
 	console.error(text);
 }
 
+export function setConstructStatus(ctx: ExtensionCommandContext, text: string | undefined): void {
+	if (ctx.hasUI) ctx.ui.setStatus("construct", text);
+}
+
+export function progressStatus(action: string, current: number, total: number, label: string): string {
+	return `Construct: ${action} ${current}/${total} ${label}...`;
+}
+
 export interface CheckboxPickerItem {
 	id: string;
 	label: string;
