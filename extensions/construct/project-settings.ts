@@ -117,18 +117,23 @@ export function upsertConstructItem(
 	};
 }
 
-export function uniqueManagedId(baseId: string, construct: JsonReadResult, source: string): string {
-	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return baseId;
-	for (const [id, value] of Object.entries(construct.data.items)) {
+export function uniqueManagedIdInConstruct(construct: JsonObject, baseId: string, source: string): string {
+	const items = isObject(construct.items) ? construct.items : {};
+	for (const [id, value] of Object.entries(items)) {
 		if (isObject(value) && (value.source === source || value.requestedSource === source)) return id;
 	}
-	const existing = new Set(Object.keys(construct.data.items));
+	const existing = new Set(Object.keys(items));
 	if (!existing.has(baseId)) return baseId;
 	for (let i = 2; i < 1000; i++) {
 		const candidate = `${baseId}-${i}`;
 		if (!existing.has(candidate)) return candidate;
 	}
 	return `${baseId}-${Date.now()}`;
+}
+
+export function uniqueManagedId(baseId: string, construct: JsonReadResult, source: string): string {
+	if (construct.state !== "ok" || !isObject(construct.data)) return baseId;
+	return uniqueManagedIdInConstruct(construct.data, baseId, source);
 }
 
 export function chooseDeclaredSource(before: PackageDeclarationSummary[], after: PackageDeclarationSummary[], requestedSource: string): string {

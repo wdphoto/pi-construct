@@ -83,6 +83,46 @@ grep -Fq '.pi/construct.json is invalid JSON' <<<"$OUTPUT"
 grep -Fq '{ invalid construct' "$PROJECT_C/.pi/construct.json"
 test ! -e "$HOME_C/.pi/agent/construct/catalog.json"
 
+printf '== sync preserves duplicate catalog-id sources ==\n'
+HOME_DUP="$TMP/home-duplicate-catalog-ids"
+PROJECT_DUP="$TMP/project-duplicate-catalog-ids"
+SOURCE_ONE="$TMP/one/tool"
+SOURCE_TWO="$TMP/two/tool"
+mkdir -p "$HOME_DUP/.pi/agent/construct" "$PROJECT_DUP/.pi" "$SOURCE_ONE" "$SOURCE_TWO"
+python3 - "$HOME_DUP" "$PROJECT_DUP" "$SOURCE_ONE" "$SOURCE_TWO" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+source_one = str(pathlib.Path(sys.argv[3]).resolve())
+source_two = str(pathlib.Path(sys.argv[4]).resolve())
+(home / ".pi/agent/construct/catalog.json").write_text(json.dumps({
+  "version": 1,
+  "items": [
+    {"id": "tool", "kind": "package", "source": source_one},
+    {"id": "tool", "kind": "package", "source": source_two}
+  ],
+  "profiles": []
+}, indent=2) + "\n")
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [source_one, source_two]}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_DUP" "$PROJECT_DUP" '/construct sync auto' 2>&1)"
+grep -Fq 'Construct sync complete.' <<<"$OUTPUT"
+python3 - "$PROJECT_DUP" "$SOURCE_ONE" "$SOURCE_TWO" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+expected = {str(pathlib.Path(sys.argv[2]).resolve()), str(pathlib.Path(sys.argv[3]).resolve())}
+construct = json.loads((project / ".pi/construct.json").read_text())
+items = construct.get("items", {})
+sources = {item.get("source") for item in items.values()}
+assert len(items) == 2, construct
+assert sources == expected, construct
+assert all(item.get("enabled") is True for item in items.values()), construct
+PY
+
 printf '== drift: metadata enabled but settings missing source ==\n'
 HOME_D="$TMP/home-drift"
 PROJECT_D="$TMP/project-drift"
@@ -143,6 +183,36 @@ PY
 OUTPUT="$(construct_pi "$HOME_F" "$PROJECT_F" '/construct status' 2>&1)"
 grep -Fq 'pkg (package, enabled)' <<<"$OUTPUT"
 ! grep -Fq 'drift:' <<<"$OUTPUT"
+
+printf '== sync recognizes requestedSource relative to cwd ==\n'
+HOME_G="$TMP/home-requested-source-sync"
+PROJECT_G="$TMP/project-requested-source-sync"
+mkdir -p "$HOME_G" "$PROJECT_G/.pi" "$PROJECT_G/pkg/extensions"
+cat > "$PROJECT_G/.pi/settings.json" <<'JSON'
+{
+  "packages": ["../pkg"]
+}
+JSON
+python3 - "$PROJECT_G" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+(project / ".pi/construct.json").write_text(json.dumps({
+  "version": 1,
+  "managedBy": "the-construct",
+  "items": {
+    "pkg": {
+      "kind": "package",
+      "requestedSource": "./pkg",
+      "enabled": True
+    }
+  }
+}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_G" "$PROJECT_G" '/construct sync auto' 2>&1)"
+grep -Fq 'No project package declarations are waiting to be adopted.' <<<"$OUTPUT"
+test ! -e "$HOME_G/.pi/agent/construct/catalog.json"
 
 printf '== local-only package declaration ==\n'
 HOME_E="$TMP/home-local-only"

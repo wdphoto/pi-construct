@@ -4,7 +4,8 @@ import { dirname } from "node:path";
 import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog, syncSourcesToCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { getPackages, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
+import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
+import { managedPackageSourceIdentity } from "../sources.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 
 interface SyncCandidate {
@@ -24,11 +25,8 @@ async function constructManagedSources(paths: Awaited<ReturnType<typeof getPaths
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return sources;
 	for (const value of Object.values(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
-		for (const source of [value.source, value.requestedSource]) {
-			if (typeof source !== "string" || !source.trim()) continue;
-			sources.add(source.trim());
-			sources.add(await normalizeSourceForLibrary(source, dirname(paths.projectSettingsPath)));
-		}
+		const identity = await managedPackageSourceIdentity(value, paths);
+		for (const source of identity.matchSources) sources.add(source);
 	}
 	return sources;
 }
@@ -220,7 +218,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		let construct = parseProjectConstruct(constructRead);
 		for (const source of selectedSources) {
 			const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
-			const itemId = uniqueManagedId(item?.id ?? deriveId(source), constructRead, source);
+			const itemId = uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source);
 			construct = upsertConstructItem(construct, itemId, source, source, paths);
 			metadataChanged += 1;
 		}
