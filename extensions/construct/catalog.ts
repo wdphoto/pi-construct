@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { CatalogData, CatalogItem, ConstructPaths, JsonReadResult, SyncResult } from "./types.js";
+import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths, JsonReadResult, SyncResult } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
@@ -9,19 +9,19 @@ import { normalizeSourceForLibrary } from "./sources.js";
 
 export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warnings: string[] } {
 	const warnings: string[] = [];
-	if (catalog.state === "missing") return { data: { version: 1, items: [] }, warnings };
+	if (catalog.state === "missing") return { data: { version: 1, items: [], profiles: [] }, warnings };
 	if (catalog.state === "invalid") {
 		warnings.push(`Catalog is invalid JSON: ${catalog.error}`);
-		return { data: { version: 1, items: [] }, warnings };
+		return { data: { version: 1, items: [], profiles: [] }, warnings };
 	}
 	if (!isObject(catalog.data)) {
 		warnings.push("Catalog JSON is not an object.");
-		return { data: { version: 1, items: [] }, warnings };
+		return { data: { version: 1, items: [], profiles: [] }, warnings };
 	}
 	if (catalog.data.version !== 1) warnings.push("Catalog version is missing or not 1; preserving only valid MVP package items.");
 	if (!Array.isArray(catalog.data.items)) {
 		warnings.push("Catalog items is missing or not an array.");
-		return { data: { version: 1, items: [] }, warnings };
+		return { data: { version: 1, items: [], profiles: [] }, warnings };
 	}
 
 	const items: CatalogItem[] = [];
@@ -51,7 +51,37 @@ export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warn
 			description: typeof item.description === "string" && item.description.trim() ? item.description.trim() : undefined,
 		});
 	}
-	return { data: { version: 1, items }, warnings };
+
+	const profiles: CatalogProfile[] = [];
+	const rawProfiles = catalog.data.profiles;
+	if (rawProfiles !== undefined) {
+		if (!Array.isArray(rawProfiles)) warnings.push("Catalog profiles is not an array; ignored.");
+		else {
+			for (const [index, profile] of rawProfiles.entries()) {
+				if (!isObject(profile)) {
+					warnings.push(`Catalog profile ${index} is not an object; ignored.`);
+					continue;
+				}
+				if (typeof profile.id !== "string" || !profile.id.trim()) {
+					warnings.push(`Catalog profile ${index} has no id; ignored.`);
+					continue;
+				}
+				const profileItems = Array.isArray(profile.items) ? profile.items.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()) : [];
+				const profileSources = Array.isArray(profile.sources) ? profile.sources.filter((source): source is string => typeof source === "string" && source.trim().length > 0).map((source) => source.trim()) : [];
+				profiles.push({
+					...profile,
+					id: profile.id.trim(),
+					name: typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : undefined,
+					kind: "profile",
+					items: profileItems,
+					sources: profileSources,
+					createdAt: typeof profile.createdAt === "string" ? profile.createdAt : undefined,
+					updatedAt: typeof profile.updatedAt === "string" ? profile.updatedAt : undefined,
+				});
+			}
+		}
+	}
+	return { data: { version: 1, items, profiles }, warnings };
 }
 
 export function deriveId(source: string): string {
@@ -156,7 +186,7 @@ export async function syncSourcesToCatalog(
 	}
 
 	if (added.length > 0) {
-		await writeJson(paths.userCatalogPath, { version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
+		await writeJson(paths.userCatalogPath, { ...catalog, version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
 	}
 	return { added, alreadyKnown, warnings };
 }

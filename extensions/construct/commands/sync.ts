@@ -14,8 +14,7 @@ interface SyncCandidate {
 }
 
 interface SyncArgs {
-	mode: "current" | "status";
-	all: boolean;
+	mode: "menu" | "auto" | "off";
 	warnings: string[];
 }
 
@@ -66,39 +65,28 @@ async function projectSyncCandidates(paths: Awaited<ReturnType<typeof getPaths>>
 function parseSyncArgs(args: string): SyncArgs {
 	const tokens = args.split(/\s+/).filter(Boolean);
 	const warnings: string[] = [];
-	let mode: SyncArgs["mode"] = "current";
-	let all = false;
+	let mode: SyncArgs["mode"] = "menu";
 	for (const token of tokens) {
-		if (token === "status") mode = "status";
-		else if (token === "current" || token === "project") mode = "current";
-		else if (token === "-a" || token === "--all") all = true;
+		if (token === "auto" || token === "-a" || token === "--all") mode = "auto";
+		else if (token === "on" || token === "current" || token === "project") mode = "menu";
+		else if (token === "off") mode = "off";
+		else if (token === "status") warnings.push("/construct sync status moved into /construct status.");
 		else warnings.push(`Unknown sync argument ignored: ${token}`);
 	}
-	return { mode, all, warnings };
+	return { mode, warnings };
 }
 
 export async function handleSync(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const syncArgs = parseSyncArgs(args);
 	const paths = await getPaths(ctx);
 
-	if (syncArgs.mode === "status") {
-		showText(
-			ctx,
-			[
-				"Construct sync",
-				"==============",
-				"Automatic sync: off (manual; use /construct sync)",
-				"",
-				"/construct sync opens an adoption menu for project package sources not yet Construct-managed here.",
-				"/construct sync -a adopts all new project package sources without opening the menu.",
-				"Sync never installs, removes, enables, reloads, edits .pi/settings.json, or copies anything.",
-			].join("\n"),
-		);
+	if (syncArgs.mode === "off") {
+		showText(ctx, "Construct automatic sync is already off. Sync only runs when you explicitly use /construct sync or /construct sync auto.");
 		return;
 	}
 
 	if (syncArgs.warnings.length > 0) {
-		showText(ctx, ["Usage: /construct sync [-a|--all] [project|status]", "", "Construct sync only reads this project's local package declarations from .pi/settings.json.", ...syncArgs.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		showText(ctx, ["Usage: /construct sync [auto|on|off]", "", "Construct sync only reads this project's local package declarations from .pi/settings.json.", ...syncArgs.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 
@@ -157,7 +145,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	let selectedSources: string[] = [];
-	if (syncArgs.all) {
+	if (syncArgs.mode === "auto") {
 		selectedSources = candidates.adoptable.map((candidate) => candidate.source);
 	} else if (ctx.mode === "tui") {
 		const pickerItems: CheckboxPickerItem[] = [
@@ -196,7 +184,7 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 				...candidates.adoptable.map((candidate) => `- ${candidate.id}: ${candidate.source}`),
 				candidates.alreadyManaged.length > 0 ? `Already Construct-managed here: ${candidates.alreadyManaged.length}` : undefined,
 				"",
-				"Run /construct sync in the TUI to choose items, or /construct sync -a to adopt all new project package sources.",
+				"Run /construct sync in the TUI to choose items, or /construct sync auto to adopt all new project package sources.",
 			]
 				.filter((line): line is string => line !== undefined)
 				.join("\n"),

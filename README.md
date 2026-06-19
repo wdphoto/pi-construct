@@ -18,8 +18,11 @@ It is deliberately not a package manager. Pi still owns package install/removal,
 /construct             # open the loadout menu
 /construct status      # read-only diagnostics
 /construct sync        # choose current project packages to remember
-/construct sync -a     # remember all new current project packages (on exit?)
-/construct sync status # explain sync behavior (why?)
+/construct sync auto   # remember all new current project packages
+/construct sync off    # explain that automatic sync is off
+/construct profile list
+/construct profile save <name>
+/construct profile apply <name>
 /construct reload      # reload Pi resources
 ```
 
@@ -37,7 +40,13 @@ Ask Construct to remember that project package declaration:
 /construct sync
 ```
 
-Use `/construct sync -a` only when you explicitly want to adopt every new package declaration in the current project.
+Use `/construct sync auto` only when you explicitly want to adopt every new package declaration in the current project.
+
+Optionally save the current Construct-managed loadout as a named profile:
+
+```text
+/construct profile save www
+```
 
 Later, in another project, run:
 
@@ -45,7 +54,13 @@ Later, in another project, run:
 /construct
 ```
 
-The menu shows remembered packages and lets you turn them on or off for the current project. After changing the loadout, reload Pi when you are ready:
+The menu shows remembered packages and lets you turn them on or off for the current project. To turn on a saved group with fewer clicks:
+
+```text
+/construct profile apply www
+```
+
+After changing the loadout, reload Pi when you are ready:
 
 ```text
 /construct reload

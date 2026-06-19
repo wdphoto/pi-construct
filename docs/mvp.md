@@ -6,16 +6,7 @@ Construct is a Pi-native loadout menu, not a package manager.
 
 Keep Pi global config lean while making project-level Pi capabilities easy to see and toggle from one place.
 
-The source of truth remains normal Pi project config:
-
-- `.pi/settings.json`
-- `.pi/extensions/`
-- `.pi/skills/`
-- `.pi/prompts/`
-- `.pi/themes/`
-- project package declarations
-
-Construct stores only user-local install memory and advisory project metadata.
+The source of truth remains normal Pi project config, especially `.pi/settings.json`.
 
 ## Current workflow
 
@@ -23,10 +14,16 @@ Construct stores only user-local install memory and advisory project metadata.
    ```bash
    pi install <source> -l --approve
    ```
-2. Run `/construct sync` or `/construct sync -a` in project A.
+2. Run `/construct sync` or `/construct sync auto` in project A.
 3. Construct remembers selected package source strings in `~/.pi/agent/construct/catalog.json`.
-4. In project B, run `/construct`.
-5. Use the one menu to turn remembered sources on/off for that project.
+4. Optionally save the current Construct-managed package group:
+   ```text
+   /construct profile save www
+   ```
+5. In project B, run `/construct` or apply the profile:
+   ```text
+   /construct profile apply www
+   ```
 6. Run `/construct reload` or Pi's `/reload` when ready.
 
 ## Hard rules
@@ -47,8 +44,11 @@ Construct stores only user-local install memory and advisory project metadata.
 /construct
 /construct status
 /construct sync
-/construct sync -a
-/construct sync status
+/construct sync auto
+/construct sync off
+/construct profile list
+/construct profile save <name>
+/construct profile apply <name>
 /construct reload
 ```
 
@@ -56,7 +56,7 @@ Separate load/unload/toggle/library/catalog command families are intentionally o
 
 ## Data
 
-User library:
+User library and profiles:
 
 ```text
 ~/.pi/agent/construct/catalog.json
@@ -73,12 +73,3 @@ Project source of truth:
 ```text
 .pi/settings.json
 ```
-
-## Out of MVP
-
-- Startup/onboarding automation.
-- Resource-level package filters.
-- Profiles/export/import.
-- Project-type detection.
-- Package update/pinning UX.
-- Managing `AGENTS.md`, `CLAUDE.md`, `.pi/SYSTEM.md`, or `.pi/APPEND_SYSTEM.md`.

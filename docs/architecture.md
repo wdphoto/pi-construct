@@ -6,7 +6,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 
 1. **Command layer**
    - Registers `/construct`.
-   - Supports only `status`, `sync`, and `reload` subcommands.
+   - Supports only `status`, `sync`, `profile`, and `reload` subcommands.
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
@@ -28,8 +28,8 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
-   - Contains remembered package source strings.
-   - Updated by explicit `/construct sync` only in the active MVP.
+   - Contains remembered package source strings and saved profiles.
+   - Updated by explicit `/construct sync` and `/construct profile save` only in the active MVP.
 
 5. **Project metadata layer**
    - Project-local file: `.pi/construct.json`.
@@ -56,6 +56,15 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
       "source": "npm:@org/pi-browser-tools",
       "description": "Browser automation extension and skills",
       "groups": ["website"]
+    }
+  ],
+  "profiles": [
+    {
+      "id": "www",
+      "name": "www",
+      "kind": "profile",
+      "items": ["browser-tools"],
+      "sources": ["npm:@org/pi-browser-tools"]
     }
   ]
 }

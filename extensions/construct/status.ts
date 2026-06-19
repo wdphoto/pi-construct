@@ -15,6 +15,7 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 
 	const catalog = parseCatalog(userCatalog);
 	const catalogPreview = catalog.data.items.slice(0, 5).map(formatCatalogItem);
+	const profilePreview = catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} packages`);
 	const packages = getPackages(projectSettings);
 	const packageSources = new Set<string>();
 	const settingsDir = dirname(paths.projectSettingsPath);
@@ -53,9 +54,14 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		"User Construct state",
 		"--------------------",
 		"Automatic sync: off (manual; use /construct sync)",
+		"Sync menu: /construct sync",
+		"Sync all: /construct sync auto",
+		"Sync writes: user library and selected .pi/construct.json metadata only",
 		`Construct library: ${describeRead(userCatalog)}`,
 		`Library items: ${catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
+		`Profiles: ${catalog.data.profiles.length}`,
+		...formatList(profilePreview, "no profiles saved"),
 		...catalog.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Project Pi state",

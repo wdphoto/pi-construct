@@ -24,9 +24,20 @@ export interface CatalogItem extends JsonObject {
 	managed?: boolean;
 }
 
+export interface CatalogProfile extends JsonObject {
+	id: string;
+	name?: string;
+	kind: "profile";
+	items: string[];
+	sources: string[];
+	createdAt?: string;
+	updatedAt?: string;
+}
+
 export interface CatalogData {
 	version: 1;
 	items: CatalogItem[];
+	profiles: CatalogProfile[];
 }
 
 export interface SyncResult {

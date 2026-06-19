@@ -79,7 +79,7 @@ source = sys.argv[2]
 PY
 SYNC_PROMPT_OUTPUT="$(run_pi '/construct sync')"
 [[ "$SYNC_PROMPT_OUTPUT" == *"Construct sync needs a selection."* ]]
-quiet_pi '/construct sync -a'
+quiet_pi '/construct sync auto'
 python3 - "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR" <<'PY'
 import json
 import pathlib
@@ -134,6 +134,6 @@ PY
 printf '== removed command surface ==\n'
 UNKNOWN_OUTPUT="$(run_pi '/construct load whatever')"
 [[ "$UNKNOWN_OUTPUT" == *"Unknown /construct subcommand: load"* ]]
-[[ "$UNKNOWN_OUTPUT" == *"/construct sync [-a]"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct sync [auto]"* ]]
 
 printf 'smoke ok\n'

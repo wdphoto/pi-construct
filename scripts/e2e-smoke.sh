@@ -63,7 +63,7 @@ PY
 printf '== project A construct sync remembers raw install ==\n'
 SYNC_MENU_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync' 2>&1)"
 grep -Fq 'Construct sync needs a selection.' <<<"$SYNC_MENU_OUTPUT"
-SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync -a' 2>&1)"
+SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync auto' 2>&1)"
 grep -Fq 'Construct sync complete.' <<<"$SYNC_OUTPUT"
 grep -Fq 'Added to Construct: 1' <<<"$SYNC_OUTPUT"
 grep -Fq 'Errors: 0' <<<"$SYNC_OUTPUT"
@@ -88,6 +88,30 @@ DASHBOARD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct' 2>&1)"
 grep -Fq 'AVAILABLE — Construct library' <<<"$DASHBOARD_OUTPUT"
 grep -Fq 'construct-e2e-package' <<<"$DASHBOARD_OUTPUT"
 test ! -e "$PROJECT_B/.pi/construct.json"
+
+printf '== save and apply profile ==\n'
+SAVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct profile save pi-projects' 2>&1)"
+grep -Fq 'Construct profile saved: pi-projects' <<<"$SAVE_PROFILE_OUTPUT"
+PROFILE_LIST_OUTPUT="$(construct_pi "$PROJECT_A" '/construct profile list' 2>&1)"
+grep -Fq 'pi-projects' <<<"$PROFILE_LIST_OUTPUT"
+APPLY_PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct profile apply pi-projects' 2>&1)"
+grep -Fq 'Construct profile applied: pi-projects' <<<"$APPLY_PROFILE_OUTPUT"
+grep -Fq 'Turned on: 1/1' <<<"$APPLY_PROFILE_OUTPUT"
+python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+source = str(pathlib.Path(sys.argv[3]).resolve())
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert any(profile.get("id") == "pi-projects" and source in profile.get("sources", []) for profile in catalog.get("profiles", [])), catalog
+assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else project / ".pi" / entry).resolve()) == source for entry in settings.get("packages", [])), settings
+assert any((item.get("source") == source or item.get("requestedSource") == source) and item.get("enabled") is True for item in construct.get("items", {}).values()), construct
+PY
 
 printf '== removed load/unload command surface ==\n'
 LOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct load construct-e2e-package' 2>&1)"
