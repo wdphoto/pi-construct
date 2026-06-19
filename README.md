@@ -2,7 +2,7 @@
 
 The Construct is a rapid loadout manager for [Pi](https://pi.dev). 
 
-Sync local extensions and skills to the Construct and install them in any future Project. It stores a replayable Pi package source, like:
+Sync your local project tools to the Construct and install them on any other project. It stores a replayable Pi package source, like:
 
  ```text
    npm:@scope/pi-tools
@@ -10,29 +10,23 @@ Sync local extensions and skills to the Construct and install them in any future
    /Users/me/code/local-pi-package
  ```
  
-This does **NOT** replace Pi packages or manage package internals. 
+This does **NOT** replace Pi packages or manage package internals. It's basicallya glorified autofill for local package management.
 
-I'm just trying to get things from point A to B, C and D that arent global and can be grouped in a construct.profile type thing (down the road).
+I'm just trying to get things from point A to B, C and D that arent global and can be grouped in a construct.profile type thing (down the road). Maybe a directory level implimentation?
 
 ## Basics
 
-While in a project, install your local Pi package normally:
+While in a project, install your local Pi packages normally:
 
 ```bash
 pi install -l <source>
 ```
 
-Then adopt that project package into your Construct library:
+Then adopt that project package into your Construct library with `/construct sync` and follow the instructions.
 
-```text
-/construct sync
-```
+## Construct Load
 
-In another project, open the loadout picker:
-
-```text
-/construct
-```
+In another project use `/construct` or `/construct load`.
 
 Check the packages you want, save, then `/reload`. 
 
@@ -91,7 +85,7 @@ Meaning:
 /construct reload                       # reload Pi resources
 ```
 
-Interactive pickers support fuzzy typing, Space to toggle, Enter to save, and Esc to cancel.
+Interactive pickers support fuzzy typing, Space to toggle, Enter to save, and Esc to cancel. I'm going for fast and snappy here. Feedback welcome.
 
 ## Important rules
 
