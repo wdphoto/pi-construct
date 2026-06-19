@@ -1,4 +1,4 @@
-# MVP contract
+# Product model
 
 Construct is a Pi-native loadout menu, not a package manager.
 
@@ -28,7 +28,7 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
 
 ## Hard rules
 
-- Keep things manual for MVP.
+- Keep loadout changes manual and explicit.
 - Construct must not silently install, enable, copy, sync, update, reload, or write project files.
 - No startup/autoload behavior.
 - `/construct sync` is manual adoption only.
@@ -52,7 +52,7 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
 /construct reload
 ```
 
-Separate load/unload/toggle/library/catalog command families are intentionally out of the active MVP.
+Separate load/unload/toggle/library/catalog command families are intentionally out of the active product surface.
 
 ## Data
 

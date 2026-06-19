@@ -2,7 +2,7 @@
 
 ## Decision
 
-Construct should have **no active startup/autoload behavior** in the MVP.
+Construct should have **no active startup/autoload behavior** in the current product.
 
 - Do not open Construct when a project loads.
 - Do not prompt `Load it into the Construct?` on startup.

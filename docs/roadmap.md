@@ -2,7 +2,7 @@
 
 ## Current status
 
-The MVP is small, but profiles now exist as a low-click grouping layer:
+Construct is intentionally small, but profiles now exist as a low-click grouping layer:
 
 - `/construct` one-menu loadout dashboard.
 - `/construct status` read-only diagnostics.
@@ -18,14 +18,13 @@ Package load/unload remains an internal dashboard/profile operation, not separat
 ## Current cleanup priorities
 
 1. Fold profiles into the main `/construct` TUI as first-class selectable rows/groups.
-2. Fix post-save loadout output placement so multi-line summaries do not appear in the footer/loader area.
-3. Polish the one `/construct` menu.
-4. Improve filtering/search so package rows are easy to find even when runtime skill commands are numerous.
-5. Decide local-only row behavior:
+2. Polish the one `/construct` menu.
+3. Improve filtering/search so package rows are easy to find even when runtime skill commands are numerous.
+4. Decide local-only row behavior:
    - keep read-only with `/construct sync` hint;
    - or allow adoption from the dashboard.
-6. Improve normalized path drift reporting.
-7. Add conflict/doctor visibility for duplicate tools/resources.
+5. Improve normalized path drift reporting.
+6. Add conflict/doctor visibility for duplicate tools/resources.
 
 ## Profile direction
 

@@ -6,6 +6,21 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Added regression coverage for duplicate Construct sync ids and `requestedSource` local path normalization.
+
+### Changed
+- Refreshed README install/uninstall examples for npm, git, and local filepath installs.
+- Reframed active docs from early-stage language to the current product model.
+- Successful dashboard, sync, and profile action summaries now render in a focused TUI panel instead of a footer-style notification.
+
+### Fixed
+- Fixed `/construct sync` project metadata updates so multiple selected package sources with the same derived id do not overwrite each other.
+- Reused shared source identity handling during sync so managed local package metadata is recognized consistently.
+
+### Removed
+- Pruned completed audit/fix-plan scratch docs and consolidated review prompts into the pre-flight checklist.
+
 ## 0.0.6 - 2026-06-19
 
 ### Changed
@@ -59,7 +74,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Prevented invalid or structurally unsafe Construct library JSON from being overwritten by library writes.
 
 ### Removed
-- Removed unused/stale helper paths left from earlier MVP iterations.
+- Removed unused/stale helper paths left from earlier iterations.
 
 ## 0.0.1 - 2026-06-18
 
@@ -83,7 +98,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - `/construct unload <source-or-id>` still unloads a single managed package declaration.
 - `/construct wipe` was removed from the primary flow; use `/construct toggle` instead.
 - `/construct catalog` with no subcommand now correctly lists the library instead of treating the dashboard default as a nested subcommand.
-- `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope for the MVP.
+- `/construct sync` now focuses on the current project's local package declarations. Global package declarations are intentionally out of scope.
 - Refactored the Construct extension into focused modules under `extensions/construct/`.
 - Polished successful load, unload, and sync summaries to be shorter, avoid noisy Pi stdout/stderr, and give clearer reload guidance.
 
@@ -94,4 +109,4 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 ## 0.0.0
 
 ### Added
-- Initial MVP for `/construct status`, `/construct load`, `/construct unload`, `/construct sync`, `/construct catalog`, and reload helpers.
+- Initial implementation for `/construct status`, `/construct load`, `/construct unload`, `/construct sync`, `/construct catalog`, and reload helpers.

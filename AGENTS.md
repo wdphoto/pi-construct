@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is for **the-construct**, a global Pi extension / Pi package whose command surface is `/construct`.
+This repo is for **pi-construct** / **The Construct**, a global Pi extension / Pi package whose command surface is `/construct`.
 
 This is a Pi-native project. Before reaching for external web docs, use Pi's installed local documentation, local examples, and this repo's docs as the source of truth. Work smarter: verify against the APIs and behavior that are already on this machine.
 
@@ -13,7 +13,7 @@ This is a Pi-native project. Before reaching for external web docs, use Pi's ins
 
 ## Current status
 
-- MVP implementation exists.
+- Current product implementation exists.
 - Entry point: `extensions/construct/index.ts`.
 - Main plan: `the-construct-plan.md`.
 - Main validation: `./scripts/smoke.sh` plus disposable installed-package checks.
@@ -65,10 +65,10 @@ Key docs:
 
 Relevant examples to review when coding:
 
-- `project-trust.ts` only to understand Pi trust; the-construct should not own trust in MVP.
+- `project-trust.ts` only to understand Pi trust; Construct should not own trust decisions.
 - `commands.ts` for slash command listing patterns.
 - `tools.ts` for simple settings-list UI patterns.
-- `dynamic-resources/index.ts` for future cwd/profile ideas, not MVP.
+- `dynamic-resources/index.ts` for future cwd/profile ideas, not current product behavior.
 - `reload-runtime.ts` for safe reload command behavior.
 
 ## Current command surface
@@ -76,21 +76,25 @@ Relevant examples to review when coding:
 Primary public commands:
 
 - `/construct`
-- `/construct status`
-- `/construct`
+
+Support commands:
+
 - `/construct status`
 - `/construct sync`
-- `/construct sync -a`
-- `/construct sync status`
+- `/construct sync auto`
+- `/construct sync off`
+- `/construct profile list`
+- `/construct profile save <name>`
+- `/construct profile apply <name>`
 - `/construct reload`
 
 Do not re-add load/unload/toggle/library/remember/forget/catalog compatibility commands without an explicit product decision. The current bias is one quiet menu plus minimal support commands.
 
 ## Naming
 
-- Extension/package/project name: `the-construct`.
+- npm package/project name: `pi-construct`.
+- Product/extension name: The Construct.
 - User command: `/construct`.
-- Human prompt: `Load it into the Construct? y/n`.
 
 ## Git/project hygiene
 

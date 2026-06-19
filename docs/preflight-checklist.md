@@ -4,7 +4,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 
 ## Current target
 
-Protect the manual MVP:
+Protect the manual product model:
 
 - `/construct` is the primary surface.
 - Support commands are `status`, `sync`, `profile`, and `reload`.
@@ -63,9 +63,21 @@ Check in real TUI usage:
 - Space toggles package rows;
 - Enter saves;
 - Esc cancels;
-- local-only/runtime rows are clear;
-- summaries are minimal;
+- package rows stay primary;
+- local-only/runtime rows are clear and do not flood the view;
+- summaries are minimal and actionable;
 - reload guidance is present after changes.
+
+## Design review prompts
+
+Before adding new behavior, ask:
+
+- Is this better as part of the one `/construct` menu instead of a new slash command?
+- Does every mutating path require explicit user action?
+- Are we relying on Pi package/settings primitives instead of rebuilding package management?
+- Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
+- Do profiles still store only library ids/sources and apply explicitly?
+- Would local-only package adoption be clearer as read-only guidance or as a dashboard action?
 
 ## Full validation
 

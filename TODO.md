@@ -1,6 +1,6 @@
 # TODO
 
-Current work should keep the MVP manual, explicit, and boring-safe. Do not add lifecycle/startup automation unless we deliberately reopen that design.
+Current work should keep Construct manual, explicit, and boring-safe. Do not add lifecycle/startup automation unless we deliberately reopen that design.
 
 ## Current state — 2026-06-19 command-surface reset
 
@@ -28,34 +28,32 @@ Current work should keep the MVP manual, explicit, and boring-safe. Do not add l
    - Example profiles: `www`, `golang`, `pi-projects`.
    - Profiles store library item ids/sources, not copied package code.
    - Future polish: fold profiles into the main `/construct` menu so applying a stack is a first-class selectable row.
-3. [ ] Add npm package/release follow-through:
+3. [x] Fix sync source identity edge cases:
+   - duplicate derived/catalog ids no longer overwrite project metadata during one sync pass;
+   - sync reuses shared source identity normalization for managed metadata;
+   - `requestedSource` local paths normalize relative to project cwd.
+4. [x] Fix post-save loadout output placement:
+   - dashboard/sync/profile success summaries now use a focused TUI summary panel;
+   - print mode still writes normal command output.
+5. [ ] Add npm package/release follow-through:
    - decide whether this stays private for now or gets published;
    - set the package name/version/release notes deliberately;
    - confirm what files ship in `files`;
    - document the publish/release flow once chosen.
-4. [ ] Make the one `/construct` menu excellent:
+6. [ ] Make the one `/construct` menu excellent:
    - fuzzy typing/filtering;
    - Space toggles;
    - Enter saves;
    - Esc cancels;
    - subtle hints only;
    - minimal success/error summaries.
-5. [ ] Fix post-save loadout output placement. Current save/apply output can appear in the footer/loader area and break the TUI layout, e.g.:
-   ```text
-   Construct loadout changes applied.
-   Turned on: 2/2
-   + pi-subagents: https://github.com/nicobailon/pi-subagents
-   + pi-web-access: https://github.com/nicobailon/pi-web-access
-   Reload Pi resources with /construct reload or /reload when ready.
-   ```
-   Find this message a proper home: likely a post-submit summary screen, toast/status region, or normal command output after the TUI exits. Think through the loader/save lifecycle before patching; do not keep writing multi-line summaries into the footer.
-6. [ ] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
-7. [ ] Decide how local-only rows behave in the one-menu model:
+7. [ ] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
+8. [ ] Decide how local-only rows behave in the one-menu model:
    - read-only with a hint to run `/construct sync`;
    - or selectable adoption from the same menu.
-8. [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
-9. [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
-10. [ ] Sweep old docs under `docs/` after the new one-menu direction settles. Keep historical notes if useful, but active docs should not advertise removed commands.
+9. [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+10. [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
+11. [ ] Sweep old docs under `docs/` after the new one-menu direction settles. Keep historical notes if useful, but active docs should not advertise removed commands.
 
 ## Validation to keep running
 

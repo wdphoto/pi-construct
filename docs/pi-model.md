@@ -6,7 +6,7 @@
 
 - **Project trust**: project-local `.pi/settings.json`, `.pi/extensions`, `.pi/skills`, `.pi/prompts`, `.pi/themes`, `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md`, and `.agents/skills` load only after trust.
 - **Context files**: repo-root/ancestor `AGENTS.md` and `CLAUDE.md` are normal Pi project guidance and can be part of a workflow, though they are not gated the same way as `.pi` resources.
-- **Trust belongs to Pi**. Global extensions can technically participate in the `project_trust` event, but `the-construct` should not own, replace, or track trust decisions in MVP.
+- **Trust belongs to Pi**. Global extensions can technically participate in the `project_trust` event, but Construct should not own, replace, or track trust decisions.
 - **Project package installs** already exist: `pi install <source> -l` writes to `.pi/settings.json`; after that, Pi installs missing project packages on startup after trust. No `-l` churn is needed on every run.
 - **Project-local auto-discovery** already exists: `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and `.pi/themes/` are discovered after trust without extra settings in many cases.
 - **Resources**:

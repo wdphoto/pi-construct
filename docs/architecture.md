@@ -29,7 +29,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
    - Contains remembered package source strings and saved profiles.
-   - Updated by explicit `/construct sync` and `/construct profile save` only in the active MVP.
+   - Updated only by explicit `/construct sync` and `/construct profile save` commands.
 
 5. **Project metadata layer**
    - Project-local file: `.pi/construct.json`.
@@ -103,4 +103,4 @@ Rules:
 
 ## Startup behavior
 
-Construct has no lifecycle/startup behavior in the MVP. It does not prompt, sync, install, reload, or write files just because Pi starts.
+Construct has no lifecycle/startup behavior. It does not prompt, sync, install, reload, or write files just because Pi starts.
