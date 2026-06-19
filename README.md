@@ -27,9 +27,9 @@ Project-only
 ------------
 [!] local-tooling   /Users/you/dev/local-tooling
 
-Space toggles. Construct packages. Enter applies. Esc cancels.
+Space toggles. Enter applies. Esc cancels.
 
-run `/construct sync` to add new project-level resources into the construct.
+Run `/construct sync` to sync new project-level resources to the Construct.
 
 ```
 
@@ -41,7 +41,7 @@ Install a Pi package locally in your project:
 pi install <source> -l --approve
 ```
 
-Sync that package declaration to Construct:
+Sync that package declaration to the Construct:
 
 ```text
 /construct sync
