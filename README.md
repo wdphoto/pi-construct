@@ -1,16 +1,16 @@
 # The Construct
 
-The Construct is a rapid loadout manager for [Pi](https://pi.dev). 
+The Construct is a rapid loadout manager for [Pi](https://pi.dev).
 
 Sync your local project tools to the Construct and install them on any other project. It stores a replayable Pi package source, like:
 
- ```text
-   npm:@scope/pi-tools
-   https://github.com/user/pi-package
-   /Users/me/code/local-pi-package
- ```
- 
-This does **NOT** replace Pi packages or manage package internals. It's basicallya glorified autofill for local package management.
+```text
+npm:@scope/pi-tools
+https://github.com/user/pi-package
+/Users/me/code/local-pi-package
+```
+
+This does **NOT** replace Pi packages or manage package internals. It's basically a glorified autofill for local package management.
 
 I'm just trying to get things from point A to B, C and D that arent global and can be grouped in a construct.profile type thing (down the road). Maybe a directory level implimentation?
 
@@ -22,13 +22,13 @@ While in a project, install your local Pi packages normally:
 pi install -l <source>
 ```
 
-Then adopt that project package into your Construct library with `/construct sync` and follow the instructions.
+Then adopt that project package into your Construct library with `/construct sync` and follow the menu. Use `/construct sync -a` to adopt all new project packages without the menu.
 
 ## Construct Load
 
 In another project use `/construct` or `/construct load`.
 
-Check the packages you want, save, then `/reload`. 
+Check the packages you want, save, then `/reload`.
 
 ## Example `/construct` output
 
@@ -78,7 +78,8 @@ Meaning:
 /construct load [source-or-library-id]  # load package into this project
 /construct unload [source-or-library-id] # disable package in this project
 /construct toggle                       # flip Construct-managed loadout off/on
-/construct sync                         # adopt current project packages into Construct
+/construct sync                         # choose project packages to adopt into Construct
+/construct sync -a                      # adopt all new project packages into Construct
 /construct library                      # list remembered package sources
 /construct remember <source> [id]       # add source to library
 /construct forget <id-or-source>        # remove source from library
@@ -87,10 +88,13 @@ Meaning:
 
 Interactive pickers support fuzzy typing, Space to toggle, Enter to save, and Esc to cancel. I'm going for fast and snappy here. Feedback welcome.
 
+Note: slash-command source parsing is intentionally simple. If a local package path contains spaces, use the interactive/manual source input instead of typing it directly in `/construct remember <source>`.
+
 ## Important rules
 
 - `.pi/settings.json` is Pi's source of truth.
 - `.pi/construct.json` is advisory Construct metadata.
+- Construct toggles whole Pi package declarations in the MVP; package resource filters stay Pi-owned.
 - `/construct sync` never installs or removes packages.
 - `/construct unload` disables the project declaration only. It does not delete local files, npm caches, git clones, or library entries.
 - Construct does not auto-sync, auto-load, auto-disable, or auto-reload on startup.

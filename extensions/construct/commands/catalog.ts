@@ -1,9 +1,18 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { CatalogData, CatalogItem } from "../types.js";
+import type { CatalogData, CatalogItem, JsonReadResult } from "../types.js";
 import { deriveId, findCatalogItem, formatCatalogItem, loadCatalog, normalizeSourceForLibrary, uniqueId } from "../catalog.js";
 import { describeRead, writeJson } from "../json.js";
 import { formatList } from "../project-settings.js";
 import { showText, splitArgs } from "../ui.js";
+
+function libraryWriteBlocker(path: string, read: JsonReadResult, warnings: string[]): string | undefined {
+	if (read.state !== "invalid" && !(read.state === "ok" && warnings.length > 0)) return undefined;
+	return [
+		`Cannot update Construct library until ${path} is fixed.`,
+		...warnings.map((warning) => `! ${warning}`),
+		read.state === "invalid" ? `! Catalog is invalid JSON: ${read.error}` : undefined,
+	].filter((line): line is string => line !== undefined).join("\n");
+}
 
 export async function handleCatalog(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, read, catalog, warnings } = await loadCatalog(ctx);
@@ -33,6 +42,11 @@ export async function handleCatalog(args: string, ctx: ExtensionCommandContext):
 	}
 
 	if (command === "add") {
+		const blocker = libraryWriteBlocker(paths.userCatalogPath, read, warnings);
+		if (blocker) {
+			showText(ctx, blocker);
+			return;
+		}
 		const [rawSource, requestedId] = rest.split(/\s+/).filter(Boolean);
 		if (!rawSource) {
 			showText(ctx, "Usage: /construct catalog add <source> [id]");
@@ -55,6 +69,11 @@ export async function handleCatalog(args: string, ctx: ExtensionCommandContext):
 	}
 
 	if (command === "remove" || command === "rm") {
+		const blocker = libraryWriteBlocker(paths.userCatalogPath, read, warnings);
+		if (blocker) {
+			showText(ctx, blocker);
+			return;
+		}
 		const query = rest.trim();
 		if (!query) {
 			showText(ctx, "Usage: /construct catalog remove <id-or-source>");

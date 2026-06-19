@@ -47,7 +47,7 @@ function fuzzyMatches(text: string, query: string): boolean {
 }
 
 export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string, items: CheckboxPickerItem[]): Promise<string[] | undefined> {
-	if (!ctx.hasUI) return undefined;
+	if (ctx.mode !== "tui") return undefined;
 
 	return ctx.ui.custom<string[] | undefined>((tui, theme, keybindings, done) => {
 		const checked = new Set(items.filter((item) => item.checked).map((item) => item.id));
@@ -175,30 +175,4 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		return { render, handleInput, invalidate };
 	});
-}
-
-export function planned(ctx: ExtensionCommandContext, subcommand: string): void {
-	showText(
-		ctx,
-		[
-			`/construct ${subcommand} is planned but not implemented yet.`,
-			"",
-			"Implemented now:",
-			"- /construct",
-			"- /construct status",
-			"- /construct library",
-			"- /construct remember <source> [id]",
-			"- /construct forget <id-or-source>",
-			"- /construct catalog (compatibility)",
-			"- /construct catalog add <source> [id] (compatibility)",
-			"- /construct catalog remove <id-or-source> (compatibility)",
-			"- /construct load [source-or-library-id]",
-			"- /construct unload [source-or-library-id]",
-			"- /construct toggle",
-			"- /construct sync",
-			"- /construct sync status",
-			"",
-			"Next phase improves the TUI loadout picker.",
-		].join("\n"),
-	);
 }

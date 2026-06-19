@@ -56,6 +56,9 @@ OUTPUT="$(construct_pi "$HOME_A" "$PROJECT_A" '/construct sync' 2>&1)"
 grep -Fq 'Construct sync failed.' <<<"$OUTPUT"
 grep -Fq 'Construct library catalog is invalid JSON' <<<"$OUTPUT"
 grep -Fq '{ invalid catalog' "$HOME_A/.pi/agent/construct/catalog.json"
+OUTPUT="$(construct_pi "$HOME_A" "$PROJECT_A" '/construct remember npm:@scope/should-not-overwrite' 2>&1)"
+grep -Fq 'Cannot update Construct library' <<<"$OUTPUT"
+grep -Fq '{ invalid catalog' "$HOME_A/.pi/agent/construct/catalog.json"
 test ! -e "$PROJECT_A/.pi/construct.json"
 
 printf '== invalid project settings JSON ==\n'
@@ -111,6 +114,37 @@ source = sys.argv[2]
 PY
 OUTPUT="$(construct_pi "$HOME_D" "$PROJECT_D" '/construct status' 2>&1)"
 grep -Fq 'drift: enabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
+
+printf '== normalized local path does not drift ==\n'
+HOME_F="$TMP/home-normalized-status"
+PROJECT_F="$TMP/project-normalized-status"
+mkdir -p "$HOME_F" "$PROJECT_F/.pi" "$PROJECT_F/pkg/extensions"
+cat > "$PROJECT_F/.pi/settings.json" <<'JSON'
+{
+  "packages": ["../pkg"]
+}
+JSON
+python3 - "$PROJECT_F" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+source = str((project / "pkg").resolve())
+(project / ".pi/construct.json").write_text(json.dumps({
+  "version": 1,
+  "managedBy": "the-construct",
+  "items": {
+    "pkg": {
+      "kind": "package",
+      "source": source,
+      "enabled": True
+    }
+  }
+}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_F" "$PROJECT_F" '/construct status' 2>&1)"
+grep -Fq 'pkg (package, enabled)' <<<"$OUTPUT"
+! grep -Fq 'drift:' <<<"$OUTPUT"
 
 printf '== local-only package declaration ==\n'
 HOME_E="$TMP/home-local-only"

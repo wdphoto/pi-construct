@@ -1,11 +1,11 @@
-import { realpath } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, ConstructPaths, JsonReadResult, SyncResult } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
+export { isLocalPathSource, normalizeSourceForLibrary } from "./sources.js";
+import { normalizeSourceForLibrary } from "./sources.js";
 
 export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warnings: string[] } {
 	const warnings: string[] = [];
@@ -43,6 +43,7 @@ export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warn
 			continue;
 		}
 		items.push({
+			...item,
 			id: item.id.trim(),
 			name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : undefined,
 			kind: "package",
@@ -112,18 +113,6 @@ export async function loadCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Pr
 	return { paths, read, catalog: data, warnings };
 }
 
-export function isLocalPathSource(source: string): boolean {
-	return source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~");
-}
-
-export async function normalizeSourceForLibrary(source: string, baseDir: string): Promise<string> {
-	const trimmed = source.trim();
-	if (!isLocalPathSource(trimmed)) return trimmed;
-	const expanded = trimmed === "~" ? homedir() : trimmed.startsWith("~/") ? join(homedir(), trimmed.slice(2)) : trimmed;
-	const absolute = expanded.startsWith("/") ? expanded : resolve(baseDir, expanded);
-	return realpath(absolute).catch(() => absolute);
-}
-
 export async function packageSourcesFromSettings(settingsPath: string): Promise<string[]> {
 	const settings = await readJson(settingsPath);
 	const baseDir = dirname(settingsPath);
@@ -170,10 +159,5 @@ export async function syncSourcesToCatalog(
 		await writeJson(paths.userCatalogPath, { version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
 	}
 	return { added, alreadyKnown, warnings };
-}
-
-export async function syncProjectPackagesToCatalog(ctx: Pick<ExtensionCommandContext, "cwd">): Promise<SyncResult> {
-	const paths = await getPaths(ctx);
-	return syncSourcesToCatalog(ctx, await packageSourcesFromSettings(paths.projectSettingsPath));
 }
 

@@ -9,6 +9,7 @@ Current work should keep the MVP manual, explicit, and boring-safe. Do not add l
   - `/construct load`
   - `/construct unload`
   - multi-item `/construct sync`
+  - `/construct sync -a` print/non-UI adopt-all shortcut
   - Verify fuzzy typing/filtering, Space toggles, Enter saves, Esc cancels, and readable section headers.
 - [ ] Make `/construct` command output prettier and easier to scan:
   - status, sync, library, load, unload, toggle, and dashboard;

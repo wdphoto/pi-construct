@@ -1,10 +1,11 @@
-import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, ConstructPaths } from "../types.js";
-import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings, uniqueId } from "../catalog.js";
+import { deriveId, findCatalogItem, loadCatalog, packageSourcesFromSettings, uniqueId } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { backupProjectSettingsIfPresent, chooseDeclaredSource, getPackages, looksLikePackageSource, parseProjectConstruct, uniqueManagedId, upsertConstructItem } from "../project-settings.js";
+import { managedPackageSourceIdentity } from "../sources.js";
+import { looksLikePackageSource } from "../project-settings.js";
+import { loadPackageIntoProject } from "../package-ops.js";
 import { pickCheckboxes, showText } from "../ui.js";
 
 export function parseLoadFlags(args: string): { dryRun: boolean; query: string } {
@@ -51,13 +52,9 @@ export async function managedCatalogItems(paths: ConstructPaths): Promise<Catalo
 	const items: CatalogItem[] = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
-		const rawSource = typeof value.requestedSource === "string"
-			? value.requestedSource
-			: typeof value.source === "string"
-				? value.source
-				: undefined;
-		if (!rawSource) continue;
-		items.push({ id, kind: "package", source: await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath)), managed: true });
+		const identity = await managedPackageSourceIdentity(value, paths);
+		if (!identity.normalizedInstallSource) continue;
+		items.push({ id, kind: "package", source: identity.normalizedInstallSource, managed: true });
 	}
 	return items;
 }
@@ -132,28 +129,29 @@ export async function handleOn(pi: ExtensionAPI, ctx: ExtensionCommandContext): 
 	const candidates: CatalogItem[] = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package" || value.enabled !== false) continue;
-		const rawSource = typeof value.requestedSource === "string"
-			? value.requestedSource
-			: typeof value.source === "string"
-				? value.source
-				: undefined;
-		if (!rawSource) continue;
-		const source = await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath));
-		if (!projectSources.has(source)) candidates.push({ id, kind: "package", source, managed: true });
+		const identity = await managedPackageSourceIdentity(value, paths);
+		if (!identity.normalizedInstallSource) continue;
+		const isDeclared = [...identity.matchSources].some((source) => projectSources.has(source));
+		if (!isDeclared) candidates.push({ id, kind: "package", source: identity.normalizedInstallSource, managed: true });
 	}
 	if (candidates.length === 0) {
 		showText(ctx, "No Construct-managed packages are off and ready to rearm.");
 		return;
 	}
+	const loaded: CatalogItem[] = [];
+	const failures: string[] = [];
 	for (const item of candidates) {
-		await handleLoad(item.id, pi, ctx);
+		const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
+		if (result.ok) loaded.push(item);
+		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
 	}
 	showText(
 		ctx,
 		[
 			"Construct on complete.",
-			`Rearmed packages: ${candidates.length}`,
-			...candidates.map((item) => `- ${item.id}: ${item.source}`),
+			`Rearmed packages: ${loaded.length}`,
+			...loaded.map((item) => `- ${item.id}: ${item.source}`),
+			...failures.map((failure) => `! ${failure}`),
 			"Reload Pi resources with /construct reload or /reload when ready.",
 		].join("\n"),
 	);
@@ -163,7 +161,7 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 	const paths = await getPaths(ctx);
 	const flags = parseLoadFlags(args);
 
-	if (!flags.query && !flags.dryRun && ctx.hasUI) {
+	if (!flags.query && !flags.dryRun && ctx.mode === "tui") {
 		const { catalog, warnings } = await loadCatalog(ctx);
 		const items = await loadPickerItems(paths, catalog);
 		const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
@@ -192,15 +190,20 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 			showText(ctx, "No packages selected. No files were changed.");
 			return;
 		}
+		const loaded: CatalogItem[] = [];
+		const failures: string[] = [];
 		for (const item of selected) {
-			await handleLoad(item.id, pi, ctx);
+			const result = await loadPackageIntoProject(pi, paths, { source: item.source, item });
+			if (result.ok) loaded.push(item);
+			else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
 		}
 		showText(
 			ctx,
 			[
 				"Construct load selections applied.",
-				`Selected packages: ${selected.length}`,
-				...selected.map((item) => `- ${item.id}: ${item.source}`),
+				`Loaded packages: ${loaded.length}/${selected.length}`,
+				...loaded.map((item) => `- ${item.id}: ${item.source}`),
+				...failures.map((failure) => `! ${failure}`),
 				...warnings.map((warning) => `! ${warning}`),
 				"Reload Pi resources with /construct reload or /reload when ready.",
 			].join("\n"),
@@ -251,76 +254,57 @@ export async function handleLoad(args: string, pi: ExtensionAPI, ctx: ExtensionC
 		return;
 	}
 
-	const constructRead = await readJson(paths.projectConstructPath);
-	try {
-		parseProjectConstruct(constructRead);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Cannot load package until Construct metadata is fixed.\n${message}`);
-		return;
-	}
-
-	const beforePackages = getPackages(await readJson(paths.projectSettingsPath));
-
-	let backupPath: string | undefined;
-	try {
-		backupPath = await backupProjectSettingsIfPresent(paths);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Could not back up .pi/settings.json; aborting load.\n${message}`);
-		return;
-	}
-
 	if (ctx.hasUI) ctx.ui.setStatus("construct", `Construct: loading ${resolved.item?.id ?? resolved.source}`);
 	else showText(ctx, [`Loading into this project...`, `Source: ${resolved.source}`].join("\n"));
 
-	const install = await pi.exec("pi", ["install", resolved.source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
-	if (install.code !== 0) {
+	const load = await loadPackageIntoProject(pi, paths, { source: resolved.source, item: resolved.item });
+	if (!load.ok) {
 		if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
-		showText(
-			ctx,
-			[
-				"Construct load failed during Pi package install.",
-				`Command: pi install ${resolved.source} -l --approve`,
-				`Exit code: ${install.code}`,
-				backupPath ? `Settings backup: ${backupPath}` : undefined,
-				install.stdout ? `\nstdout:\n${install.stdout}` : undefined,
-				install.stderr ? `\nstderr:\n${install.stderr}` : undefined,
-			]
-				.filter((line): line is string => line !== undefined)
-				.join("\n"),
-		);
+		if (load.metadataOnlyFailure) {
+			showText(
+				ctx,
+				[
+					"Package installed, but Construct metadata update failed.",
+					`Source: ${resolved.source}`,
+					`Metadata path: ${paths.projectConstructPath}`,
+					load.backupPath ? `Settings backup: ${load.backupPath}` : undefined,
+					load.error,
+				].filter((line): line is string => line !== undefined).join("\n"),
+			);
+			return;
+		}
+		if (load.exitCode !== undefined) {
+			showText(
+				ctx,
+				[
+					"Construct load failed during Pi package install.",
+					`Command: pi install ${resolved.source} -l --approve`,
+					`Exit code: ${load.exitCode}`,
+					load.backupPath ? `Settings backup: ${load.backupPath}` : undefined,
+					load.stdout ? `\nstdout:\n${load.stdout}` : undefined,
+					load.stderr ? `\nstderr:\n${load.stderr}` : undefined,
+				]
+					.filter((line): line is string => line !== undefined)
+					.join("\n"),
+			);
+			return;
+		}
+		showText(ctx, `Cannot load package until Construct metadata/settings are fixed.\n${load.error ?? "Unknown error"}`);
 		return;
 	}
 
-	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
-	const declaredSource = chooseDeclaredSource(beforePackages, afterPackages, resolved.source);
-	const itemId = resolved.item?.managed ? resolved.item.id : uniqueManagedId(resolved.item?.id ?? deriveId(resolved.source), constructRead, declaredSource);
-	try {
-		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, resolved.source, paths);
-		await writeJson(paths.projectConstructPath, construct);
-	} catch (error) {
-		if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
-		const message = error instanceof Error ? error.message : String(error);
-		showText(
-			ctx,
-			[
-				"Package installed, but Construct metadata update failed.",
-				`Source: ${resolved.source}`,
-				`Metadata path: ${paths.projectConstructPath}`,
-				backupPath ? `Settings backup: ${backupPath}` : undefined,
-				message,
-			].filter((line): line is string => line !== undefined).join("\n"),
-		);
-		return;
-	}
+	const itemId = load.itemId ?? resolved.item?.id ?? deriveId(resolved.source);
+	const declaredSource = load.declaredSource ?? resolved.source;
+	const backupPath = load.backupPath;
 
 	let catalogMessage = "";
 	if (!resolved.item && ctx.hasUI) {
 		const add = await ctx.ui.confirm("Add to Construct library?", `Add ${resolved.source} to your Construct library for future projects?`);
 		if (add) {
-			const { paths: catalogPaths, catalog } = await loadCatalog(ctx);
-			if (!catalog.items.some((item) => item.source === resolved.source)) {
+			const { paths: catalogPaths, read: catalogRead, catalog, warnings: catalogWarnings } = await loadCatalog(ctx);
+			if (catalogRead.state === "invalid" || (catalogRead.state === "ok" && catalogWarnings.length > 0)) {
+				catalogMessage = `${catalogMessage}\nSkipped adding to Construct library because ${catalogPaths.userCatalogPath} needs repair.`;
+			} else if (!catalog.items.some((item) => item.source === resolved.source)) {
 				const item: CatalogItem = { id: uniqueId(deriveId(resolved.source), catalog.items), kind: "package", source: resolved.source };
 				await writeJson(catalogPaths.userCatalogPath, {
 					version: 1,

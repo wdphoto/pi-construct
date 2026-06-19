@@ -1,5 +1,6 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatCatalogItem, loadCatalog, parseCatalog } from "./catalog.js";
+import { formatCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog } from "./catalog.js";
 import { describeRead, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
@@ -15,8 +16,13 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 	const catalog = parseCatalog(userCatalog);
 	const catalogPreview = catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const packages = getPackages(projectSettings);
-	const packageSources = new Set(packages.map((pkg) => pkg.source));
-	const managed = getManagedItems(projectConstruct, packageSources);
+	const packageSources = new Set<string>();
+	const settingsDir = dirname(paths.projectSettingsPath);
+	for (const pkg of packages) {
+		packageSources.add(pkg.source);
+		if (pkg.form !== "invalid") packageSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
+	}
+	const managed = await getManagedItems(projectConstruct, packageSources, paths);
 	const commands = pi.getCommands();
 	const tools = pi.getAllTools();
 	const activeTools = pi.getActiveTools();
@@ -70,7 +76,7 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		"-----",
 		"- Status is read-only; no files were changed.",
 		"- .pi/settings.json is Pi's source of truth; Construct metadata is advisory.",
-		"- Drift checks use exact source strings only in this MVP skeleton.",
+		"- Drift checks normalize local path package sources where possible.",
 	]
 		.filter((line): line is string => line !== undefined)
 		.join("\n");

@@ -70,7 +70,38 @@ printf '== catalog ==\n'
 quiet_pi '/construct catalog'
 quiet_pi '/construct catalog add npm:@scope/pkg browser-tools'
 quiet_pi '/construct load --dry-run browser-tools'
+python3 - "$HOME_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+catalog_path = home / ".pi/agent/construct/catalog.json"
+catalog = json.loads(catalog_path.read_text())
+catalog["items"].append({
+    "id": "grouped-tools",
+    "kind": "package",
+    "source": "npm:@scope/grouped-tools",
+    "groups": ["review"],
+    "customField": {"kept": True},
+})
+catalog_path.write_text(json.dumps(catalog, indent=2) + "\n")
+PY
+quiet_pi '/construct catalog add npm:@scope/other other-tools'
+quiet_pi '/construct catalog remove other-tools'
+python3 - "$HOME_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+item = next(item for item in catalog["items"] if item["id"] == "grouped-tools")
+assert item.get("groups") == ["review"], item
+assert item.get("customField") == {"kept": True}, item
+PY
 quiet_pi '/construct catalog remove browser-tools'
+quiet_pi '/construct catalog remove grouped-tools'
 
 printf '== library sync ==\n'
 mkdir -p "$PROJECT_DIR/.pi"
@@ -83,7 +114,9 @@ project = pathlib.Path(sys.argv[1])
 source = sys.argv[2]
 (project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
 PY
-quiet_pi '/construct sync'
+SYNC_PROMPT_OUTPUT="$(run_pi '/construct sync')"
+[[ "$SYNC_PROMPT_OUTPUT" == *"Construct sync needs a selection."* ]]
+quiet_pi '/construct sync -a'
 python3 - "$HOME_DIR" "$PKG_DIR" <<'PY'
 import json
 import pathlib
@@ -118,6 +151,7 @@ quiet_pi '/construct remove pkg'
 
 printf '== sync commands ==\n'
 quiet_pi '/construct sync'
+quiet_pi '/construct sync -a'
 quiet_pi '/construct sync status'
 quiet_pi '/construct sync current'
 quiet_pi '/construct sync project'

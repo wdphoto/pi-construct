@@ -14,12 +14,13 @@ export interface ConstructPaths {
 	projectConstructPath: string;
 }
 
-export interface CatalogItem {
+export interface CatalogItem extends JsonObject {
 	id: string;
 	name?: string;
 	kind: "package";
 	source: string;
 	description?: string;
+	groups?: string[];
 	managed?: boolean;
 }
 

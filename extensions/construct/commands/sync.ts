@@ -10,6 +10,13 @@ import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 interface SyncCandidate {
 	id: string;
 	source: string;
+	alreadyKnown?: boolean;
+}
+
+interface SyncArgs {
+	mode: "current" | "status";
+	all: boolean;
+	warnings: string[];
 }
 
 async function constructManagedSources(paths: Awaited<ReturnType<typeof getPaths>>): Promise<Set<string>> {
@@ -27,26 +34,54 @@ async function constructManagedSources(paths: Awaited<ReturnType<typeof getPaths
 	return sources;
 }
 
-async function unsyncedProjectPackages(paths: Awaited<ReturnType<typeof getPaths>>): Promise<SyncCandidate[]> {
+async function projectSyncCandidates(paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: SyncCandidate[]; alreadyManaged: SyncCandidate[] }> {
 	const settings = await readJson(paths.projectSettingsPath);
 	const managedSources = await constructManagedSources(paths);
+	const { catalog } = await loadCatalog({ cwd: paths.cwd });
+	const catalogItemsBySource = new Map<string, string>();
+	for (const item of catalog.items) {
+		catalogItemsBySource.set(item.source, item.id);
+		catalogItemsBySource.set(await normalizeSourceForLibrary(item.source, dirname(paths.projectSettingsPath)), item.id);
+	}
+
 	const seen = new Set<string>();
-	const candidates: SyncCandidate[] = [];
+	const adoptable: SyncCandidate[] = [];
+	const alreadyManaged: SyncCandidate[] = [];
 	for (const pkg of getPackages(settings)) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
 		const source = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
-		if (managedSources.has(pkg.source) || managedSources.has(source) || seen.has(source)) continue;
+		if (seen.has(source)) continue;
 		seen.add(source);
-		candidates.push({ id: deriveId(source), source });
+		const catalogId = catalogItemsBySource.get(pkg.source) ?? catalogItemsBySource.get(source);
+		const candidate = { id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined };
+		if (managedSources.has(pkg.source) || managedSources.has(source)) alreadyManaged.push(candidate);
+		else adoptable.push(candidate);
 	}
-	return candidates.sort((a, b) => a.id.localeCompare(b.id));
+	return {
+		adoptable: adoptable.sort((a, b) => a.id.localeCompare(b.id)),
+		alreadyManaged: alreadyManaged.sort((a, b) => a.id.localeCompare(b.id)),
+	};
+}
+
+function parseSyncArgs(args: string): SyncArgs {
+	const tokens = args.split(/\s+/).filter(Boolean);
+	const warnings: string[] = [];
+	let mode: SyncArgs["mode"] = "current";
+	let all = false;
+	for (const token of tokens) {
+		if (token === "status") mode = "status";
+		else if (token === "current" || token === "project") mode = "current";
+		else if (token === "-a" || token === "--all") all = true;
+		else warnings.push(`Unknown sync argument ignored: ${token}`);
+	}
+	return { mode, all, warnings };
 }
 
 export async function handleSync(args: string, ctx: ExtensionCommandContext): Promise<void> {
-	const subcommand = args.trim() || "current";
+	const syncArgs = parseSyncArgs(args);
 	const paths = await getPaths(ctx);
 
-	if (subcommand === "status") {
+	if (syncArgs.mode === "status") {
 		showText(
 			ctx,
 			[
@@ -54,15 +89,16 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 				"==============",
 				"Automatic sync: off (manual; use /construct sync)",
 				"",
-				"/construct sync adopts unsynced project package sources into Construct only when you run it.",
-				"Sync never installs, removes, enables, reloads, or copies anything.",
+				"/construct sync opens an adoption menu for project package sources not yet Construct-managed here.",
+				"/construct sync -a adopts all new project package sources without opening the menu.",
+				"Sync never installs, removes, enables, reloads, edits .pi/settings.json, or copies anything.",
 			].join("\n"),
 		);
 		return;
 	}
 
-	if (!["current", "project"].includes(subcommand)) {
-		showText(ctx, "Usage: /construct sync [project|status]\n\nConstruct sync only reads this project's local package declarations from .pi/settings.json.");
+	if (syncArgs.warnings.length > 0) {
+		showText(ctx, ["Usage: /construct sync [-a|--all] [project|status]", "", "Construct sync only reads this project's local package declarations from .pi/settings.json.", ...syncArgs.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 
@@ -97,42 +133,75 @@ export async function handleSync(args: string, ctx: ExtensionCommandContext): Pr
 		return;
 	}
 
-	let candidates: SyncCandidate[];
+	let candidates: { adoptable: SyncCandidate[]; alreadyManaged: SyncCandidate[] };
 	try {
-		candidates = await unsyncedProjectPackages(paths);
+		candidates = await projectSyncCandidates(paths);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct sync failed.\n${message}`);
 		return;
 	}
 
-	if (candidates.length === 0) {
+	if (candidates.adoptable.length === 0) {
 		showText(
 			ctx,
 			[
 				"Construct sync complete.",
 				`Project: ${paths.cwd}`,
-				"No unsynced local package declarations found.",
-				"Sync only adopts project packages that are not already Construct-managed.",
+				"No project package declarations are waiting to be adopted.",
+				candidates.alreadyManaged.length > 0 ? `Already Construct-managed here: ${candidates.alreadyManaged.length}` : "No Construct-managed project packages found.",
+				"No files were changed.",
 			].join("\n"),
 		);
 		return;
 	}
 
-	let selectedSources = candidates.map((candidate) => candidate.source);
-	if (ctx.hasUI && candidates.length > 1) {
-		const pickerItems: CheckboxPickerItem[] = candidates.map((candidate) => ({
-			id: candidate.source,
-			label: candidate.id,
-			value: candidate.source,
-			checked: true,
-		}));
-		const selected = await pickCheckboxes(ctx, "Sync local-only packages into Construct", pickerItems);
+	let selectedSources: string[] = [];
+	if (syncArgs.all) {
+		selectedSources = candidates.adoptable.map((candidate) => candidate.source);
+	} else if (ctx.mode === "tui") {
+		const pickerItems: CheckboxPickerItem[] = [
+			...candidates.adoptable.map((candidate) => ({
+				id: candidate.source,
+				label: candidate.id,
+				value: candidate.source,
+				description: candidate.alreadyKnown ? "Already in the Construct library; sync will arm project metadata." : undefined,
+				checked: false,
+				section: "NOT IN CONSTRUCT — available to adopt",
+			})),
+			...candidates.alreadyManaged.map((candidate) => ({
+				id: `managed:${candidate.source}`,
+				label: candidate.id,
+				value: candidate.source,
+				checked: true,
+				disabled: true,
+				section: "ALREADY IN CONSTRUCT — read-only",
+				marker: "[x]",
+			})),
+		];
+		const selected = await pickCheckboxes(ctx, "Construct sync — adopt project packages", pickerItems);
 		if (!selected) {
 			showText(ctx, "Construct sync cancelled. No files were changed.");
 			return;
 		}
-		selectedSources = selected;
+		const adoptableSources = new Set(candidates.adoptable.map((candidate) => candidate.source));
+		selectedSources = selected.filter((source) => adoptableSources.has(source));
+	} else {
+		showText(
+			ctx,
+			[
+				"Construct sync needs a selection.",
+				`Project: ${paths.cwd}`,
+				`Available to adopt: ${candidates.adoptable.length}`,
+				...candidates.adoptable.map((candidate) => `- ${candidate.id}: ${candidate.source}`),
+				candidates.alreadyManaged.length > 0 ? `Already Construct-managed here: ${candidates.alreadyManaged.length}` : undefined,
+				"",
+				"Run /construct sync in the TUI to choose items, or /construct sync -a to adopt all new project package sources.",
+			]
+				.filter((line): line is string => line !== undefined)
+				.join("\n"),
+		);
+		return;
 	}
 
 	if (selectedSources.length === 0) {

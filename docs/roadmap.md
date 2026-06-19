@@ -225,7 +225,7 @@ Current checkpoint completed:
 - [x] `/construct` opens the main searchable dashboard/loadout view.
 - [x] `/construct load [source-or-id]` runs `pi install <source> -l --approve` and records advisory `.pi/construct.json` metadata.
 - [x] `/construct unload [source-or-id]` runs `pi remove <source> -l --approve`, marks Construct metadata unloaded, does not delete source files, and does not forget library items.
-- [x] `/construct sync` adopts unsynced current-project package sources into `~/.pi/agent/construct/catalog.json` and `.pi/construct.json` with clean output.
+- [x] `/construct sync` opens a searchable adoption menu for current-project package sources not yet Construct-managed here; `/construct sync -a` adopts all new sources into `~/.pi/agent/construct/catalog.json` and `.pi/construct.json` with clean output.
 - [x] Automatic/invisible sync is disabled for MVP; `/construct sync` is manual and `/construct sync status` reports that state.
 - [x] Local path sources are normalized for cross-project library memory.
 - [x] Unloaded Construct-managed items remain reloadable by id even without a global library entry.
@@ -249,7 +249,7 @@ Next refactor order when we come back:
    - Keep print/non-UI mode deterministic through explicit commands like `/construct load <source-or-id>` and `/construct unload <source-or-id>`.
 
 3. **Decisions from the TUI pass**
-   - Adoption stays in `/construct sync`, not a one-key dashboard action. If there is one unsynced item, sync adopts it immediately; if there are multiple, sync shows the same searchable save-based checkbox flow.
+   - Adoption stays in `/construct sync`, not a one-key dashboard action. `/construct sync` opens the searchable save-based checkbox flow even for one candidate; `/construct sync -a` is the explicit adopt-all shortcut.
    - Runtime skill/command rows should be included in the dashboard and searchable. They are read-only inventory for now; package-backed resource filters can come later only if needed.
    - Direct `/construct load <ad-hoc-source>` does not need automatic remembering beyond the existing explicit behavior.
    - How much `pi install` / `pi remove` stdout should success notifications show after multi-select saves? Current direction is concise success, detailed output only on errors.

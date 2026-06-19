@@ -24,7 +24,7 @@ The global `the-construct` extension should be lightweight: commands, user catal
 3. **Construct library/catalog layer**
    - MVP catalog is user-only: `~/.pi/agent/construct/catalog.json`.
    - Catalog entries are package sources the user can load into future projects.
-   - `/construct sync` explicitly remembers package declarations from the current project's `.pi/settings.json`.
+   - `/construct sync` explicitly shows a selection menu for package declarations from the current project's `.pi/settings.json`; `/construct sync -a` adopts all new declarations.
    - Public commands should say library/remember/forget; `catalog.json` and `/construct catalog ...` remain compatibility/internal language.
    - No official/bundled/project catalog in MVP unless needed for local testing.
 
@@ -153,7 +153,8 @@ Construct remembers project-level package sources only from explicit user action
 
 Rules:
 
-- `/construct sync` reads package declarations from the current project's `.pi/settings.json`.
+- `/construct sync` reads package declarations from the current project's `.pi/settings.json` and opens a selection menu in TUI mode.
+- `/construct sync -a` adopts all new current-project package declarations without the menu.
 - `/construct remember <source> [id]` adds one explicit source to the library.
 - Sync appends missing package sources to the user library and arms advisory `.pi/construct.json` metadata for the current project.
 - Sync never installs anything.

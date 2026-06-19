@@ -76,7 +76,7 @@ A Pi package installed with `pi install <source> -l` is project-local. It persis
 
 Construct currently learns reusable package options from explicit user actions:
 
-1. `/construct sync` to adopt current-project package declarations from `.pi/settings.json`;
+1. `/construct sync` to choose current-project package declarations from `.pi/settings.json`, or `/construct sync -a` to adopt all new declarations;
 2. `/construct remember <source> [id]` or `/construct catalog add <source> [id]`;
 3. `/construct load <source>` for direct/ad-hoc sources.
 
@@ -93,7 +93,7 @@ Course correction: `/construct sync` is the explicit current-project memory comm
 /construct sync status
 ```
 
-Sync means "remember existing package declarations". It should be conservative: show/adopt package sources from the current project only when the user runs the command, and never install, enable, copy, remove, update, reload, or execute anything.
+Sync means "remember existing package declarations". It should be conservative: show package sources from the current project when the user runs `/construct sync`, adopt selected sources, and reserve adopt-all behavior for explicit `/construct sync -a`. It must never install, enable, copy, remove, update, reload, or execute anything.
 
 ### Automatic sync option matrix
 

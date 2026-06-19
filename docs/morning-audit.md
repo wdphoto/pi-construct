@@ -22,7 +22,7 @@ Use this before adding more features. The bias is manual, explicit, and idiomati
 - Confirm `/construct sync` is the only path that adopts existing project package declarations.
 - Confirm removed automation commands do not appear in help/completions.
 - Does sync write project `.pi/construct.json` too aggressively when it only means “adopted,” not “installed by Construct”?
-- Should sync ask even for a single package, or is auto-adopting a single explicit `/construct sync` candidate acceptable?
+- Sync should ask even for a single package in TUI mode; `/construct sync -a` is the explicit adopt-all shortcut.
 
 ## Load/unload/toggle review
 
@@ -67,7 +67,7 @@ Covered now:
 - New-project `/construct` opens the full loadout view and `/construct status` remains read-only when `.pi/construct.json` is missing.
 - No Construct lifecycle/autoload/autosync wiring remains in `extensions` or `scripts`.
 - Invalid user catalog, project settings, project construct metadata, and drift checks are covered by `scripts/invalid-drift-smoke.sh`.
-- Project A raw local package install -> `/construct sync` -> Project B load/unload/toggle is covered by `scripts/e2e-smoke.sh`.
+- Project A raw local package install -> `/construct sync -a` in print smoke / menu sync in TUI -> Project B load/unload/toggle is covered by `scripts/e2e-smoke.sh`.
 
 Still useful later:
 

@@ -108,13 +108,13 @@ Check:
 TMP="$(mktemp -d)"
 mkdir -p "$TMP/home" "$TMP/project" "$TMP/pkg/extensions"
 # create a tiny Pi package in "$TMP/pkg", add it to "$TMP/project/.pi/settings.json",
-# then run HOME="$TMP/home" pi --no-extensions -e "$PWD" -p '/construct sync'
+# then run HOME="$TMP/home" pi --no-extensions -e "$PWD" -p '/construct sync -a'
 ```
 
 Expected:
 
-- `/construct sync` adopts the package source into `~/.pi/agent/construct/catalog.json`.
-- `/construct sync` writes `.pi/construct.json` because the user explicitly ran sync.
+- `/construct sync -a` adopts the package source into `~/.pi/agent/construct/catalog.json`.
+- `/construct sync -a` writes `.pi/construct.json` because the user explicitly chose adopt-all.
 - It does not install, remove, reload, or alter `.pi/settings.json`.
 
 ## 5. Load/unload/toggle safety
@@ -178,7 +178,7 @@ Expected:
 - 2026-06-18: **1. Static code sweep — no startup behavior** passed. `rg` found no lifecycle/autoload/autosync/skips/user-settings wiring in `extensions` or `scripts`.
 - 2026-06-18: **2. Public command surface sweep** passed. Autoload/autosync references are limited to historical/removal/checklist wording; command completions/help list only active commands.
 - 2026-06-18: **3. Startup silence and new-project command behavior** passed. `/construct` opens the full loadout view, first-run messaging moved to `TODO.md` Wishlist, and manual check confirmed no `.pi/construct.json` was created in `pi-pavlov`.
-- 2026-06-18: **4. Manual sync adoption** passed via disposable temp project/package. `/construct sync` adopted one package into catalog, wrote `.pi/construct.json`, and left `.pi/settings.json` unchanged.
+- 2026-06-18: **4. Manual sync adoption** passed via disposable temp project/package. `/construct sync -a` adopted one package into catalog, wrote `.pi/construct.json`, and left `.pi/settings.json` unchanged.
 - 2026-06-18: **5. Load/unload/toggle safety** passed via `./scripts/e2e-smoke.sh`. Added assertions that unload/toggle-off do not delete local package or extension source files.
 - 2026-06-18: **6. Invalid JSON and drift checks** passed via `./scripts/invalid-drift-smoke.sh`. Tightened `/construct sync` to fail before writes when project settings, project metadata, or the user catalog are invalid.
 - 2026-06-18: **7. Full validation** passed: `npm run check`, `./scripts/smoke.sh`, `./scripts/e2e-smoke.sh`, `./scripts/invalid-drift-smoke.sh`, and `./scripts/install-smoke.sh`.

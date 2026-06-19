@@ -6,7 +6,18 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
-No unreleased changes.
+### Changed
+- `/construct sync` now opens an adoption menu instead of auto-adopting candidates in TUI mode.
+- Added `/construct sync -a` / `--all` as the explicit adopt-all shortcut for non-interactive and power-user flows.
+- Centralized package load/unload operations so multi-select flows apply changes without recursively invoking command handlers.
+- Preserved forward-compatible Construct library item metadata such as future `groups` fields.
+
+### Fixed
+- Fixed relative local package source handling so sources loaded as `./pkg` remain recognized as on/off after Pi records them relative to `.pi/settings.json`.
+- Reused normalized local path removal for unload, disable, and remove compatibility paths.
+
+### Removed
+- Removed unused/stale helper paths left from earlier MVP iterations.
 
 ## 0.0.1 - 2026-06-18
 

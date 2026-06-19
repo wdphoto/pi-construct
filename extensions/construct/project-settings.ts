@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { ConstructPaths, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
+import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
 	return (
@@ -33,23 +35,27 @@ export function getPackages(settings: JsonReadResult): PackageDeclarationSummary
 	});
 }
 
-export function getManagedItems(construct: JsonReadResult, packageSources: Set<string>): ManagedItemSummary[] {
+export async function getManagedItems(construct: JsonReadResult, packageSources: Set<string>, paths: ConstructPaths): Promise<ManagedItemSummary[]> {
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
-	return Object.entries(construct.data.items).map(([id, value]) => {
+	const summaries: ManagedItemSummary[] = [];
+	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value)) {
-			return { id, kind: "unknown", drift: "invalid metadata" };
+			summaries.push({ id, kind: "unknown", drift: "invalid metadata" });
+			continue;
 		}
 		const kind = typeof value.kind === "string" ? value.kind : "unknown";
-		const source = typeof value.source === "string" ? value.source : undefined;
+		const identity = await managedPackageSourceIdentity(value, paths);
+		const source = identity.displaySource;
 		const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
 		let drift: string | undefined;
 		if (source) {
-			const declared = packageSources.has(source);
+			const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
 			if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
 			if (enabled === false && declared) drift = "disabled in Construct metadata, still present in .pi/settings.json";
 		}
-		return { id, kind, source, enabled, drift };
-	});
+		summaries.push({ id, kind, source, enabled, drift });
+	}
+	return summaries;
 }
 
 export function formatList(lines: string[], empty: string): string[] {
@@ -146,17 +152,36 @@ export function readSettingsObject(settings: JsonReadResult): JsonObject {
 	return { ...settings.data };
 }
 
-export async function removePackageDeclaration(paths: ConstructPaths, source: string): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
+export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: { backupPath?: string } = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { removed: false, settingsMissing: true };
 
 	const settings = readSettingsObject(settingsRead);
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
-	const nextPackages = packages.filter((entry) => packageSource(entry) !== source);
-	const removed = nextPackages.length !== packages.length;
+	const settingsDir = dirname(paths.projectSettingsPath);
+	const targetMatches = new Set([
+		source,
+		await normalizeSourceForLibrary(source, settingsDir),
+		await normalizeSourceForLibrary(source, paths.cwd),
+	]);
+	const nextPackages = [];
+	let removed = false;
+	for (const entry of packages) {
+		const rawSource = packageSource(entry);
+		if (!rawSource) {
+			nextPackages.push(entry);
+			continue;
+		}
+		const normalized = await normalizeSourceForLibrary(rawSource, settingsDir);
+		if (targetMatches.has(rawSource) || targetMatches.has(normalized)) {
+			removed = true;
+			continue;
+		}
+		nextPackages.push(entry);
+	}
 	if (!removed) return { removed: false, settingsMissing: false };
 
-	const backupPath = await backupProjectSettingsIfPresent(paths);
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
 	settings.packages = nextPackages;
 	await writeJson(paths.projectSettingsPath, settings);
 	return { removed: true, backupPath, settingsMissing: false };

@@ -1,11 +1,12 @@
-import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, JsonObject, JsonReadResult } from "../types.js";
-import { findCatalogItem, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings } from "../catalog.js";
-import { isObject, readJson, writeJson } from "../json.js";
+import type { ConstructPaths, JsonReadResult } from "../types.js";
+import { findCatalogItem, loadCatalog, packageSourcesFromSettings } from "../catalog.js";
+import { isObject, readJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { backupProjectSettingsIfPresent, getPackages, packageSource, readSettingsObject } from "../project-settings.js";
-import { getManagedEntry, updateConstructItemEnabled, updateConstructSourcesEnabled } from "../metadata.js";
+import { getPackages } from "../project-settings.js";
+import { getManagedEntry } from "../metadata.js";
+import { unloadPackageFromProject } from "../package-ops.js";
+import { managedPackageSourceIdentity } from "../sources.js";
 import { pickCheckboxes, showText } from "../ui.js";
 
 export async function resolveUnloadTarget(
@@ -52,14 +53,6 @@ export async function resolveUnloadTarget(
 	return { construct, source: resolvedQuery, label: resolvedQuery };
 }
 
-function managedPackageSource(item: JsonObject): string | undefined {
-	return typeof item.requestedSource === "string"
-		? item.requestedSource
-		: typeof item.source === "string"
-			? item.source
-			: undefined;
-}
-
 async function loadedManagedTargets(paths: ConstructPaths, construct: JsonReadResult): Promise<Array<{ id: string; source: string }>> {
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
 	const projectSources = new Set(await packageSourcesFromSettings(paths.projectSettingsPath));
@@ -67,135 +60,12 @@ async function loadedManagedTargets(paths: ConstructPaths, construct: JsonReadRe
 	const targets: Array<{ id: string; source: string }> = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
-		const source = managedPackageSource(value);
-		if (!source) continue;
-		const normalized = await normalizeSourceForLibrary(source, dirname(paths.projectSettingsPath));
-		if (rawSources.has(source) || projectSources.has(normalized)) targets.push({ id, source });
+		const identity = await managedPackageSourceIdentity(value, paths);
+		if (!identity.normalizedInstallSource) continue;
+		const isDeclared = [...identity.matchSources].some((source) => rawSources.has(source) || projectSources.has(source));
+		if (isDeclared) targets.push({ id, source: identity.normalizedInstallSource });
 	}
 	return targets.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string): Promise<boolean> {
-	const settings = readSettingsObject(await readJson(paths.projectSettingsPath));
-	const packages = Array.isArray(settings.packages) ? settings.packages : [];
-	const nextPackages = [];
-	let removed = false;
-	for (const entry of packages) {
-		const rawSource = packageSource(entry);
-		if (!rawSource) {
-			nextPackages.push(entry);
-			continue;
-		}
-		const normalized = await normalizeSourceForLibrary(rawSource, dirname(paths.projectSettingsPath));
-		if (rawSource === source || normalized === source) {
-			removed = true;
-			continue;
-		}
-		nextPackages.push(entry);
-	}
-	if (!removed) return false;
-	settings.packages = nextPackages;
-	await writeJson(paths.projectSettingsPath, settings);
-	return true;
-}
-
-export async function handleUnloadAll(pi: ExtensionAPI, ctx: ExtensionCommandContext, paths: ConstructPaths): Promise<void> {
-	const settings = await readJson(paths.projectSettingsPath);
-	if (settings.state === "invalid") {
-		showText(ctx, `Cannot unload packages because .pi/settings.json is invalid JSON.\n${settings.error}`);
-		return;
-	}
-	if (settings.state === "ok" && !isObject(settings.data)) {
-		showText(ctx, "Cannot unload packages because .pi/settings.json is not a JSON object.");
-		return;
-	}
-
-	const rawSources = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.source.trim()).map((pkg) => pkg.source.trim());
-	const sources = [...new Set(await packageSourcesFromSettings(paths.projectSettingsPath))];
-	if (rawSources.length === 0) {
-		showText(ctx, "No project package declarations to unload.");
-		return;
-	}
-
-	if (ctx.hasUI) {
-		const ok = await ctx.ui.confirm(
-			"Unload ALL project packages?",
-			[
-				`Project: ${paths.cwd}`,
-				`Packages: ${sources.length}`,
-				"",
-				...sources.map((source) => `- ${source}`),
-				"",
-				"This runs pi remove <source> -l --approve for each package declaration.",
-				"It removes project package declarations only. It does not delete local source files or forget Construct library items.",
-			].join("\n"),
-		);
-		if (!ok) {
-			showText(ctx, "Construct unload cancelled.");
-			return;
-		}
-	}
-
-	let backupPath: string | undefined;
-	try {
-		backupPath = await backupProjectSettingsIfPresent(paths);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Could not back up .pi/settings.json; aborting unload.\n${message}`);
-		return;
-	}
-
-	const removed: string[] = [];
-	const removeWarnings: string[] = [];
-	for (const source of rawSources) {
-		const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
-		if (removal.code === 0) {
-			removed.push(source);
-			continue;
-		}
-		removeWarnings.push(`pi remove did not match ${source}; removed it by editing .pi/settings.json instead.`);
-	}
-
-	try {
-		const latestSettings = readSettingsObject(await readJson(paths.projectSettingsPath));
-		latestSettings.packages = [];
-		await writeJson(paths.projectSettingsPath, latestSettings);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Could not finish clearing project package declarations.\n${message}`);
-		return;
-	}
-
-	const metadataSources = new Set([...rawSources, ...sources]);
-	let metadataChanged = 0;
-	const construct = await readJson(paths.projectConstructPath);
-	if (construct.state !== "missing") {
-		try {
-			const update = updateConstructSourcesEnabled(construct, metadataSources, false);
-			metadataChanged = update.changed;
-			if (metadataChanged > 0) await writeJson(paths.projectConstructPath, update.data);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Packages unloaded, but Construct metadata update failed.\n${message}`);
-			return;
-		}
-	}
-
-	showText(
-		ctx,
-		[
-			"Construct disable complete.",
-			`Disabled in this project: ${rawSources.length}`,
-			...rawSources.map((source) => `- ${source}`),
-			backupPath ? `Settings backup: ${backupPath}` : undefined,
-			metadataChanged > 0 ? `Construct metadata marked disabled: ${metadataChanged}` : "Construct metadata was not changed.",
-			...removeWarnings.map((warning) => `! ${warning}`),
-			"Sources remain remembered in Construct if they were in the library.",
-			"Reload Pi resources with /construct reload or /reload when ready.",
-		]
-			.filter((line): line is string => line !== undefined)
-			.join("\n"),
-	);
 }
 
 export async function handleOff(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
@@ -206,15 +76,20 @@ export async function handleOff(pi: ExtensionAPI, ctx: ExtensionCommandContext):
 		showText(ctx, "No Construct-managed packages are on in this project. Unsynced local Pi packages were ignored.");
 		return;
 	}
+	const unloaded: Array<{ id: string; source: string }> = [];
+	const failures: string[] = [];
 	for (const target of targets) {
-		await handleUnload(target.id, pi, ctx);
+		const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
+		if (result.ok) unloaded.push(target);
+		else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
 	}
 	showText(
 		ctx,
 		[
 			"Construct off complete.",
-			`Turned off packages: ${targets.length}`,
-			...targets.map((target) => `- ${target.id}: ${target.source}`),
+			`Turned off packages: ${unloaded.length}`,
+			...unloaded.map((target) => `- ${target.id}: ${target.source}`),
+			...failures.map((failure) => `! ${failure}`),
 			"Reload Pi resources with /construct reload or /reload when ready.",
 		].join("\n"),
 	);
@@ -228,7 +103,7 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 		return;
 	}
 
-	if (!query && ctx.hasUI) {
+	if (!query && ctx.mode === "tui") {
 		const construct = await readJson(paths.projectConstructPath);
 		const targets = await loadedManagedTargets(paths, construct);
 		if (targets.length === 0) {
@@ -255,80 +130,64 @@ export async function handleUnload(args: string, pi: ExtensionAPI, ctx: Extensio
 			showText(ctx, "No packages were unchecked. No files were changed.");
 			return;
 		}
+		const unloaded: Array<{ id: string; source: string }> = [];
+		const failures: string[] = [];
 		for (const target of toUnload) {
-			await handleUnload(target.id, pi, ctx);
+			const result = await unloadPackageFromProject(pi, paths, { source: target.source, id: target.id });
+			if (result.ok) unloaded.push(target);
+			else failures.push(`${target.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
 		}
 		showText(
 			ctx,
 			[
 				"Construct unload selections applied.",
-				`Turned off packages: ${toUnload.length}`,
-				...toUnload.map((target) => `- ${target.id}: ${target.source}`),
+				`Turned off packages: ${unloaded.length}/${toUnload.length}`,
+				...unloaded.map((target) => `- ${target.id}: ${target.source}`),
+				...failures.map((failure) => `! ${failure}`),
 				"Reload Pi resources with /construct reload or /reload when ready.",
 			].join("\n"),
 		);
 		return;
 	}
 
-	const { construct, id, source, label } = await resolveUnloadTarget(ctx, paths, query);
+	const { id, source, label } = await resolveUnloadTarget(ctx, paths, query);
 	if (!source) {
 		showText(ctx, "No loaded Construct-managed package selected. Use /construct unload <source-or-id>, or /construct toggle to turn the managed loadout off/on.");
-		return;
-	}
-
-	let backupPath: string | undefined;
-	try {
-		backupPath = await backupProjectSettingsIfPresent(paths);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Could not back up .pi/settings.json; aborting unload.\n${message}`);
 		return;
 	}
 
 	if (ctx.hasUI) ctx.ui.setStatus("construct", `Construct: disabling ${label ?? source}`);
 	else showText(ctx, [`Disabling in this project...`, `Source: ${source}`].join("\n"));
 
-	const removal = await pi.exec("pi", ["remove", source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
-	let fallbackWarning: string | undefined;
-	if (removal.code !== 0) {
-		try {
-			const removedByEdit = await removeMatchingPackageDeclaration(paths, source);
-			if (!removedByEdit) {
-				if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
-				showText(
-					ctx,
-					[
-						"Construct unload failed during Pi package removal.",
-						`Command: pi remove ${source} -l --approve`,
-						`Exit code: ${removal.code}`,
-						backupPath ? `Settings backup: ${backupPath}` : undefined,
-						removal.stdout ? `\nstdout:\n${removal.stdout}` : undefined,
-						removal.stderr ? `\nstderr:\n${removal.stderr}` : undefined,
-					]
-						.filter((line): line is string => line !== undefined)
-						.join("\n"),
-				);
-				return;
-			}
-			fallbackWarning = `pi remove did not match ${source}; removed it by editing .pi/settings.json instead.`;
-		} catch (error) {
-			if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
-			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Construct unload failed during fallback settings edit.\n${message}`);
+	const unload = await unloadPackageFromProject(pi, paths, { source, id });
+	if (!unload.ok) {
+		if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
+		if (unload.metadataOnlyFailure) {
+			showText(ctx, `Package disabled, but Construct metadata update failed for ${id}.\n${unload.error ?? "Unknown error"}`);
 			return;
 		}
+		if (unload.exitCode !== undefined) {
+			showText(
+				ctx,
+				[
+					"Construct unload failed during Pi package removal.",
+					`Command: pi remove ${source} -l --approve`,
+					`Exit code: ${unload.exitCode}`,
+					unload.backupPath ? `Settings backup: ${unload.backupPath}` : undefined,
+					unload.stdout ? `\nstdout:\n${unload.stdout}` : undefined,
+					unload.stderr ? `\nstderr:\n${unload.stderr}` : undefined,
+				]
+					.filter((line): line is string => line !== undefined)
+					.join("\n"),
+			);
+			return;
+		}
+		showText(ctx, unload.error ?? "Construct unload failed.");
+		return;
 	}
 
-	if (id) {
-		try {
-			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, id, false));
-		} catch (error) {
-			if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
-			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Package disabled, but Construct metadata update failed for ${id}.\n${message}`);
-			return;
-		}
-	}
+	const backupPath = unload.backupPath;
+	const fallbackWarning = unload.fallbackWarning;
 
 	if (ctx.hasUI) ctx.ui.setStatus("construct", undefined);
 	showText(

@@ -8,8 +8,9 @@ trap 'rm -rf "$TMP"' EXIT
 HOME_DIR="$TMP/home"
 PROJECT_A="$TMP/project-a"
 PROJECT_B="$TMP/project-b"
+PROJECT_REL="$TMP/project-rel"
 PKG_DIR="$TMP/construct-e2e-package"
-mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PKG_DIR/extensions"
+mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PROJECT_REL" "$PKG_DIR/extensions"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -61,7 +62,9 @@ assert resolved == source, settings
 PY
 
 printf '== project A construct sync remembers raw install ==\n'
-SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync' 2>&1)"
+SYNC_MENU_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync' 2>&1)"
+grep -Fq 'Construct sync needs a selection.' <<<"$SYNC_MENU_OUTPUT"
+SYNC_OUTPUT="$(construct_pi "$PROJECT_A" '/construct sync -a' 2>&1)"
 grep -Fq 'Construct sync complete.' <<<"$SYNC_OUTPUT"
 grep -Fq 'Added to Construct: 1' <<<"$SYNC_OUTPUT"
 grep -Fq 'Errors: 0' <<<"$SYNC_OUTPUT"
@@ -172,6 +175,58 @@ resolved = entry if entry.is_absolute() else (project / ".pi" / entry).resolve()
 assert resolved == source, settings
 items = construct.get("items", {})
 assert any(item.get("requestedSource") == str(source) and item.get("enabled") is True for item in items.values()), construct
+PY
+
+printf '== relative local source stays on and unloads ==\n'
+mkdir -p "$PROJECT_REL/pkg/extensions"
+cat > "$PROJECT_REL/pkg/package.json" <<'JSON'
+{
+  "name": "construct-relative-package",
+  "version": "0.0.0",
+  "type": "module",
+  "pi": {
+    "extensions": ["extensions/noop.ts"]
+  }
+}
+JSON
+cat > "$PROJECT_REL/pkg/extensions/noop.ts" <<'TS'
+export default function noop() {}
+TS
+quiet_construct_pi "$PROJECT_REL" '/construct load ./pkg'
+DASHBOARD_OUTPUT="$(construct_pi "$PROJECT_REL" '/construct' 2>&1)"
+grep -Fq '[x] pkg' <<<"$DASHBOARD_OUTPUT"
+quiet_construct_pi "$PROJECT_REL" '/construct unload pkg'
+
+python3 - "$PROJECT_REL" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert settings.get("packages") == [], settings
+assert (project / "pkg/package.json").exists(), "unload must not delete relative local package source"
+items = construct.get("items", {})
+assert any(item.get("source") == "../pkg" and item.get("requestedSource") == "./pkg" and item.get("enabled") is False for item in items.values()), construct
+PY
+
+quiet_construct_pi "$PROJECT_REL" '/construct load pkg'
+quiet_construct_pi "$PROJECT_REL" '/construct disable pkg'
+quiet_construct_pi "$PROJECT_REL" '/construct enable pkg'
+quiet_construct_pi "$PROJECT_REL" '/construct remove pkg'
+
+python3 - "$PROJECT_REL" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+settings = json.loads((project / ".pi/settings.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert settings.get("packages") == [], settings
+assert construct.get("items") == {}, construct
+assert (project / "pkg/package.json").exists(), "compat remove must not delete relative local package source"
 PY
 
 printf 'e2e smoke ok\n'

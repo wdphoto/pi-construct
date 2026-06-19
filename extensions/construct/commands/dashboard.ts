@@ -1,12 +1,12 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, JsonObject } from "../types.js";
+import type { ConstructPaths } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSettings } from "../catalog.js";
 import { isObject, readJson } from "../json.js";
+import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
-import { handleLoad } from "./load.js";
-import { handleUnload } from "./unload.js";
+import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
 interface DashboardPackage {
 	id: string;
@@ -18,26 +18,18 @@ interface DashboardPackage {
 	marker?: string;
 }
 
-function constructItemSource(item: JsonObject): string | undefined {
-	return typeof item.requestedSource === "string"
-		? item.requestedSource
-		: typeof item.source === "string"
-			? item.source
-			: undefined;
-}
-
-async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; normalizedSource: string; enabled?: boolean }>> {
+async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
 	const construct = await readJson(paths.projectConstructPath);
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
-	const items: Array<{ id: string; source: string; normalizedSource: string; enabled?: boolean }> = [];
+	const items: Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }> = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
-		const source = constructItemSource(value);
-		if (!source) continue;
+		const identity = await managedPackageSourceIdentity(value, paths);
+		if (!identity.displaySource) continue;
 		items.push({
 			id,
-			source,
-			normalizedSource: await normalizeSourceForLibrary(source, dirname(paths.projectSettingsPath)),
+			source: identity.displaySource,
+			matchSources: identity.matchSources,
 			enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
 		});
 	}
@@ -50,10 +42,10 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	const settings = await readJson(paths.projectSettingsPath);
 	const localPackages = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim());
 	const managed = await managedPackages(paths);
-	const managedSources = new Set(managed.flatMap((item) => [item.source, item.normalizedSource]));
+	const managedSources = new Set(managed.flatMap((item) => [...item.matchSources]));
 	const packages: DashboardPackage[] = [];
 	for (const item of managed) {
-		const active = projectSources.has(item.normalizedSource) || projectSources.has(item.source);
+		const active = [...item.matchSources].some((source) => projectSources.has(source));
 		packages.push({
 			id: item.id,
 			label: item.id,
@@ -140,7 +132,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], runt
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings } = await buildDashboardPackages(ctx);
 	const runtime = runtimeItems(pi);
-	if (!ctx.hasUI) {
+	if (ctx.mode !== "tui") {
 		showText(ctx, dashboardText(paths, packages, runtime, warnings));
 		return;
 	}
@@ -171,16 +163,28 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		return;
 	}
 
-	for (const item of toLoad) await handleLoad(item.id, pi, ctx);
-	for (const item of toUnload) await handleUnload(item.id, pi, ctx);
+	const loaded: DashboardPackage[] = [];
+	const unloaded: DashboardPackage[] = [];
+	const failures: string[] = [];
+	for (const item of toLoad) {
+		const result = await loadPackageIntoProject(pi, paths, { source: item.source, item: { id: item.id, kind: "package", source: item.source } });
+		if (result.ok) loaded.push(item);
+		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+	}
+	for (const item of toUnload) {
+		const result = await unloadPackageFromProject(pi, paths, { source: item.source, id: item.id });
+		if (result.ok) unloaded.push(item);
+		else failures.push(`${item.id}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+	}
 	showText(
 		ctx,
 		[
 			"Construct loadout changes applied.",
-			toLoad.length > 0 ? `Turned on: ${toLoad.length}` : undefined,
-			...toLoad.map((item) => `+ ${item.label}: ${item.source}`),
-			toUnload.length > 0 ? `Turned off: ${toUnload.length}` : undefined,
-			...toUnload.map((item) => `- ${item.label}: ${item.source}`),
+			toLoad.length > 0 ? `Turned on: ${loaded.length}/${toLoad.length}` : undefined,
+			...loaded.map((item) => `+ ${item.label}: ${item.source}`),
+			toUnload.length > 0 ? `Turned off: ${unloaded.length}/${toUnload.length}` : undefined,
+			...unloaded.map((item) => `- ${item.label}: ${item.source}`),
+			...failures.map((failure) => `! ${failure}`),
 			"Reload Pi resources with /construct reload or /reload when ready.",
 		]
 			.filter((line): line is string => line !== undefined)

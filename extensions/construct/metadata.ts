@@ -62,35 +62,6 @@ export function updateConstructItemEnabled(construct: JsonReadResult, id: string
 	};
 }
 
-export function updateConstructSourcesEnabled(construct: JsonReadResult, sources: Set<string>, enabled: boolean): { data: JsonObject; changed: number } {
-	const root = parseProjectConstruct(construct);
-	const items = isObject(root.items) ? root.items : {};
-	const nextItems: JsonObject = { ...items };
-	const now = new Date().toISOString();
-	let changed = 0;
-
-	for (const [id, value] of Object.entries(items)) {
-		if (!isObject(value) || value.kind !== "package") continue;
-		const source = typeof value.source === "string" ? value.source : undefined;
-		const requestedSource = typeof value.requestedSource === "string" ? value.requestedSource : undefined;
-		if (!source && !requestedSource) continue;
-		if ((source && sources.has(source)) || (requestedSource && sources.has(requestedSource))) {
-			nextItems[id] = { ...value, enabled, updatedAt: now };
-			changed += 1;
-		}
-	}
-
-	return {
-		data: {
-			...root,
-			version: 1,
-			managedBy: "the-construct",
-			items: nextItems,
-		},
-		changed,
-	};
-}
-
 export function removeConstructItem(construct: JsonReadResult, id: string): JsonObject {
 	const root = parseProjectConstruct(construct);
 	const items = isObject(root.items) ? { ...root.items } : {};

@@ -237,7 +237,8 @@ Current MVP commands:
 - `/construct unload [source-or-library-id]` — source-level project unload with `pi remove <source> -l --approve`; does not delete local files or forget the library item.
 - `/construct toggle` — flip this project's Construct-managed loadout off/on; unsynced local-only Pi packages are ignored.
 - `/construct library`, `/construct remember`, `/construct forget` — public library commands.
-- `/construct sync` — remember current project package sources in the Construct library and arm advisory `.pi/construct.json` metadata; never installs, removes, reloads, or edits `.pi/settings.json`.
+- `/construct sync` — open the searchable adoption menu for current project package sources not yet Construct-managed here; never installs, removes, reloads, or edits `.pi/settings.json`.
+- `/construct sync -a` — adopt all new current-project package sources without opening the menu.
 - `/construct sync status` — inspect manual sync state; invisible sync is disabled for MVP.
 - `/construct status` — read-only diagnostics.
 - `/construct reload` — reload resources after changes.
@@ -254,7 +255,9 @@ Next planned behavior should avoid extra command sprawl:
 - Keep user-facing language on library/remember/forget; keep `catalog` mostly as file/schema/compatibility wording.
 - Future profiles are named groups of library items, not a separate package system.
 
-Post-MVP commands can add profile save/apply, import/export, local-file packaging, and richer TUI dashboards only when the simple library/toggle flow is solid.
+Post-MVP commands can add profile save/apply, import/export, local-file packaging, richer TUI dashboards, and quoted slash-command parsing only when the simple library/toggle flow is solid.
+
+For now, slash-command source parsing is intentionally simple. Local package paths with spaces should be entered through interactive/manual source input rather than typed directly in `/construct remember <source>`.
 
 <!-- Source: the-construct-plan.md lines 967-1062: Load, sync, and toggle flow details -->
 
@@ -282,9 +285,11 @@ Scenario: user previously ran plain Pi commands such as `pi install <source> -l`
 
 1. User runs `/construct sync`.
 2. Construct reads `.pi/settings.json` and detects package declarations.
-3. Construct adds missing source strings to the user library and records advisory project metadata.
-4. The same sources now appear as available options in other projects.
-5. Nothing is reinstalled just because Construct remembered it.
+3. Construct shows package sources not yet Construct-managed here as unchecked/adoptable rows, with already-managed rows listed below as checked/read-only.
+4. User selects sources to adopt, or runs `/construct sync -a` to adopt all new sources.
+5. Construct adds missing source strings to the user library and records advisory project metadata.
+6. The same sources now appear as available options in other projects.
+7. Nothing is reinstalled just because Construct remembered it.
 
 ### `/construct load` in a project already managed by Construct
 
@@ -313,7 +318,7 @@ Later, in that project:
 /construct sync
 ```
 
-Construct sees `npm:@org/pi-audit-kit` in `.pi/settings.json` and adds it to the user library if missing. It is now available in new and old projects through `/construct load`, but it does not install into those projects until toggled on.
+Construct sees `npm:@org/pi-audit-kit` in `.pi/settings.json` and shows it in the adoption menu. If selected, Construct adds it to the user library if missing and arms advisory project metadata. It is now available in new and old projects through `/construct load`, but it does not install into those projects until toggled on.
 
 ### Enable / disable / forget
 

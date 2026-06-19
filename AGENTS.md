@@ -12,7 +12,7 @@ This repo is for planning and eventually building **the-construct**, a global Pi
 ## Current status
 
 - MVP implementation exists.
-- Entry point: `construct/index.ts`.
+- Entry point: `extensions/construct/index.ts`.
 - Main plan: `the-construct-plan.md`.
 - Main validation: `./scripts/smoke.sh` plus disposable installed-package checks.
 
@@ -26,7 +26,7 @@ This repo is for planning and eventually building **the-construct**, a global Pi
 - Do not install the extension into the live global Pi config unless explicitly requested.
 - Test extension loading explicitly:
   ```bash
-  pi --no-extensions -e ./construct/index.ts
+  pi --no-extensions -e .
   ```
 - Test package install/discovery only with a disposable `HOME`, for example:
   ```bash

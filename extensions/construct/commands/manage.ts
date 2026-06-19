@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { chooseDeclaredSource, getPackages, removePackageDeclaration, backupProjectSettingsIfPresent, parseProjectConstruct, upsertConstructItem } from "../project-settings.js";
+import { chooseDeclaredSource, getPackages, removeMatchingPackageDeclaration, backupProjectSettingsIfPresent, parseProjectConstruct, upsertConstructItem } from "../project-settings.js";
 import { removeConstructItem, resolveManagedEntry, updateConstructItemEnabled } from "../metadata.js";
 import { showText } from "../ui.js";
 
@@ -19,7 +19,7 @@ export async function handleDisable(args: string, ctx: ExtensionCommandContext):
 
 	let removal: { removed: boolean; backupPath?: string; settingsMissing: boolean };
 	try {
-		removal = await removePackageDeclaration(paths, item.source);
+		removal = await removeMatchingPackageDeclaration(paths, item.source);
 		await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, id, false));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -59,7 +59,7 @@ export async function handleRemove(args: string, ctx: ExtensionCommandContext): 
 
 	let removal: { removed: boolean; backupPath?: string; settingsMissing: boolean } = { removed: false, settingsMissing: false };
 	try {
-		if (typeof item.source === "string") removal = await removePackageDeclaration(paths, item.source);
+		if (typeof item.source === "string") removal = await removeMatchingPackageDeclaration(paths, item.source);
 		await writeJson(paths.projectConstructPath, removeConstructItem(construct, id));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
