@@ -79,6 +79,27 @@ Before adding new behavior, ask:
 - Do profiles still store only library ids/sources and apply explicitly?
 - Would local-only package adoption be clearer as read-only guidance or as a dashboard action?
 
+## Local development
+
+Load this extension from the repo without installing it globally:
+
+```bash
+pi --no-extensions -e .
+```
+
+Test package install/discovery with a disposable home:
+
+```bash
+TMP="$(mktemp -d)"
+mkdir -p "$TMP/home" "$TMP/project"
+HOME="$TMP/home" pi install "$PWD" --approve
+(cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
+```
+
+Do not use live global Pi config for tests unless you explicitly mean to.
+
+Repository-local `.pi/settings.json` and `.pi/construct.json` are personal/dev-machine loadout unless that changes deliberately.
+
 ## Full validation
 
 ```bash

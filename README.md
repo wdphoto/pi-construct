@@ -88,48 +88,6 @@ pi install git:github.com/wdphoto/pi-construct
 pi install https://github.com/wdphoto/pi-construct
 ```
 
-Install from a local checkout or filepath:
-
-```bash
-pi install /path/to/pi-construct
-pi install ./relative/path/to/pi-construct
-# or, from the repo root
-pi install .
-```
-
-## Development
-
-Load this extension from the repo without installing it globally:
-
-```bash
-pi --no-extensions -e .
-```
-
-Run checks:
-
-```bash
-npm run check
-npm run smoke
-npm run e2e-smoke
-npm run install-smoke
-npm run invalid-drift-smoke
-```
-
-Test package install/discovery with a disposable home:
-
-```bash
-TMP="$(mktemp -d)"
-mkdir -p "$TMP/home" "$TMP/project"
-HOME="$TMP/home" pi install "$PWD" --approve
-(cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
-```
-
-Do not use live global Pi config for tests unless you explicitly mean to.
-
-## Repository-local `.pi/`
-
-This repo does not need to commit local `.pi/` state right now. Treat `.pi/settings.json` and `.pi/construct.json` here as personal/dev-machine loadout unless that changes deliberately.
-
 ## Uninstall
 
 Remove Construct using the same source form you installed with:
