@@ -24,8 +24,10 @@ printf '== discover installed extension ==\n'
 printf '== installed extension command smoke ==\n'
 (
   cd "$PROJECT_DIR"
-  HOME="$HOME_DIR" pi -p '/construct catalog add npm:@scope/pkg installed-smoke' >/dev/null 2>&1
-  HOME="$HOME_DIR" pi -p '/construct catalog remove installed-smoke' >/dev/null 2>&1
+  STATUS_OUTPUT="$(HOME="$HOME_DIR" pi -p '/construct status' 2>&1)"
+  [[ "$STATUS_OUTPUT" == *"Construct status"* ]]
+  DASHBOARD_OUTPUT="$(HOME="$HOME_DIR" pi -p '/construct' 2>&1)"
+  [[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
 )
 
 printf 'install smoke ok\n'

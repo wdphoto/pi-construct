@@ -2,27 +2,46 @@
 
 Current work should keep the MVP manual, explicit, and boring-safe. Do not add lifecycle/startup automation unless we deliberately reopen that design.
 
+## Current state — 2026-06-19 command-surface reset
+
+- `/construct` is the product. Keep the extra slash-command surface minimal and quiet.
+- Public support commands are only `/construct status`, `/construct sync`, `/construct sync -a`, `/construct sync status`, and `/construct reload`.
+- Removed public load/unload/toggle/library/remember/forget/catalog/enable/disable/remove/on/off/wipe command paths.
+- Package load/unload still exists internally for the `/construct` dashboard to apply menu diffs.
+- `/construct status` is read-only and does not create `.pi/construct.json`.
+- `/construct sync` is manual adoption only; `/construct sync -a` is the explicit adopt-all shortcut.
+- `.pi/settings.json` remains Pi's source of truth; `.pi/construct.json` remains advisory metadata.
+
 ## Now / next
 
-- [ ] Manual interactive TUI pass:
-  - `/construct`
-  - `/construct load`
-  - `/construct unload`
-  - multi-item `/construct sync`
-  - `/construct sync -a` print/non-UI adopt-all shortcut
-  - Verify fuzzy typing/filtering, Space toggles, Enter saves, Esc cancels, and readable section headers.
-- [ ] Make `/construct` command output prettier and easier to scan:
-  - status, sync, library, load, unload, toggle, and dashboard;
-  - clearer headings, spacing, success/error states, and next-step hints;
-  - default completion notification sound should be a dinner bell, if Pi/terminal notification APIs support it.
-- [ ] Sweep docs and command output for stale language:
-  - prefer `library`, `remember`, `forget`, `toggle`, `loadout`, `Construct-managed`, `local-only`, `adopted`;
-  - keep `catalog` only for `catalog.json` internals and compatibility notes;
-  - keep `wipe`, `autoload`, and `autosync` only in historical/removal notes.
-- [ ] Improve status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
-- [ ] Add conflict/doctor visibility for loaded packages that register overlapping tool names; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
-- [ ] Later: support Pi package filters as a conflict-resolution/fine-grained toggle layer, e.g. keep a package declared but set `extensions: []`, `skills: []`, `prompts: []`, or `themes: []` instead of unloading the whole package.
-- [ ] Decide whether hidden compatibility commands (`on`, `off`, old `enable`/`disable`/`remove`) stay long-term or become debug-only documentation.
+1. [ ] Add npm package/release follow-through:
+   - decide whether this stays private for now or gets published;
+   - set the package name/version/release notes deliberately;
+   - confirm what files ship in `files`;
+   - document the publish/release flow once chosen.
+2. [ ] Make the one `/construct` menu excellent:
+   - fuzzy typing/filtering;
+   - Space toggles;
+   - Enter saves;
+   - Esc cancels;
+   - subtle hints only;
+   - minimal success/error summaries.
+3. [ ] Fix post-save loadout output placement. Current save/apply output can appear in the footer/loader area and break the TUI layout, e.g.:
+   ```text
+   Construct loadout changes applied.
+   Turned on: 2/2
+   + pi-subagents: https://github.com/nicobailon/pi-subagents
+   + pi-web-access: https://github.com/nicobailon/pi-web-access
+   Reload Pi resources with /construct reload or /reload when ready.
+   ```
+   Find this message a proper home: likely a post-submit summary screen, toast/status region, or normal command output after the TUI exits. Think through the loader/save lifecycle before patching; do not keep writing multi-line summaries into the footer.
+4. [ ] Improve dashboard filtering so runtime skill/command inventory does not drown package loadout rows.
+5. [ ] Decide how local-only rows behave in the one-menu model:
+   - read-only with a hint to run `/construct sync`;
+   - or selectable adoption from the same menu.
+6. [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+7. [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance; observed `npm:@ollama/pi-web-search` and `https://github.com/nicobailon/pi-web-access` both registering `web_search` in `~/Code/scratch-pi`.
+8. [ ] Sweep old docs under `docs/` after the new one-menu direction settles. Keep historical notes if useful, but active docs should not advertise removed commands.
 
 ## Validation to keep running
 
@@ -38,10 +57,8 @@ Use disposable `HOME`/project directories for install/discovery checks.
 
 ## Wishlist / later
 
-- Collapse or summarize runtime skill command rows in `/construct` so large skill packages do not flood the dashboard; keep them read-only/inventory-only.
-- Friendly first-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by an explicit `/construct` command.
+- Friendly first-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind an explicit opt-in toggle.
-- Item action menu: load, unload, forget, cancel.
 - Groups/profiles as lists of remembered library source ids.
+- Support Pi package filters as a conflict-resolution/fine-grained toggle layer, e.g. keep a package declared but set `extensions: []`, `skills: []`, `prompts: []`, or `themes: []` instead of unloading the whole package.
 - Optional parallel package installs/removals for multi-select flows. Be careful: `pi install -l` / `pi remove -l` and Construct metadata writes mutate the same `.pi/settings.json` / `.pi/construct.json`, so this needs locking or safe merge semantics before we leave sequential execution.
-- Better package-backed skill visibility while keeping runtime skill/command rows read-only until package-level UX feels solid.

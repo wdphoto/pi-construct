@@ -56,8 +56,6 @@ OUTPUT="$(construct_pi "$HOME_A" "$PROJECT_A" '/construct sync' 2>&1)"
 grep -Fq 'Construct sync failed.' <<<"$OUTPUT"
 grep -Fq 'Construct library catalog is invalid JSON' <<<"$OUTPUT"
 grep -Fq '{ invalid catalog' "$HOME_A/.pi/agent/construct/catalog.json"
-OUTPUT="$(construct_pi "$HOME_A" "$PROJECT_A" '/construct remember npm:@scope/should-not-overwrite' 2>&1)"
-grep -Fq 'Cannot update Construct library' <<<"$OUTPUT"
 grep -Fq '{ invalid catalog' "$HOME_A/.pi/agent/construct/catalog.json"
 test ! -e "$PROJECT_A/.pi/construct.json"
 

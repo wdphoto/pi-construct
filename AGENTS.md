@@ -1,6 +1,8 @@
 # AGENTS.md
 
-This repo is for planning and eventually building **the-construct**, a global Pi extension whose command surface is `/construct`.
+This repo is for **the-construct**, a global Pi extension / Pi package whose command surface is `/construct`.
+
+This is a Pi-native project. Before reaching for external web docs, use Pi's installed local documentation, local examples, and this repo's docs as the source of truth. Work smarter: verify against the APIs and behavior that are already on this machine.
 
 ## Project intent
 
@@ -37,12 +39,21 @@ This repo is for planning and eventually building **the-construct**, a global Pi
   ```
 - Prefer disposable fixture projects for testing project-local writes.
 - Before editing any `.pi/settings.json`, create a backup.
-- `/construct load` should use conservative behavior: add missing declarations, preserve existing config, ask before overwrite/remove.
+- `/construct` should be the primary loadout surface; keep extra slash commands out unless they are clearly needed.
 - Never write secrets, tokens, API keys, or auth material.
 
-## Pi docs to consult before implementation
+## Pi docs and local resources first
 
-Use the installed Pi docs as the source of truth:
+Use the installed Pi docs as the source of truth before web search. Only go outside when the local Pi docs/examples and repo files do not answer the question, or when the user explicitly asks for outside research.
+
+Start with:
+
+- Main docs: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/README.md`
+- Additional docs: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/`
+- Examples: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/examples/`
+- Local Pi package install/cache behavior can be inspected under `~/.pi/agent/` when needed, but do not edit live global Pi files without explicit request.
+
+Key docs:
 
 - Extensions: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`
 - Packages: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md`
@@ -59,6 +70,21 @@ Relevant examples to review when coding:
 - `tools.ts` for simple settings-list UI patterns.
 - `dynamic-resources/index.ts` for future cwd/profile ideas, not MVP.
 - `reload-runtime.ts` for safe reload command behavior.
+
+## Current command surface
+
+Primary public commands:
+
+- `/construct`
+- `/construct status`
+- `/construct`
+- `/construct status`
+- `/construct sync`
+- `/construct sync -a`
+- `/construct sync status`
+- `/construct reload`
+
+Do not re-add load/unload/toggle/library/remember/forget/catalog compatibility commands without an explicit product decision. The current bias is one quiet menu plus minimal support commands.
 
 ## Naming
 

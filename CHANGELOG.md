@@ -6,6 +6,16 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.3 - 2026-06-19
+
+### Changed
+- Collapsed the active command surface back to one primary `/construct` loadout menu plus minimal support commands: `status`, `sync`, and `reload`.
+- Updated README, handoff docs, and smoke coverage around the smaller command surface.
+- Ignored repo-local `.pi/settings.json` and `.pi/construct.json` so personal Construct state stays untracked.
+
+### Removed
+- Removed public `load`, `unload`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `remove`, `on`, `off`, and `wipe` command paths.
+
 ## 0.0.2 - 2026-06-18
 
 ### Added

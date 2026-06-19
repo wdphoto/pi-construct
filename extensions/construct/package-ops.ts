@@ -11,7 +11,26 @@ import {
 	upsertConstructItem,
 	removeMatchingPackageDeclaration,
 } from "./project-settings.js";
-import { updateConstructItemEnabled } from "./metadata.js";
+import { isObject } from "./json.js";
+
+function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, id: string, enabled: boolean) {
+	const root = parseProjectConstruct(constructRead);
+	const items = isObject(root.items) ? root.items : {};
+	const item = isObject(items[id]) ? items[id] : {};
+	return {
+		...root,
+		version: 1,
+		managedBy: "the-construct",
+		items: {
+			...items,
+			[id]: {
+				...item,
+				enabled,
+				updatedAt: new Date().toISOString(),
+			},
+		},
+	};
+}
 
 export interface LoadPackageResult {
 	ok: boolean;
