@@ -6,6 +6,20 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.9 - 2026-06-19
+
+### Added
+- Added quiet `/construct run` alias for the default Construct Loadout dashboard.
+- Added `MAP.md` as the versioned roadmap/action list.
+
+### Changed
+- Refocused `AGENTS.md` as the compact agent/build guide.
+- Refocused `TODO.md` as a scratchpad for research and undecided ideas.
+- Clarified near-term roadmap around unload wording, known-project assignment counts, and print-first `/construct copy` snippets.
+
+### Removed
+- Removed the old root planning note and `docs/roadmap.md` in favor of `AGENTS.md`, `MAP.md`, and `TODO.md`.
+
 ## 0.0.8 - 2026-06-19
 
 ### Added

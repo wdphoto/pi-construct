@@ -20,7 +20,9 @@ export default function constructExtension(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const { command, rest } = splitArgs(args);
 
-			if (command === "dashboard") {
+			// Quiet alias: /construct with no args is the public shape; /construct run is
+			// accepted as the literal form without adding another advertised command.
+			if (command === "dashboard" || command === "run") {
 				await handleDashboard(pi, ctx);
 				return;
 			}

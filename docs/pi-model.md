@@ -1,6 +1,6 @@
 # Idiomatic Pi model
 
-<!-- Source: the-construct-plan.md lines 226-265: Existing Pi primitives -->
+<!-- Historical source: former the-construct-plan.md notes on existing Pi primitives. -->
 
 ## Existing Pi primitives we should build on
 

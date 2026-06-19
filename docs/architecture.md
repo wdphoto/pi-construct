@@ -116,6 +116,8 @@ Rules:
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Read-only commands must not create this file.
 
-## Startup behavior
+## Lifecycle behavior
 
-Construct has no lifecycle/startup behavior. It does not prompt, load, install, reload, or write files just because Pi starts.
+Construct has no startup behavior. It does not prompt, load, install, reload, or write files just because Pi starts.
+
+Autoload is an explicit opt-in shutdown behavior. When enabled, it may prompt on session quit only, and it must confirm before writing Construct library/metadata files.
