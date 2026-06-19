@@ -2,7 +2,7 @@
 
 The Construct is a Pi extension for grabbing the tools you need.
 
-It is deliberately not a package manager. Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember package sources and turn them on or off,
+It is deliberately not a package manager. Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember package sources and turn them on or off.
 
 ## How it works
 
@@ -24,6 +24,41 @@ It is deliberately not a package manager. Pi still owns package install/removal,
 /construct profile save <name>
 /construct profile apply <name>
 /construct reload      # reload Pi resources
+```
+
+## Example `/construct` output
+
+```text
+Construct loadout
+=================
+Project: /Users/you/project
+
+ON — Construct packages
+-----------------------
+[x] pi-web-access  https://github.com/nicobailon/pi-web-access
+
+OFF — Construct packages
+------------------------
+[ ] pi-subagents  https://github.com/nicobailon/pi-subagents
+
+AVAILABLE — Construct library
+-----------------------------
+[ ] agent-skills  https://github.com/addyosmani/agent-skills
+
+LOCAL-ONLY — not in Construct
+-----------------------------
+[!] local-tooling  /Users/you/dev/local-tooling
+
+SKILL COMMANDS — runtime, read-only
+-----------------------------------
+[i] /review  github.com/mattpocock/skills
+
+COMMANDS — runtime, read-only
+-----------------------------
+[i] /construct  the-construct/extensions/construct/index.ts
+
+Space toggles Construct packages in TUI. Local-only and runtime items are read-only.
+Run /construct sync to adopt local-only packages.
 ```
 
 ## Basic workflow
