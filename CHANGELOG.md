@@ -6,6 +6,18 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.4 - 2026-06-19
+
+### Added
+- Added WIP profile commands for saving, listing, and applying named groups of Construct-managed package sources.
+- Added profile storage to the Construct user library catalog and profile counts to `/construct status`.
+- Added README example output using realistic Pi package sources from the package catalog.
+
+### Changed
+- Changed the explicit adopt-all sync command to `/construct sync auto`; `-a` and `--all` remain compatibility aliases.
+- Moved sync behavior explanation into `/construct status`; `/construct sync status` now redirects users there.
+- Marked profile commands as WIP in the README while the feature remains pre-public.
+
 ## 0.0.3 - 2026-06-19
 
 ### Changed

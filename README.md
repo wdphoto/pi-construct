@@ -1,8 +1,8 @@
 # The Construct
 
-The Construct is a global Pi extension for grabbing the tools you need on each project.
+The Construct is a global Pi extension for grabbing the tools you need for every project.
 
-Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember local package sources and turn them on or off for a project at the local level.
+Pi still owns package install/removal, trust, caches, reloads, and resource loading. Construct only helps you remember package sources and turn them on or off for a project at the local level.
 
 ## How it works
 

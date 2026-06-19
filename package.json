@@ -1,6 +1,6 @@
 {
   "name": "the-construct",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "description": "A minimal Pi loadout menu for project-local packages.",
   "license": "MIT",
