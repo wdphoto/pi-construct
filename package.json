@@ -1,7 +1,6 @@
 {
   "name": "the-construct",
-  "version": "0.0.4",
-  "private": true,
+  "version": "0.0.5",
   "description": "A minimal Pi loadout menu for project-local packages.",
   "license": "MIT",
   "type": "module",
@@ -11,6 +10,14 @@
     "pi",
     "construct"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wdphoto/pi-construct.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wdphoto/pi-construct/issues"
+  },
+  "homepage": "https://github.com/wdphoto/pi-construct#readme",
   "files": [
     "extensions/",
     "README.md",
@@ -24,6 +31,9 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "pack:dry-run": "npm pack --dry-run",
+    "release:verify": "npm run check && npm run smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke && npm run pack:dry-run",
+    "prepublishOnly": "npm run check && npm run pack:dry-run",
     "smoke": "./scripts/smoke.sh",
     "install-smoke": "./scripts/install-smoke.sh",
     "e2e-smoke": "./scripts/e2e-smoke.sh",

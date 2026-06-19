@@ -6,6 +6,12 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.5 - 2026-06-19
+
+### Changed
+- Prepared the package for npm publishing by removing the private flag and adding npm repository metadata.
+- Added npm publish verification scripts and README npm install/publish notes.
+
 ## 0.0.4 - 2026-06-19
 
 ### Added

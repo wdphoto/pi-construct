@@ -106,6 +106,26 @@ After changing the loadout, reload Pi when you are ready:
 - Turning a package off does not delete local source files, npm caches, git clones, or library entries.
 - Read-only commands should not create `.pi/construct.json`.
 
+## Install from npm
+
+After it is published to npm:
+
+```bash
+pi install npm:the-construct
+```
+
+For now, publishing is manual because npm may require 2FA:
+
+```bash
+npm publish
+```
+
+Before publishing, run:
+
+```bash
+npm run release:verify
+```
+
 ## Development
 
 Load this extension from the repo without installing it globally:
