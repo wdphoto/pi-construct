@@ -1,6 +1,6 @@
-# The Construct
-
 <img width="498" height="278" alt="morfeo-the-construct" src="https://github.com/user-attachments/assets/ccd93aca-1b89-416e-a67e-aa151cfe8f7f" />
+
+# The Construct
 
 The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources.
 
@@ -27,10 +27,10 @@ Project-only
 ------------
 [!] local-tooling   /Users/you/dev/local-tooling
 
-Space toggles Construct packages. Enter applies. Esc cancels.
-Project-only rows are read-only; run /construct sync to adopt them.
-After changes: Enter reloads Pi, Esc returns to the session.
-Runtime commands and tools are listed in /construct status.
+Space toggles. Construct packages. Enter applies. Esc cancels.
+
+run `/construct sync` to add new project-level resources into the construct.
+
 ```
 
 ## Basic workflow
