@@ -2,12 +2,12 @@
 
 <img width="498" height="278" alt="morfeo-the-construct" src="https://github.com/user-attachments/assets/ccd93aca-1b89-416e-a67e-aa151cfe8f7f" />
 
-The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources like extensions and skills.
+The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources.
 
-Run `/construct`, select your loadout with the spacebar, then hit Enter to apply changes. If changes were made, the final panel lets you press Enter to reload Pi or Esc to return to the session.
+Load in with the `/construct` command, select your loadout with the `spacebar`, and hit `Enter` to apply. `Enter` again will reload Pi or `Esc` to return to the session without the reload.
 
 ```text
-Construct loadout
+Construct Loadout
 =================
 Project: /Users/you/project
 2 enabled · 3 available · 1 project-only

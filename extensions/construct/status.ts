@@ -1,11 +1,38 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog } from "./catalog.js";
+import { formatCatalogItem, normalizeSourceForLibrary, parseCatalog } from "./catalog.js";
 import { describeRead, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
 
-export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<string> {
+interface StatusData {
+	paths: Awaited<ReturnType<typeof getPaths>>;
+	userCatalog: Awaited<ReturnType<typeof readJson>>;
+	projectSettings: Awaited<ReturnType<typeof readJson>>;
+	projectConstruct: Awaited<ReturnType<typeof readJson>>;
+	catalog: ReturnType<typeof parseCatalog>;
+	packages: ReturnType<typeof getPackages>;
+	managed: Awaited<ReturnType<typeof getManagedItems>>;
+	commands: ReturnType<ExtensionAPI["getCommands"]>;
+	tools: ReturnType<ExtensionAPI["getAllTools"]>;
+	activeTools: ReturnType<ExtensionAPI["getActiveTools"]>;
+	mode: ExtensionCommandContext["mode"];
+	hasUI: boolean;
+	trusted: boolean;
+}
+
+function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
+	const tokens = args.split(/\s+/).filter(Boolean);
+	const warnings: string[] = [];
+	let verbose = false;
+	for (const token of tokens) {
+		if (["full", "verbose", "details", "debug"].includes(token)) verbose = true;
+		else warnings.push(`Unknown status argument ignored: ${token}`);
+	}
+	return { verbose, warnings };
+}
+
+async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<StatusData> {
 	const paths = await getPaths(ctx);
 	const [userCatalog, projectSettings, projectConstruct] = await Promise.all([
 		readJson(paths.userCatalogPath),
@@ -14,8 +41,6 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 	]);
 
 	const catalog = parseCatalog(userCatalog);
-	const catalogPreview = catalog.data.items.slice(0, 5).map(formatCatalogItem);
-	const profilePreview = catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} packages`);
 	const packages = getPackages(projectSettings);
 	const packageSources = new Set<string>();
 	const settingsDir = dirname(paths.projectSettingsPath);
@@ -24,17 +49,90 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		if (pkg.form !== "invalid") packageSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
 	}
 	const managed = await getManagedItems(projectConstruct, packageSources, paths);
-	const commands = pi.getCommands();
-	const tools = pi.getAllTools();
-	const activeTools = pi.getActiveTools();
-	const commandCounts = commands.reduce<Record<string, number>>((acc, command) => {
+	return {
+		paths,
+		userCatalog,
+		projectSettings,
+		projectConstruct,
+		catalog,
+		packages,
+		managed,
+		commands: pi.getCommands(),
+		tools: pi.getAllTools(),
+		activeTools: pi.getActiveTools(),
+		mode: ctx.mode,
+		hasUI: ctx.hasUI,
+		trusted: ctx.isProjectTrusted(),
+	};
+}
+
+function compactCount(count: number, singular: string, plural = `${singular}s`): string {
+	return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function compactRead(result: Awaited<ReturnType<typeof readJson>>): string {
+	if (result.state === "ok") return "ok";
+	if (result.state === "missing") return "missing";
+	return "invalid JSON";
+}
+
+function buildCompactStatus(data: StatusData, argumentWarnings: string[]): string {
+	const enabled = data.managed.filter((item) => item.enabled === true).length;
+	const disabled = data.managed.filter((item) => item.enabled === false).length;
+	const unknown = data.managed.length - enabled - disabled;
+	const drift = data.managed.filter((item) => item.drift);
+	const invalidPackages = data.packages.filter((pkg) => pkg.form === "invalid").length;
+	const warnings = [
+		...argumentWarnings,
+		...data.catalog.warnings,
+		...drift.map((item) => `${item.id} drift: ${item.drift}`),
+		...(invalidPackages > 0 ? [`${invalidPackages} invalid package declaration${invalidPackages === 1 ? "" : "s"} in .pi/settings.json`] : []),
+	];
+
+	return [
+		"Construct status",
+		"================",
+		`Project: ${data.paths.cwd}`,
+		data.paths.realCwd === data.paths.cwd ? undefined : `Canonical: ${data.paths.realCwd}`,
+		`Trust: ${data.trusted ? "trusted" : "not trusted"}`,
+		"",
+		"Loadout",
+		"-------",
+		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "profile")}`,
+		`Project packages: ${data.packages.length}`,
+		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
+		"Sync: manual only (/construct sync)",
+		"",
+		"Files",
+		"-----",
+		`Project settings: ${compactRead(data.projectSettings)}`,
+		`Construct metadata: ${compactRead(data.projectConstruct)}`,
+		`Construct library: ${compactRead(data.userCatalog)}`,
+		"",
+		"Runtime",
+		"-------",
+		`Slash commands: ${data.commands.length}`,
+		`Tools: ${data.activeTools.length}/${data.tools.length} active`,
+		warnings.length > 0 ? "" : undefined,
+		warnings.length > 0 ? "Warnings" : undefined,
+		warnings.length > 0 ? "--------" : undefined,
+		...warnings.map((warning) => `! ${warning}`),
+		"",
+		"Use /construct for the loadout menu. Use /construct status full for details.",
+	]
+		.filter((line): line is string => line !== undefined)
+		.join("\n");
+}
+
+function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): string {
+	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
+	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} packages`);
+	const commandCounts = data.commands.reduce<Record<string, number>>((acc, command) => {
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
 		return acc;
 	}, {});
-	const trusted = ctx.isProjectTrusted();
-
-	const packageLines = packages.map((pkg) => `- ${pkg.source} (${pkg.form})`);
-	const managedLines = managed.map((item) => {
+	const packageLines = data.packages.map((pkg) => `- ${pkg.source} (${pkg.form})`);
+	const managedLines = data.managed.map((item) => {
 		const enabled = item.enabled === undefined ? "unknown" : item.enabled ? "enabled" : "disabled";
 		const source = item.source ? ` — ${item.source}` : "";
 		const drift = item.drift ? ` [drift: ${item.drift}]` : "";
@@ -42,48 +140,46 @@ export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext
 	});
 
 	return [
-		"Construct status",
-		"================",
-		`Target cwd: ${paths.cwd}`,
-		paths.realCwd === paths.cwd ? undefined : `Canonical cwd: ${paths.realCwd}`,
-		`Target rule: ctx.cwd (MVP; no git-root guessing)`,
-		`Mode: ${ctx.mode}`,
-		`UI available: ${ctx.hasUI ? "yes" : "no"}`,
-		`Project trusted: ${trusted ? "yes" : "no"}`,
+		"Construct status details",
+		"========================",
+		`Target cwd: ${data.paths.cwd}`,
+		data.paths.realCwd === data.paths.cwd ? undefined : `Canonical cwd: ${data.paths.realCwd}`,
+		`Mode: ${data.mode}`,
+		`UI available: ${data.hasUI ? "yes" : "no"}`,
+		`Project trusted: ${data.trusted ? "yes" : "no"}`,
+		...argumentWarnings.map((warning) => `! ${warning}`),
 		"",
 		"User Construct state",
 		"--------------------",
 		"Automatic sync: off (manual; use /construct sync)",
-		"Sync menu: /construct sync",
-		"Sync all: /construct sync auto",
 		"Sync writes: user library and selected .pi/construct.json metadata only",
-		`Construct library: ${describeRead(userCatalog)}`,
-		`Library items: ${catalog.data.items.length}`,
+		`Construct library: ${describeRead(data.userCatalog)}`,
+		`Library items: ${data.catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
-		`Profiles: ${catalog.data.profiles.length}`,
+		`Profiles: ${data.catalog.data.profiles.length}`,
 		...formatList(profilePreview, "no profiles saved"),
-		...catalog.warnings.map((warning) => `! ${warning}`),
+		...data.catalog.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Project Pi state",
 		"----------------",
-		`Project settings: ${describeRead(projectSettings)}`,
-		`Package declarations: ${packages.length}`,
+		`Project settings: ${describeRead(data.projectSettings)}`,
+		`Package declarations: ${data.packages.length}`,
 		...formatList(packageLines, "no project packages declared"),
-		`Construct metadata: ${describeRead(projectConstruct)}`,
-		`Construct-managed items: ${managed.length}`,
+		`Construct metadata: ${describeRead(data.projectConstruct)}`,
+		`Construct-managed items: ${data.managed.length}`,
 		...formatList(managedLines, "no Construct-managed items"),
 		"",
 		"Runtime inventory",
 		"-----------------",
-		`Slash commands: ${commands.length} (extension ${commandCounts.extension ?? 0}, prompt ${commandCounts.prompt ?? 0}, skill ${commandCounts.skill ?? 0})`,
-		`Tools: ${activeTools.length}/${tools.length} active`,
-		"",
-		"Notes",
-		"-----",
-		"- Status is read-only; no files were changed.",
-		"- .pi/settings.json is Pi's source of truth; Construct metadata is advisory.",
-		"- Drift checks normalize local path package sources where possible.",
+		`Slash commands: ${data.commands.length} (extension ${commandCounts.extension ?? 0}, prompt ${commandCounts.prompt ?? 0}, skill ${commandCounts.skill ?? 0})`,
+		`Tools: ${data.activeTools.length}/${data.tools.length} active`,
 	]
 		.filter((line): line is string => line !== undefined)
 		.join("\n");
+}
+
+export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext, args = ""): Promise<string> {
+	const mode = parseStatusMode(args);
+	const data = await collectStatusData(pi, ctx);
+	return mode.verbose ? buildVerboseStatus(data, mode.warnings) : buildCompactStatus(data, mode.warnings);
 }

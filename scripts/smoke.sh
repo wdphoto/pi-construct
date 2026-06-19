@@ -57,7 +57,7 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Construct loadout"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Available"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
-[[ "$STATUS_OUTPUT" == *"Construct metadata: missing:"* ]]
+[[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
 python3 - "$PROJECT_DIR" <<'PY'
 import pathlib
 import sys

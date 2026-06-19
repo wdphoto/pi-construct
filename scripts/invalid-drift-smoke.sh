@@ -180,7 +180,7 @@ source = str((project / "pkg").resolve())
   }
 }, indent=2) + "\n")
 PY
-OUTPUT="$(construct_pi "$HOME_F" "$PROJECT_F" '/construct status' 2>&1)"
+OUTPUT="$(construct_pi "$HOME_F" "$PROJECT_F" '/construct status full' 2>&1)"
 grep -Fq 'pkg (package, enabled)' <<<"$OUTPUT"
 ! grep -Fq 'drift:' <<<"$OUTPUT"
 

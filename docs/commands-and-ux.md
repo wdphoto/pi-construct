@@ -6,7 +6,7 @@ Construct is still centered on one primary command: `/construct`.
 
 ```text
 /construct             # one loadout menu / dashboard
-/construct status      # read-only diagnostics, including sync state
+/construct status      # read-only diagnostics
 /construct sync        # choose current project packages to remember
 /construct sync auto   # remember all new current project packages
 /construct sync off    # explain that automatic sync is off
@@ -26,6 +26,7 @@ Sync means manual adoption of existing Pi package declarations.
 - `/construct sync on` is an alias for `/construct sync`.
 - `/construct sync off` is a harmless explanation: automatic sync is off.
 - Sync status belongs in `/construct status`, not a separate `sync status` subcommand.
+- `/construct status full` prints the longer diagnostic view for debugging.
 
 Sync reads `.pi/settings.json` and can write:
 
@@ -58,7 +59,7 @@ Sections:
 - `Available` — remembered packages that can be enabled here.
 - `Project-only` — active project package declarations that Construct has not adopted yet; read-only in the dashboard.
 
-Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and diagnostics.
+Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 
 Controls:
 

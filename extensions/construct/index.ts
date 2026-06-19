@@ -22,7 +22,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 			}
 
 			if (command === "status") {
-				showText(ctx, await buildStatus(pi, ctx));
+				showText(ctx, await buildStatus(pi, ctx, rest));
 				return;
 			}
 
