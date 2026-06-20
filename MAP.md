@@ -4,7 +4,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 
 ## v0.0.9 — clarity and cleanup safety
 
-- [ ] Clean up `/construct unload` output so it plainly says Construct forgot the resource, project package declarations were left alone, and the package may still be active/unloaded.
+- [x] Clean up `/construct unload` output so it plainly says Construct forgot the resource, project package declarations were left alone, and the package may still be active/unloaded.
 - [ ] Add known-project assignment counts for resources before unload and in relevant list/status views.
 - [ ] Keep assignment counts informational only. Unload should not block or hard-warn just because a resource is used by multiple known projects, because unload does not delete it from those projects.
 - [ ] Design and implement the known-project index under `~/.pi/agent/construct/`.

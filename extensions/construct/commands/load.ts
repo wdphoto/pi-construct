@@ -6,7 +6,7 @@ import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { managedPackageSourceIdentity } from "../sources.js";
-import { pickCheckboxes, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 interface LoadCandidate {
 	id: string;
@@ -220,6 +220,8 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 		showText(ctx, "No resources selected for Construct load. No files were changed.");
 		return;
 	}
+
+	await waitForIdleBeforeConstructWrite(ctx, "Construct load");
 
 	let result: ConstructLoadResult;
 	try {

@@ -7,7 +7,7 @@ import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
 import { getPackages } from "../project-settings.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
-import { progressStatus, setConstructStatus, showSummary, showText, splitArgs } from "../ui.js";
+import { progressStatus, setConstructStatus, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite } from "../ui.js";
 
 function profileId(name: string): string {
 	return deriveId(name);
@@ -70,6 +70,8 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		return;
 	}
 
+	await waitForIdleBeforeConstructWrite(ctx, "Construct profile save");
+
 	const load = await addSourcesToCatalog(ctx, sources);
 	if (load.warnings.length > 0) {
 		showText(ctx, ["Construct profile not saved.", ...load.warnings.map((warning) => `! ${warning}`)].join("\n"));
@@ -124,6 +126,8 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 		showText(ctx, `Construct profile has no package sources: ${profile.id}`);
 		return;
 	}
+
+	await waitForIdleBeforeConstructWrite(ctx, "Construct profile apply");
 
 	const loaded: Array<{ source: string; item?: CatalogItem }> = [];
 	const failures: string[] = [];

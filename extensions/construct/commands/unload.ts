@@ -1,10 +1,12 @@
+import { dirname } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, ConstructPaths, JsonObject } from "../types.js";
 import { loadCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { managedPackageSourceIdentity } from "../sources.js";
-import { pickCheckboxes, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
+import { getPackages } from "../project-settings.js";
+import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
+import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 function unloadUsage(): string {
 	return [
@@ -28,6 +30,27 @@ function findUnloadItems(items: CatalogItem[], queries: string[]): { selected: C
 		else for (const item of matches) selected.set(catalogItemKey(item), item);
 	}
 	return { selected: [...selected.values()], missing };
+}
+
+async function currentProjectActiveCount(paths: ConstructPaths, selected: CatalogItem[]): Promise<{ active: number; warning?: string }> {
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "missing") return { active: 0 };
+	if (settingsRead.state === "invalid") return { active: 0, warning: `Could not check current project package state because .pi/settings.json is invalid JSON: ${settingsRead.error}` };
+
+	const settingsDir = dirname(paths.projectSettingsPath);
+	const activeSources = new Set<string>();
+	for (const pkg of getPackages(settingsRead)) {
+		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
+		activeSources.add(pkg.source);
+		activeSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
+	}
+
+	let active = 0;
+	for (const item of selected) {
+		const normalized = await normalizeSourceForLibrary(item.source, settingsDir);
+		if (activeSources.has(item.source) || activeSources.has(normalized)) active += 1;
+	}
+	return { active };
 }
 
 async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: CatalogItem[]): Promise<{ removed: number; warning?: string }> {
@@ -102,6 +125,8 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 		return;
 	}
 
+	await waitForIdleBeforeConstructWrite(ctx, "Construct unload");
+
 	const removedIds = new Set(selected.map((item) => item.id));
 	const removedSources = new Set(selected.map((item) => item.source));
 	const removedKeys = new Set(selected.map(catalogItemKey));
@@ -114,18 +139,20 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	}));
 	await writeJson(paths.userCatalogPath, { ...catalog, version: 1, items: nextItems, profiles: nextProfiles });
 
-	const metadata = await removeCurrentProjectMetadata(paths, selected);
-	const outputWarnings = [...missing.map((query) => `Not found: ${query}`), ...(metadata.warning ? [metadata.warning] : [])];
+	const [metadata, currentProject] = await Promise.all([removeCurrentProjectMetadata(paths, selected), currentProjectActiveCount(paths, selected)]);
+	const outputWarnings = [...missing.map((query) => `Not found: ${query}`), ...(metadata.warning ? [metadata.warning] : []), ...(currentProject.warning ? [currentProject.warning] : [])];
 	await showSummary(
 		ctx,
 		[
 			"Construct unload complete.",
-			`Removed from Construct: ${selected.length}`,
-			metadata.removed > 0 ? `Current project metadata removed: ${metadata.removed}` : "Current project metadata removed: 0",
-			"Project package declarations were not changed.",
+			`Construct forgot: ${selected.length} resource${selected.length === 1 ? "" : "s"}`,
+			metadata.removed > 0 ? `Current project Construct metadata removed: ${metadata.removed}` : "Current project Construct metadata removed: 0",
+			"Project package declarations were left alone in .pi/settings.json.",
+			currentProject.active > 0 ? `Still active in this project: ${currentProject.active} resource${currentProject.active === 1 ? "" : "s"} (shown as Unloaded in /construct).` : "No selected resources are active in this project's .pi/settings.json.",
+			"Packages may still be active in other projects too; unload only removes Construct ownership/metadata.",
 			...selected.map((item) => `- ${item.id}: ${item.source}`),
 			...outputWarnings.map((warning) => `! ${warning}`),
-			"No /reload needed; unload only updates the Construct library and metadata.",
+			"No /reload needed; unload does not disable packages or edit .pi/settings.json.",
 		].join("\n"),
 	);
 }

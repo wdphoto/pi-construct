@@ -114,8 +114,9 @@ PY
 printf '== unload removes package from Construct only ==\n'
 UNLOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct unload construct-e2e-package' 2>&1)"
 grep -Fq 'Construct unload complete.' <<<"$UNLOAD_OUTPUT"
-grep -Fq 'Removed from Construct: 1' <<<"$UNLOAD_OUTPUT"
-grep -Fq 'Project package declarations were not changed.' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Construct forgot: 1 resource' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Project package declarations were left alone in .pi/settings.json.' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Still active in this project: 1 resource' <<<"$UNLOAD_OUTPUT"
 python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
 import json
 import pathlib

@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary, packageSourcesFromSet
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
 type DashboardSection = "Loaded" | "Available" | "Unloaded";
@@ -151,12 +151,17 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		confirmHint: "Enter applies",
-		onSubmit: async (ids, update) => {
+		onSubmit: async (ids, update, signal) => {
 			const selected = new Set(ids);
 			const toLoad = packages.filter((item) => !item.disabled && !item.checked && selected.has(item.id));
 			const toUnload = packages.filter((item) => !item.disabled && item.checked && !selected.has(item.id));
 			if (toLoad.length === 0 && toUnload.length === 0) {
 				return { title: "No Construct package changes selected", lines: ["No files were changed."] };
+			}
+
+			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Loadout", update, signal);
+			if (!ready) {
+				return { title: "Construct Loadout cancelled", lines: ["No files were changed."] };
 			}
 
 			type Step = { action: "Turn on" | "Turn off"; item: DashboardPackage; state: "pending" | "running" | "done" | "failed"; error?: string };
@@ -183,6 +188,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 
 			update("Applying Construct Loadout", progressLines());
 			for (const step of steps) {
+				if (signal.aborted) break;
 				step.state = "running";
 				update("Applying Construct Loadout", progressLines());
 				if (step.action === "Turn on") {
@@ -210,11 +216,19 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			}
 
 			const appliedChanges = loaded.length + unloaded.length;
+			const cancelled = signal.aborted;
 			return {
-				title: failures.length > 0 ? "Construct Loadout applied with errors" : "Construct Loadout changes applied",
+				title: cancelled
+					? appliedChanges > 0
+						? "Construct Loadout cancelled after partial changes"
+						: "Construct Loadout cancelled"
+					: failures.length > 0
+						? "Construct Loadout applied with errors"
+						: "Construct Loadout changes applied",
 				confirmHint: appliedChanges > 0 ? "Press Enter to reload Pi · Esc returns to session" : "Press Enter/Esc to return to session",
 				confirmAction: appliedChanges > 0 ? "reload" : undefined,
 				lines: [
+					cancelled ? "Cancelled before remaining changes." : undefined,
 					toLoad.length > 0 ? `Turned on: ${loaded.length}/${toLoad.length}` : undefined,
 					...loaded.map((item) => `+ ${item.label}: ${item.source}`),
 					toUnload.length > 0 ? `Turned off: ${unloaded.length}/${toUnload.length}` : undefined,

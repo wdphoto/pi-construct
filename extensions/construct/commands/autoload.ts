@@ -2,7 +2,7 @@ import type { ExtensionCommandContext, ExtensionContext, SessionShutdownEvent } 
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { formatLoadResult, loadSourcesIntoConstruct, projectLoadCandidates } from "./load.js";
-import { showText } from "../ui.js";
+import { showText, waitForIdleBeforeConstructWrite } from "../ui.js";
 
 interface AutoloadSettings {
 	enabled: boolean;
@@ -54,6 +54,7 @@ export async function handleAutoload(args: string, ctx: ExtensionCommandContext)
 	}
 
 	const next = tokens[0] === "on" ? true : tokens[0] === "off" ? false : !current.enabled;
+	await waitForIdleBeforeConstructWrite(ctx, "Construct autoload");
 	await writeAutoloadSettings(ctx, next);
 	showText(
 		ctx,

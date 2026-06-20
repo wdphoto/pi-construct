@@ -85,6 +85,35 @@ export function progressStatus(action: string, current: number, total: number, l
 	return `Construct: ${action} ${current}/${total} ${label}...`;
 }
 
+export async function waitForIdleBeforeConstructWrite(
+	ctx: ExtensionCommandContext,
+	label = "Construct",
+	update?: (title: string, lines: string[]) => void,
+	signal?: AbortSignal,
+): Promise<boolean> {
+	if (ctx.isIdle()) return true;
+	if (signal?.aborted) return false;
+
+	const message = `${label} is waiting for the current agent response to finish before changing files.`;
+	update?.("Waiting for agent", [message, "", "Construct will continue automatically when the agent is idle. Press Esc to cancel before changes start."]);
+	if (!update && ctx.hasUI) ctx.ui.notify(message, "warning");
+	setConstructStatus(ctx, "Construct: waiting for agent to finish");
+	try {
+		if (!signal) {
+			await ctx.waitForIdle();
+			return true;
+		}
+
+		const result = await Promise.race<"idle" | "abort">([
+			ctx.waitForIdle().then(() => "idle"),
+			new Promise<"abort">((resolve) => signal.addEventListener("abort", () => resolve("abort"), { once: true })),
+		]);
+		return result === "idle";
+	} finally {
+		setConstructStatus(ctx, undefined);
+	}
+}
+
 export interface CheckboxPickerItem {
 	id: string;
 	label: string;
@@ -111,7 +140,7 @@ export interface CheckboxPickerResult {
 
 export interface CheckboxPickerOptions {
 	confirmHint?: string;
-	onSubmit?: (selectedIds: string[], update: (title: string, lines: string[]) => void) => Promise<CheckboxPickerApplyResult>;
+	onSubmit?: (selectedIds: string[], update: (title: string, lines: string[]) => void, signal: AbortSignal) => Promise<CheckboxPickerApplyResult>;
 }
 
 function fuzzyMatches(text: string, query: string): boolean {
@@ -143,6 +172,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let applyConfirmAction: "reload" | undefined;
 		let applyScroll = 0;
 		let applyStartedAt = Date.now();
+		let submitAbort: AbortController | undefined;
 		let spinnerTick = 0;
 		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 		const animationTimer = setInterval(() => {
@@ -252,12 +282,18 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function close(result: CheckboxPickerResult | undefined): void {
+			submitAbort?.abort();
 			clearInterval(animationTimer);
 			done(result);
 		}
 
 		function handleInput(data: string): void {
 			if (phase !== "pick") {
+				if (phase === "applying" && keybindings.matches(data, "tui.select.cancel")) {
+					submitAbort?.abort();
+					setApplyState("Cancelling Construct changes", ["Cancel requested.", "Construct will stop before the next file-changing step."]);
+					return;
+				}
 				if (keybindings.matches(data, "tui.select.up")) {
 					applyScroll = Math.max(0, applyScroll - 1);
 					invalidate();
@@ -320,11 +356,13 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 				phase = "applying";
 				applyStartedAt = Date.now();
+				const abort = new AbortController();
+				submitAbort = abort;
 				spinnerTick = 0;
 				setApplyState("Applying Construct changes", ["Preparing changes…"]);
 				void (async () => {
 					try {
-						const result = await options.onSubmit!(submittedIds ?? [], setApplyState);
+						const result = await options.onSubmit!(submittedIds ?? [], setApplyState, abort.signal);
 						phase = "done";
 						applyConfirmHint = result.confirmHint ?? "Press Enter/Esc to return to session";
 						applyConfirmAction = result.confirmAction;
