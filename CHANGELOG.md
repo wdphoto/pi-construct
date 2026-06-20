@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Changed
+- Renamed dashboard sections/counters to `Loaded`, `Available`, and `Unloaded`.
+
 ### Removed
 - Removed the quiet `/construct run` dashboard alias; `/construct` is the dashboard entrypoint.
 

@@ -84,7 +84,7 @@ Check in real TUI usage:
 - Enter applies;
 - Esc cancels;
 - package rows stay primary;
-- project-only rows are clear, read-only, and do not flood the view;
+- unloaded rows are clear, read-only, and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;
 - after changes, Enter reloads Pi and Esc returns to the session.
@@ -98,7 +98,7 @@ Before adding new behavior, ask:
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
 - Do profiles still store only library ids/sources and apply explicitly?
-- Would project-only package loading be clearer as read-only guidance or as a dashboard action?
+- Would unloaded package loading be clearer as read-only guidance or as a dashboard action?
 
 ## Local development
 

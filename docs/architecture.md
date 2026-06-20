@@ -12,7 +12,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 2. **Dashboard layer**
    - Merges Construct library entries, current project package declarations, and Construct metadata.
    - Applies package on/off diffs through internal package operations.
-   - Keeps project-only rows clearly labeled and read-only.
+   - Keeps unloaded rows clearly labeled and read-only.
 
 3. **Package operation layer**
    - Turns sources on with Pi's native project-local install path:

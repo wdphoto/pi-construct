@@ -4,7 +4,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 
 ## v0.0.9 — clarity and cleanup safety
 
-- [ ] Clean up `/construct unload` output so it plainly says Construct forgot the resource, project package declarations were left alone, and the package may still be active/project-only.
+- [ ] Clean up `/construct unload` output so it plainly says Construct forgot the resource, project package declarations were left alone, and the package may still be active/unloaded.
 - [ ] Add known-project assignment counts for resources before unload and in relevant list/status views.
 - [ ] Keep assignment counts informational only. Unload should not block or hard-warn just because a resource is used by multiple known projects, because unload does not delete it from those projects.
 - [ ] Design and implement the known-project index under `~/.pi/agent/construct/`.
@@ -23,7 +23,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 
 ## v0.0.x — dashboard polish
 
-- [ ] Decide whether project-only rows should remain read-only or become loadable directly from the dashboard.
+- [ ] Decide whether unloaded rows should remain read-only or become loadable directly from the dashboard.
 - [ ] Bring profile apply into the newer in-panel progress/result flow.
 - [ ] Fold profiles into the main `/construct` TUI as first-class selectable rows/groups if it stays simple.
 - [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.

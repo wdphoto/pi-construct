@@ -23,7 +23,7 @@ Current bias:
 Open questions:
 
 - Command names: `/construct copy` and `/construct import`?
-- Should the snippet represent only enabled Construct-managed resources, or also project-only resources?
+- Should the snippet represent only enabled Construct-managed resources, or also unloaded resources?
 - Should it include a human name/profile name?
 - Should it preserve exact source strings or normalize local paths out?
 
@@ -64,7 +64,7 @@ Open questions:
 
 - Does “Construct forgot this resource” land better than “Removed from Construct”?
 - Should unload output explicitly say “Still active in this project” when `.pi/settings.json` still has the source?
-- Should `Project-only` copy say “active in Pi, not managed by Construct”?
+- Should `Unloaded` copy say “active in Pi, not loaded into Construct”?
 
 ## Ideas not yet committed
 

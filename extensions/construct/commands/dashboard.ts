@@ -8,7 +8,7 @@ import { getPackages } from "../project-settings.js";
 import { pickCheckboxes, showText, type CheckboxPickerItem } from "../ui.js";
 import { loadPackageIntoProject, unloadPackageFromProject } from "../package-ops.js";
 
-type DashboardSection = "Enabled" | "Available" | "Project-only";
+type DashboardSection = "Loaded" | "Available" | "Unloaded";
 
 interface DashboardPackage {
 	id: string;
@@ -22,7 +22,7 @@ interface DashboardPackage {
 	description?: string;
 }
 
-const dashboardSections: DashboardSection[] = ["Enabled", "Available", "Project-only"];
+const dashboardSections: DashboardSection[] = ["Loaded", "Available", "Unloaded"];
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
@@ -76,7 +76,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			label: item.id,
 			source: item.source,
 			displaySource: compactSource(item.source),
-			section: active ? "Enabled" : "Available",
+			section: active ? "Loaded" : "Available",
 			checked: active,
 		});
 	}
@@ -101,11 +101,11 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			label: deriveId(normalized),
 			source: normalized,
 			displaySource: compactSource(normalized),
-			section: "Project-only",
+			section: "Unloaded",
 			checked: true,
 			disabled: true,
 			marker: "[!]",
-			description: "Active in this project, but not managed by Construct yet. Run /construct load to add it.",
+			description: "Active in this project, but not loaded into Construct yet. Run /construct load to add it.",
 		});
 	}
 
@@ -114,10 +114,10 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 }
 
 function dashboardSummary(packages: DashboardPackage[]): string {
-	const enabled = packages.filter((item) => item.section === "Enabled").length;
+	const loaded = packages.filter((item) => item.section === "Loaded").length;
 	const available = packages.filter((item) => item.section === "Available").length;
-	const projectOnly = packages.filter((item) => item.section === "Project-only").length;
-	return `${enabled} enabled · ${available} available · ${projectOnly} project-only`;
+	const unloaded = packages.filter((item) => item.section === "Unloaded").length;
+	return `${loaded} loaded · ${available} available · ${unloaded} unloaded`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {

@@ -39,7 +39,7 @@ Unload means removing resources from the Construct library.
 - Unload removes matching advisory metadata from the current project's `.pi/construct.json` when present.
 - Unload never edits `.pi/settings.json` and never uninstalls a package from a project.
 
-If an unloaded package is still active in `.pi/settings.json`, it becomes `Project-only` in the dashboard.
+If an unloaded package is still active in `.pi/settings.json`, it appears under `Unloaded` in the dashboard.
 
 ## `/construct autoload`
 
@@ -82,9 +82,9 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 
 Sections:
 
-- `Enabled` — Construct-managed packages active in this project.
-- `Available` — remembered packages that can be enabled here.
-- `Project-only` — active project package declarations that Construct has not loaded yet; read-only in the dashboard.
+- `Loaded` — Construct-managed packages active in this project.
+- `Available` — remembered packages that can be loaded here.
+- `Unloaded` — active project package declarations that Construct has not loaded yet; read-only in the dashboard.
 
 Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 

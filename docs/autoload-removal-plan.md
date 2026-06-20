@@ -59,7 +59,7 @@ Public/default adoption command.
 
 ### `/construct autoload`
 
-Opt-in exit prompt. It is off by default. When on, it checks for project-only resources during session quit and asks before loading them into the Construct.
+Opt-in exit prompt. It is off by default. When on, it checks for unloaded resources during session quit and asks before loading them into the Construct.
 
 It does not run on startup, reload, or session switching. It never installs packages or edits `.pi/settings.json`.
 

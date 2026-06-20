@@ -10,10 +10,10 @@ Use the `/construct` command, select your loadout with the `spacebar`, and hit `
 Construct Loadout
 =================
 Project: /Users/you/project
-2 enabled · 3 available · 1 project-only
+2 loaded · 3 available · 1 unloaded
 
-Enabled
--------
+Loaded
+------
 [x] pi-web-access  npm:pi-web-access
 [x] pi-subagents   git:github.com/your-org/pi-subagents
 
@@ -23,8 +23,8 @@ Available
 [ ] pi-chrome       npm:pi-chrome
 [ ] pi-ask-user     git:github.com/your-org/pi-ask-user
 
-Project-only
-------------
+Unloaded
+--------
 [!] local-tooling   /Users/you/dev/local-tooling
 
 Space toggles. Enter applies. Esc cancels.
