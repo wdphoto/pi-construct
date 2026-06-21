@@ -31,6 +31,9 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 
 ## Later
 
+- [ ] Consider lazy imports for heavier Construct modules if dashboard/profile/copy/import code grows, following pi-resource-center's startup-speed pattern. Keep the entrypoint lean.
+- [ ] Polish package source labels, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
+- [ ] Reference Pi's `DefaultPackageManager` and `SettingsManager` discovery patterns when implementing known-project counts, but keep Construct's model limited to user-local known projects rather than broad resource management.
 - [ ] Resource-level package filters only if truly needed.
 - [ ] Optional local-file packaging/export for `.pi/extensions`, prompts, skills, and themes.
 - [ ] Optional parallel package installs/removals, but only after safe locking or merge semantics exist.
