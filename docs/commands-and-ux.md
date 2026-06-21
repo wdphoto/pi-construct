@@ -104,7 +104,7 @@ Controls:
 - row grammar separates selection from state: `[x]` means selected, while compact icons `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a label such as `Filter packages:` and a hint that typing narrows by package/source/state;
-- keep colors quiet: section headings are mostly accent, Unloaded is muted, and state icons carry state color;
+- color-code the visible row by state so scanning does not depend on the icon alone: active/success, disabled/warning, available/accent, unloaded/muted;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
 - Enter applies the obvious state change for actionable rows: install `Available`, disable `Installed`, or enable `Disabled`;
