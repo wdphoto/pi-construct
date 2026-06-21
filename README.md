@@ -39,10 +39,10 @@ Available
 
 Unloaded
 --------
-    ◇  local-tooling   ../local-tooling  read-only
+    ◇  local-tooling   ../local-tooling
 
-Legend: [ ] selectable · [x] selected · ✓ Active disables · – Disabled enables · + Available installs · ◇ Unloaded.
-Controls: Space selects · Enter applies · r removes project installs · Esc cancels.
+Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + available · ◇ unloaded.
+Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.
 ```
 
 States:

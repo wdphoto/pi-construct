@@ -44,7 +44,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [x] Prototype Pi-native filter-based disarm mode: keep package declarations but set package resource filters to `[]`. See `docs/package-disable-design.md`.
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies, `r` confirms/removes, result-panel Enter reloads.
 - [x] Decide dashboard state/action language: Installed, Disabled, Available, Unloaded; Enter applies Installed/Disabled/Available transitions; Unloaded rows are read-only in `/construct`; no public `d` key.
-- [x] Split dashboard row grammar into selection marker plus compact state icon: `[x]` selected, `✓`, `–`, `+`, `◇`; color state icons/actions in TUI.
+- [x] Split dashboard row grammar into selection marker plus compact state icon: `[x]` selected, `✓`, `–`, `+`, `◇`; color state icons quietly in TUI.
 - [ ] Bring profile apply into the newer in-panel progress/result flow.
 - [ ] Fold profiles into the main `/construct` TUI as first-class selectable rows/groups if it stays simple.
 - [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.

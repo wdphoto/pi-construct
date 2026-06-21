@@ -180,29 +180,13 @@ function stateLabel(section: DashboardSection): string {
 	return section;
 }
 
-function actionLabel(section: DashboardSection): string | undefined {
-	if (section === "Installed") return "disable";
-	if (section === "Disabled") return "enable";
-	if (section === "Available") return "install";
-	if (section === "Unloaded") return "read-only";
-	return undefined;
-}
-
-function actionTone(section: DashboardSection): CheckboxPickerTone {
-	if (section === "Installed") return "warning";
-	if (section === "Disabled") return "success";
-	if (section === "Unloaded") return "muted";
-	return "accent";
-}
-
 function selectionMarker(item: DashboardPackage): string {
 	return item.disabled ? "   " : "[ ]";
 }
 
 function dashboardLine(item: DashboardPackage, labelWidth: number): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
-	const action = item.disabled ? `  ${actionLabel(item.section) ?? "read-only"}` : "";
-	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${item.displaySource}${action}`;
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${item.displaySource}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
@@ -215,8 +199,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warn
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
-		"Legend: [ ] selectable · [x] selected · ✓ Active disables · – Disabled enables · + Available installs · ◇ Unloaded.",
-		"Controls: Space selects · Enter applies · r removes project installs · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
@@ -288,15 +272,13 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateLabel: stateLabel(item.section),
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
-		actionLabel: actionLabel(item.section),
-		actionTone: actionTone(item.section),
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		initialSelection: "empty",
 		confirmHint: "Enter applies",
 		filterLabel: "Filter packages",
-		filterHint: "Type to narrow by package, source, state, or action · Backspace edits",
-		footerHint: "  [x] selected · ✓ disables · – enables · + installs · ◇ Unloaded\n  Space selects · Enter applies · r removes project installs · Esc cancels",
+		filterHint: "Type to narrow by package, source, or state · Backspace edits",
+		footerHint: "  [x] selected · ✓ active · – disabled · + available · ◇ unloaded\n  Space selects · Enter applies · r removes installed/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {
