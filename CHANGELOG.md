@@ -12,7 +12,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ### Changed
 - Kept autoload explicit and confirmation-only; it still never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
-- Updated the `/construct` dashboard row grammar to separate selection from state: `[x]` marks selected rows, while compact `✓`, `–`, `+`, and `◇` icons plus row colors show current state.
+- Updated the `/construct` dashboard row grammar to separate selection from state: `[x]` marks selected rows, while compact `✓`, `–`, `+`, and `◇` icons plus state row colors show current state.
 - Improved the TUI filter area with an explicit `Filter packages:` label and hint text.
 - Removed trailing per-row action hints from the dashboard to keep rows narrow and avoid implying Enter is the only possible action.
 - Kept `Unloaded` as the user-facing term for project declarations that are not in Construct; `/construct load` remains the adoption path.

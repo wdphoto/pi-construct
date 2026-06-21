@@ -158,9 +158,9 @@ function dashboardSummary(packages: DashboardPackage[]): string {
 
 function dashboardTone(section: DashboardSection): CheckboxPickerTone {
 	if (section === "Installed") return "success";
-	if (section === "Disabled") return "warning";
-	if (section === "Unloaded") return "muted";
-	return "accent";
+	if (section === "Disabled") return "mutedSuccess";
+	if (section === "Available") return "warning";
+	return "muted";
 }
 
 function stateIcon(section: DashboardSection): string {
