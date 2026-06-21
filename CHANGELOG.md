@@ -12,6 +12,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ### Changed
 - Kept autoload explicit and confirmation-only; it still never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
+- Quit-time autoload now labels disabled package declarations in its confirmation prompt and preserves their disabled metadata when loading them into Construct.
 - Updated the `/construct` dashboard row grammar to separate selection from state: `[x]` marks selected rows, while compact color-coded `✓`, `–`, `+`, and `◇` icons show current state.
 - Improved the TUI filter area with an explicit `Filter packages:` label and hint text.
 - Removed trailing per-row action hints from the dashboard to keep rows narrow and avoid implying Enter is the only possible action.

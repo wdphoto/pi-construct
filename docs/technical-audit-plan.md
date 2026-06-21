@@ -26,6 +26,10 @@ npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false
 
 Result: failed only on one unused import in `extensions/construct/commands/profiles.ts` (`parseCatalog`).
 
+## Progress log
+
+- F2 fixed: quit-time autoload now labels disabled package declarations in the confirmation prompt and preserves `enabled: false` metadata for packages disabled by Pi filters.
+
 ## What looks healthy
 
 - The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and WIP profiles.

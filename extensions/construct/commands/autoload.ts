@@ -220,7 +220,7 @@ export async function maybePromptAutoloadOnShutdown(event: SessionShutdownEvent,
 	}
 	if (candidates.adoptable.length === 0) return;
 
-	const lines = candidates.adoptable.map((candidate) => `- ${candidate.id}: ${candidate.source}`);
+	const lines = candidates.adoptable.map((candidate) => `- ${candidate.id}: ${candidate.source}${candidate.disabledByFilters ? " (currently disabled by Pi filters)" : ""}`);
 	const confirmed = await ctx.ui.confirm(
 		"Load project resources into Construct?",
 		[
@@ -241,8 +241,9 @@ export async function maybePromptAutoloadOnShutdown(event: SessionShutdownEvent,
 		return;
 	}
 	const sources = candidates.adoptable.map((candidate) => candidate.source);
+	const enabledBySource = new Map(candidates.adoptable.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
 	try {
-		const result = await loadSourcesIntoConstruct(ctx, paths, constructRead, sources);
+		const result = await loadSourcesIntoConstruct(ctx, paths, constructRead, sources, { enabledBySource });
 		ctx.ui.notify(`Construct autoload loaded ${result.added.length} resource${result.added.length === 1 ? "" : "s"}.`, result.warnings.length > 0 ? "warning" : "info");
 		if (result.warnings.length > 0) ctx.ui.notify(formatLoadResult(result), "warning");
 	} catch (error) {
