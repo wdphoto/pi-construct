@@ -156,9 +156,12 @@ function dashboardSummary(packages: DashboardPackage[]): string {
 	return `${installed} installed · ${disabled} disabled · ${available} available · ${unloaded} unloaded`;
 }
 
-function dashboardTone(section: DashboardSection): CheckboxPickerTone {
+function sectionTone(section: DashboardSection): CheckboxPickerTone {
+	return section === "Unloaded" ? "muted" : "accent";
+}
+
+function stateTone(section: DashboardSection): CheckboxPickerTone {
 	if (section === "Installed") return "success";
-	if (section === "Disabled") return "mutedSuccess";
 	if (section === "Available") return "warning";
 	return "muted";
 }
@@ -261,14 +264,13 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		value: item.displaySource,
 		description: item.description,
 		section: item.section,
-		sectionTone: dashboardTone(item.section),
+		sectionTone: sectionTone(item.section),
 		checked: false,
 		disabled: item.disabled,
 		stateIcon: stateIcon(item.section),
 		stateLabel: stateLabel(item.section),
 		stateText: stateIcon(item.section),
-		stateTone: dashboardTone(item.section),
-		rowTone: dashboardTone(item.section),
+		stateTone: stateTone(item.section),
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		initialSelection: "empty",

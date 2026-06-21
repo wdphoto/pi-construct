@@ -114,7 +114,7 @@ export async function waitForIdleBeforeConstructWrite(
 	}
 }
 
-export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success" | "mutedSuccess";
+export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success";
 
 export interface CheckboxPickerItem {
 	id: string;
@@ -130,7 +130,6 @@ export interface CheckboxPickerItem {
 	stateLabel?: string;
 	stateText?: string;
 	stateTone?: CheckboxPickerTone;
-	rowTone?: CheckboxPickerTone;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -224,7 +223,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function styleTone(tone: CheckboxPickerTone | undefined, text: string): string {
-			if (tone === "mutedSuccess") return theme.fg("success", `\x1b[2m${text}\x1b[22m`);
 			return theme.fg(tone ?? "accent", text);
 		}
 
@@ -331,11 +329,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = item.disabled ? "   " : checked.has(item.id) ? "[x]" : "[ ]";
-					const rowTone = item.rowTone ?? item.stateTone ?? "accent";
-					const rowText = `${paddedLabel}  ${item.value}`;
-					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone ?? rowTone, paddedState)}  ${styleTone(rowTone, rowText)}`;
-					if (item.disabled) line = `${cursor}${selectMarker} ${styleTone(rowTone, `${paddedState}  ${rowText}`)}`;
-					else if (isSelected) line = theme.bold(line);
+					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone, paddedState)}  ${paddedLabel}  ${item.value}`;
+					if (!item.disabled && isSelected) line = theme.bold(line);
 					lines.push(truncateToWidth(line, width));
 					continue;
 				}
