@@ -72,3 +72,4 @@ Open questions:
 - Optional onboarding/startup automation behind explicit opt-in only.
 - Groups/profiles as simple lists of remembered source ids.
 - Pi package filters as a fine-grained toggle layer, e.g. keep a package declared but set `extensions: []`, `skills: []`, `prompts: []`, or `themes: []`.
+- Wishlist: optional package details view for individual package-contained resources. Example: a package/extension adds several skills, and Construct could someday show them underneath the package so a user can filter one skill off without disabling or removing the whole package. Keep this out of the main loadout view unless deliberately promoted; Pi config/resource-center already owns broad resource browsing.
