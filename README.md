@@ -56,6 +56,7 @@ After applying loadout changes, press Enter on the final Construct panel to relo
 - `.pi/settings.json` is the source of truth.
 - `.pi/construct.json` is advisory metadata for Construct's UI.
 - `~/.pi/agent/construct/catalog.json` is your user-local Construct library.
+- `~/.pi/agent/construct/projects.json` is a user-local index of projects Construct has touched; assignment counts are informational only.
 
 ## Commands
 

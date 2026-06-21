@@ -77,8 +77,10 @@ project = pathlib.Path(sys.argv[2])
 source = str(pathlib.Path(sys.argv[3]).resolve())
 catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 construct = json.loads((project / ".pi/construct.json").read_text())
+projects = json.loads((home / ".pi/agent/construct/projects.json").read_text())
 assert any(item.get("id") == "construct-e2e-package" and item.get("source") == source for item in catalog.get("items", [])), catalog
 assert any(item.get("source") == source and item.get("enabled") is True for item in construct.get("items", {}).values()), construct
+assert any(source in project.get("packages", []) for project in projects.get("projects", [])), projects
 PY
 
 printf '== project B dashboard shows remembered package as available ==\n'
@@ -117,6 +119,8 @@ grep -Fq 'Construct unload complete.' <<<"$UNLOAD_OUTPUT"
 grep -Fq 'Construct forgot: 1 resource' <<<"$UNLOAD_OUTPUT"
 grep -Fq 'Project package declarations were left alone in .pi/settings.json.' <<<"$UNLOAD_OUTPUT"
 grep -Fq 'Still active in this project: 1 resource' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Known projects for construct-e2e-package: 2' <<<"$UNLOAD_OUTPUT"
+grep -Fq 'Known-project counts are informational only.' <<<"$UNLOAD_OUTPUT"
 python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
 import json
 import pathlib

@@ -11,6 +11,7 @@ import {
 	upsertConstructItem,
 	removeMatchingPackageDeclaration,
 } from "./project-settings.js";
+import { rememberKnownProject } from "./projects.js";
 import { isObject } from "./json.js";
 
 function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, id: string, enabled: boolean) {
@@ -75,6 +76,7 @@ export async function loadPackageIntoProject(
 	try {
 		const construct = upsertConstructItem(parseProjectConstruct(constructRead), itemId, declaredSource, input.source, paths);
 		await writeJson(paths.projectConstructPath, construct);
+		await rememberKnownProject({ cwd: paths.cwd });
 	} catch (error) {
 		return {
 			ok: false,
@@ -130,6 +132,7 @@ export async function unloadPackageFromProject(
 		try {
 			const construct = await readJson(paths.projectConstructPath);
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, false));
+			await rememberKnownProject({ cwd: paths.cwd });
 		} catch (error) {
 			return {
 				ok: false,

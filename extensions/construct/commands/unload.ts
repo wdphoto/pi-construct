@@ -5,6 +5,7 @@ import { loadCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages } from "../project-settings.js";
+import { knownProjectCountForSources, knownProjectCounts, readKnownProjects, rememberKnownProject } from "../projects.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
@@ -30,6 +31,14 @@ function findUnloadItems(items: CatalogItem[], queries: string[]): { selected: C
 		else for (const item of matches) selected.set(catalogItemKey(item), item);
 	}
 	return { selected: [...selected.values()], missing };
+}
+
+async function knownProjectCountsByItem(ctx: ExtensionCommandContext, items: CatalogItem[]): Promise<{ counts: Map<string, number>; warnings: string[] }> {
+	const known = await readKnownProjects(ctx);
+	const sourceCounts = knownProjectCounts(known.data);
+	const counts = new Map<string, number>();
+	for (const item of items) counts.set(catalogItemKey(item), knownProjectCountForSources(sourceCounts, [item.source]));
+	return { counts, warnings: known.warnings };
 }
 
 async function currentProjectActiveCount(paths: ConstructPaths, selected: CatalogItem[]): Promise<{ active: number; warning?: string }> {
@@ -94,6 +103,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 		return;
 	}
 
+	const knownCounts = await knownProjectCountsByItem(ctx, catalog.items);
 	const queries = args.split(/\s+/).filter(Boolean);
 	let selected: CatalogItem[] = [];
 	let missing: string[] = [];
@@ -102,12 +112,16 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 		selected = result.selected;
 		missing = result.missing;
 	} else if (ctx.mode === "tui") {
-		const pickerItems: CheckboxPickerItem[] = catalog.items.map((item) => ({
-			id: item.id,
-			label: item.id,
-			value: item.source,
-			checked: false,
-		}));
+		const pickerItems: CheckboxPickerItem[] = catalog.items.map((item) => {
+			const count = knownCounts.counts.get(catalogItemKey(item)) ?? 0;
+			return {
+				id: item.id,
+				label: item.id,
+				value: item.source,
+				description: `Known projects: ${count}`,
+				checked: false,
+			};
+		});
 		const result = await pickCheckboxes(ctx, "Construct unload — remove from Construct", pickerItems, { confirmHint: "Enter removes" });
 		if (!result) {
 			showText(ctx, "Construct unload cancelled. No files were changed.");
@@ -126,6 +140,8 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	}
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct unload");
+	const remembered = await rememberKnownProject(ctx);
+	const selectedKnownCounts = await knownProjectCountsByItem(ctx, selected);
 
 	const removedIds = new Set(selected.map((item) => item.id));
 	const removedSources = new Set(selected.map((item) => item.source));
@@ -140,7 +156,15 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	await writeJson(paths.userCatalogPath, { ...catalog, version: 1, items: nextItems, profiles: nextProfiles });
 
 	const [metadata, currentProject] = await Promise.all([removeCurrentProjectMetadata(paths, selected), currentProjectActiveCount(paths, selected)]);
-	const outputWarnings = [...missing.map((query) => `Not found: ${query}`), ...(metadata.warning ? [metadata.warning] : []), ...(currentProject.warning ? [currentProject.warning] : [])];
+	const knownProjectLines = selected.map((item) => `Known projects for ${item.id}: ${selectedKnownCounts.counts.get(catalogItemKey(item)) ?? 0}`);
+	const outputWarnings = [
+		...missing.map((query) => `Not found: ${query}`),
+		...knownCounts.warnings,
+		...selectedKnownCounts.warnings,
+		...(remembered.warning ? [remembered.warning] : []),
+		...(metadata.warning ? [metadata.warning] : []),
+		...(currentProject.warning ? [currentProject.warning] : []),
+	];
 	await showSummary(
 		ctx,
 		[
@@ -149,6 +173,8 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 			metadata.removed > 0 ? `Current project Construct metadata removed: ${metadata.removed}` : "Current project Construct metadata removed: 0",
 			"Project package declarations were left alone in .pi/settings.json.",
 			currentProject.active > 0 ? `Still active in this project: ${currentProject.active} resource${currentProject.active === 1 ? "" : "s"} (shown as Unloaded in /construct).` : "No selected resources are active in this project's .pi/settings.json.",
+			...knownProjectLines,
+			"Known-project counts are informational only.",
 			"Packages may still be active in other projects too; unload only removes Construct ownership/metadata.",
 			...selected.map((item) => `- ${item.id}: ${item.source}`),
 			...outputWarnings.map((warning) => `! ${warning}`),

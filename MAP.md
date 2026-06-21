@@ -5,10 +5,10 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 ## v0.0.9 — clarity and cleanup safety
 
 - [x] Clean up `/construct unload` output so it plainly says Construct forgot the resource, project package declarations were left alone, and the package may still be active/unloaded.
-- [ ] Add known-project assignment counts for resources before unload and in relevant list/status views.
-- [ ] Keep assignment counts informational only. Unload should not block or hard-warn just because a resource is used by multiple known projects, because unload does not delete it from those projects.
-- [ ] Design and implement the known-project index under `~/.pi/agent/construct/`.
-- [ ] Label assignment counts carefully as “known projects” so we do not imply a full filesystem scan.
+- [x] Add known-project assignment counts for resources before unload and in relevant list/status views.
+- [x] Keep assignment counts informational only. Unload should not block or hard-warn just because a resource is used by multiple known projects, because unload does not delete it from those projects.
+- [x] Design and implement the known-project index under `~/.pi/agent/construct/`.
+- [x] Label assignment counts carefully as “known projects” so we do not imply a full filesystem scan.
 - [ ] Research Pi's native `pi config` and resource-configuration flows, then decide which UI/language patterns Construct should mirror.
 - [x] Remove the quiet `/construct run` alias; `/construct` and “Construct Loadout” remain the public language.
 - [ ] Sweep active docs for stale `sync`, `reload`, `roadmap`, and old-plan language. Keep historical changelog entries intact.

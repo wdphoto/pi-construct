@@ -11,6 +11,7 @@ export interface ConstructPaths {
 	constructDir: string;
 	userCatalogPath: string;
 	userSettingsPath: string;
+	userProjectsPath: string;
 	projectSettingsPath: string;
 	projectConstructPath: string;
 }
@@ -39,6 +40,18 @@ export interface CatalogData {
 	version: 1;
 	items: CatalogItem[];
 	profiles: CatalogProfile[];
+}
+
+export interface KnownProjectEntry extends JsonObject {
+	path: string;
+	realPath?: string;
+	packages: string[];
+	updatedAt?: string;
+}
+
+export interface KnownProjectsData {
+	version: 1;
+	projects: KnownProjectEntry[];
 }
 
 export interface LoadResult {

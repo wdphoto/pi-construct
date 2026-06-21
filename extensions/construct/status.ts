@@ -4,14 +4,17 @@ import { formatCatalogItem, normalizeSourceForLibrary, parseCatalog } from "./ca
 import { describeRead, isObject, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
+import { parseKnownProjects } from "./projects.js";
 
 interface StatusData {
 	paths: Awaited<ReturnType<typeof getPaths>>;
 	userCatalog: Awaited<ReturnType<typeof readJson>>;
 	userSettings: Awaited<ReturnType<typeof readJson>>;
+	userProjects: Awaited<ReturnType<typeof readJson>>;
 	projectSettings: Awaited<ReturnType<typeof readJson>>;
 	projectConstruct: Awaited<ReturnType<typeof readJson>>;
 	catalog: ReturnType<typeof parseCatalog>;
+	knownProjects: ReturnType<typeof parseKnownProjects>;
 	packages: ReturnType<typeof getPackages>;
 	managed: Awaited<ReturnType<typeof getManagedItems>>;
 	commands: ReturnType<ExtensionAPI["getCommands"]>;
@@ -35,14 +38,16 @@ function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
 
 async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<StatusData> {
 	const paths = await getPaths(ctx);
-	const [userCatalog, userSettings, projectSettings, projectConstruct] = await Promise.all([
+	const [userCatalog, userSettings, userProjects, projectSettings, projectConstruct] = await Promise.all([
 		readJson(paths.userCatalogPath),
 		readJson(paths.userSettingsPath),
+		readJson(paths.userProjectsPath),
 		readJson(paths.projectSettingsPath),
 		readJson(paths.projectConstructPath),
 	]);
 
 	const catalog = parseCatalog(userCatalog);
+	const knownProjects = parseKnownProjects(userProjects);
 	const packages = getPackages(projectSettings);
 	const packageSources = new Set<string>();
 	const settingsDir = dirname(paths.projectSettingsPath);
@@ -55,9 +60,11 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 		paths,
 		userCatalog,
 		userSettings,
+		userProjects,
 		projectSettings,
 		projectConstruct,
 		catalog,
+		knownProjects,
 		packages,
 		managed,
 		commands: pi.getCommands(),
@@ -92,6 +99,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	const warnings = [
 		...argumentWarnings,
 		...data.catalog.warnings,
+		...data.knownProjects.warnings,
 		...drift.map((item) => `${item.id} drift: ${item.drift}`),
 		...(invalidPackages > 0 ? [`${invalidPackages} invalid package declaration${invalidPackages === 1 ? "" : "s"} in .pi/settings.json`] : []),
 	];
@@ -106,6 +114,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		"Loadout",
 		"-------",
 		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "profile")}`,
+		`Known projects: ${data.knownProjects.data.projects.length}`,
 		`Project packages: ${data.packages.length}`,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
 		`Autoload: ${autoloadEnabled(data) ? "on" : "off"}`,
@@ -117,6 +126,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		`Construct metadata: ${compactRead(data.projectConstruct)}`,
 		`Construct library: ${compactRead(data.userCatalog)}`,
 		`Construct settings: ${compactRead(data.userSettings)}`,
+		`Known-project index: ${compactRead(data.userProjects)}`,
 		"",
 		"Runtime",
 		"-------",
@@ -136,6 +146,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): string {
 	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} packages`);
+	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
 	const commandCounts = data.commands.reduce<Record<string, number>>((acc, command) => {
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
 		return acc;
@@ -164,11 +175,15 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		"Load writes: user library and selected .pi/construct.json metadata only",
 		`Construct library: ${describeRead(data.userCatalog)}`,
 		`Construct settings: ${describeRead(data.userSettings)}`,
+		`Known-project index: ${describeRead(data.userProjects)}`,
 		`Library items: ${data.catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
 		`Profiles: ${data.catalog.data.profiles.length}`,
 		...formatList(profilePreview, "no profiles saved"),
 		...data.catalog.warnings.map((warning) => `! ${warning}`),
+		`Known projects: ${data.knownProjects.data.projects.length}`,
+		...formatList(knownProjectPreview, "no known projects indexed"),
+		...data.knownProjects.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Project Pi state",
 		"----------------",

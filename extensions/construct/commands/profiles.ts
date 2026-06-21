@@ -6,6 +6,7 @@ import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
 import { getPackages } from "../project-settings.js";
+import { rememberKnownProject } from "../projects.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import { progressStatus, setConstructStatus, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite } from "../ui.js";
 
@@ -73,6 +74,8 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	await waitForIdleBeforeConstructWrite(ctx, "Construct profile save");
 
 	const load = await addSourcesToCatalog(ctx, sources);
+	const remembered = await rememberKnownProject(ctx);
+	if (remembered.warning) load.warnings.push(remembered.warning);
 	if (load.warnings.length > 0) {
 		showText(ctx, ["Construct profile not saved.", ...load.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;

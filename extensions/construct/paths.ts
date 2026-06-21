@@ -14,6 +14,7 @@ export async function getPaths(ctx: Pick<ExtensionCommandContext | ExtensionCont
 		constructDir,
 		userCatalogPath: join(constructDir, "catalog.json"),
 		userSettingsPath: join(constructDir, "settings.json"),
+		userProjectsPath: join(constructDir, "projects.json"),
 		projectSettingsPath: join(cwd, CONFIG_DIR_NAME, "settings.json"),
 		projectConstructPath: join(cwd, CONFIG_DIR_NAME, "construct.json"),
 	};

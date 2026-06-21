@@ -39,6 +39,7 @@ Unload means removing resources from the Construct library.
 - Unload removes matching advisory metadata from the current project's `.pi/construct.json` when present.
 - Unload never edits `.pi/settings.json` and never uninstalls a package from a project.
 - Unload output should use “Construct forgot” style wording so it is clear the package itself was not disabled or removed.
+- Unload may show “known projects” assignment counts from Construct's user-local project index. These counts are informational only and never block unload.
 
 If an unloaded package is still active in `.pi/settings.json`, it appears under `Unloaded` in the dashboard.
 

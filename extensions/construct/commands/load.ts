@@ -5,6 +5,7 @@ import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, pars
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
+import { rememberKnownProject } from "../projects.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
@@ -102,6 +103,9 @@ export async function loadSourcesIntoConstruct(
 		const message = error instanceof Error ? error.message : String(error);
 		warnings.push(`Could not update project Construct metadata: ${message}`);
 	}
+
+	const remembered = await rememberKnownProject(ctx);
+	if (remembered.warning) warnings.push(remembered.warning);
 
 	return { added, alreadyKnown, warnings, metadataChanged, selectedSources: selectedSources.length };
 }

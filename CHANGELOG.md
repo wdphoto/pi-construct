@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Added a user-local known-project index and informational known-project assignment counts in status/unload flows.
+
 ### Changed
 - Renamed dashboard sections/counters to `Loaded`, `Available`, and `Unloaded`.
 - Clarified `/construct unload` output so it says Construct forgot resources while leaving package declarations and active packages alone.
