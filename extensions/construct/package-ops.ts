@@ -10,6 +10,7 @@ import {
 	uniqueManagedId,
 	upsertConstructItem,
 	removeMatchingPackageDeclaration,
+	setMatchingPackageResourcesDisabled,
 } from "./project-settings.js";
 import { rememberKnownProject } from "./projects.js";
 import { isObject } from "./json.js";
@@ -91,6 +92,59 @@ export async function loadPackageIntoProject(
 	return { ok: true, itemId, declaredSource, backupPath };
 }
 
+export interface DisablePackageResult {
+	ok: boolean;
+	backupPath?: string;
+	error?: string;
+	metadataOnlyFailure?: boolean;
+}
+
+export async function disablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }): Promise<DisablePackageResult> {
+	let backupPath: string | undefined;
+	try {
+		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, true);
+		backupPath = updated.backupPath;
+		if (!updated.updated) return { ok: false, backupPath, error: updated.settingsMissing ? ".pi/settings.json is missing." : `No matching package declaration found for ${input.source}.` };
+	} catch (error) {
+		return { ok: false, backupPath, error: `Construct disable failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+	}
+
+	if (input.id) {
+		try {
+			const construct = await readJson(paths.projectConstructPath);
+			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, false));
+			await rememberKnownProject({ cwd: paths.cwd });
+		} catch (error) {
+			return { ok: false, backupPath, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	return { ok: true, backupPath };
+}
+
+export async function enablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }): Promise<DisablePackageResult> {
+	let backupPath: string | undefined;
+	try {
+		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, false);
+		backupPath = updated.backupPath;
+		if (!updated.updated) return { ok: false, backupPath, error: updated.settingsMissing ? ".pi/settings.json is missing." : `No matching package declaration found for ${input.source}.` };
+	} catch (error) {
+		return { ok: false, backupPath, error: `Construct enable failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+	}
+
+	if (input.id) {
+		try {
+			const construct = await readJson(paths.projectConstructPath);
+			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, true));
+			await rememberKnownProject({ cwd: paths.cwd });
+		} catch (error) {
+			return { ok: false, backupPath, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	return { ok: true, backupPath };
+}
+
 export interface UnloadPackageResult {
 	ok: boolean;
 	backupPath?: string;
@@ -102,7 +156,7 @@ export interface UnloadPackageResult {
 	metadataOnlyFailure?: boolean;
 }
 
-export async function unloadPackageFromProject(
+export async function removePackageFromProject(
 	pi: ExtensionAPI,
 	paths: ConstructPaths,
 	input: { source: string; id?: string },
@@ -111,7 +165,7 @@ export async function unloadPackageFromProject(
 	try {
 		backupPath = await backupProjectSettingsIfPresent(paths);
 	} catch (error) {
-		return { ok: false, error: `Could not back up .pi/settings.json; aborting unload.\n${error instanceof Error ? error.message : String(error)}` };
+		return { ok: false, error: `Could not back up .pi/settings.json; aborting remove.\n${error instanceof Error ? error.message : String(error)}` };
 	}
 
 	const removal = await pi.exec("pi", ["remove", input.source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
@@ -124,25 +178,27 @@ export async function unloadPackageFromProject(
 			}
 			fallbackWarning = `pi remove did not match ${input.source}; removed it by editing .pi/settings.json instead.`;
 		} catch (error) {
-			return { ok: false, backupPath, error: `Construct unload failed during fallback settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+			return { ok: false, backupPath, error: `Construct remove failed during fallback settings edit.\n${error instanceof Error ? error.message : String(error)}` };
 		}
 	}
 
-	if (input.id) {
-		try {
+	try {
+		if (input.id) {
 			const construct = await readJson(paths.projectConstructPath);
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, false));
-			await rememberKnownProject({ cwd: paths.cwd });
-		} catch (error) {
-			return {
-				ok: false,
-				backupPath,
-				fallbackWarning,
-				metadataOnlyFailure: true,
-				error: error instanceof Error ? error.message : String(error),
-			};
 		}
+		await rememberKnownProject({ cwd: paths.cwd });
+	} catch (error) {
+		return {
+			ok: false,
+			backupPath,
+			fallbackWarning,
+			metadataOnlyFailure: true,
+			error: error instanceof Error ? error.message : String(error),
+		};
 	}
 
 	return { ok: true, backupPath, fallbackWarning };
 }
+
+export const unloadPackageFromProject = removePackageFromProject;

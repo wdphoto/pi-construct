@@ -19,6 +19,13 @@ export function looksLikePackageSource(value: string): boolean {
 	);
 }
 
+const packageResourceFilterKeys = ["extensions", "skills", "prompts", "themes"] as const;
+
+export function packageResourcesDisabled(entry: unknown): boolean {
+	if (!isObject(entry) || typeof entry.source !== "string") return false;
+	return packageResourceFilterKeys.every((key) => Array.isArray(entry[key]) && entry[key].length === 0);
+}
+
 export function getPackages(settings: JsonReadResult): PackageDeclarationSummary[] {
 	if (settings.state !== "ok" || !isObject(settings.data)) return [];
 	const packages = settings.data.packages;
@@ -26,16 +33,21 @@ export function getPackages(settings: JsonReadResult): PackageDeclarationSummary
 
 	return packages.map((entry): PackageDeclarationSummary => {
 		if (typeof entry === "string") {
-			return { source: entry, form: "string", enabled: true };
+			return { source: entry, form: "string", enabled: true, disabledByFilters: false };
 		}
 		if (isObject(entry) && typeof entry.source === "string") {
-			return { source: entry.source, form: "object", enabled: true };
+			return { source: entry.source, form: "object", enabled: true, disabledByFilters: packageResourcesDisabled(entry) };
 		}
-		return { source: "<invalid package declaration>", form: "invalid", enabled: false };
+		return { source: "<invalid package declaration>", form: "invalid", enabled: false, disabledByFilters: false };
 	});
 }
 
-export async function getManagedItems(construct: JsonReadResult, packageSources: Set<string>, paths: ConstructPaths): Promise<ManagedItemSummary[]> {
+export async function getManagedItems(
+	construct: JsonReadResult,
+	packageSources: Set<string>,
+	paths: ConstructPaths,
+	disabledPackageSources = new Set<string>(),
+): Promise<ManagedItemSummary[]> {
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
 	const summaries: ManagedItemSummary[] = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
@@ -50,8 +62,10 @@ export async function getManagedItems(construct: JsonReadResult, packageSources:
 		let drift: string | undefined;
 		if (source) {
 			const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
+			const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
 			if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
-			if (enabled === false && declared) drift = "disabled in Construct metadata, still present in .pi/settings.json";
+			if (enabled === true && disabledByFilters) drift = "enabled in Construct metadata, disabled by package filters";
+			if (enabled === false && declared && !disabledByFilters) drift = "disabled in Construct metadata, still active in .pi/settings.json";
 		}
 		summaries.push({ id, kind, source, enabled, drift });
 	}
@@ -157,18 +171,67 @@ export function readSettingsObject(settings: JsonReadResult): JsonObject {
 	return { ...settings.data };
 }
 
-export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: { backupPath?: string } = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
-	const settingsRead = await readJson(paths.projectSettingsPath);
-	if (settingsRead.state === "missing") return { removed: false, settingsMissing: true };
-
-	const settings = readSettingsObject(settingsRead);
-	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+async function targetSourceMatches(paths: ConstructPaths, source: string, rawSource: string): Promise<boolean> {
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const targetMatches = new Set([
 		source,
 		await normalizeSourceForLibrary(source, settingsDir),
 		await normalizeSourceForLibrary(source, paths.cwd),
 	]);
+	const normalized = await normalizeSourceForLibrary(rawSource, settingsDir);
+	return targetMatches.has(rawSource) || targetMatches.has(normalized);
+}
+
+function packageEntryWithDisabledResources(entry: unknown, source: string): JsonObject {
+	const base: JsonObject = isObject(entry) ? { ...entry, source } : { source };
+	for (const key of packageResourceFilterKeys) base[key] = [];
+	return base;
+}
+
+function packageEntryWithEnabledResources(entry: unknown, source: string): unknown {
+	if (!isObject(entry)) return source;
+	const next: JsonObject = { ...entry, source };
+	for (const key of packageResourceFilterKeys) delete next[key];
+	const keys = Object.keys(next);
+	return keys.length === 1 && next.source === source ? source : next;
+}
+
+export async function setMatchingPackageResourcesDisabled(
+	paths: ConstructPaths,
+	source: string,
+	disabled: boolean,
+	options: { backupPath?: string } = {},
+): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean }> {
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "missing") return { updated: false, settingsMissing: true };
+
+	const settings = readSettingsObject(settingsRead);
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	const nextPackages = [];
+	let updated = false;
+	for (const entry of packages) {
+		const rawSource = packageSource(entry);
+		if (!rawSource || !(await targetSourceMatches(paths, source, rawSource))) {
+			nextPackages.push(entry);
+			continue;
+		}
+		updated = true;
+		nextPackages.push(disabled ? packageEntryWithDisabledResources(entry, rawSource) : packageEntryWithEnabledResources(entry, rawSource));
+	}
+	if (!updated) return { updated: false, settingsMissing: false };
+
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
+	settings.packages = nextPackages;
+	await writeJson(paths.projectSettingsPath, settings);
+	return { updated: true, backupPath, settingsMissing: false };
+}
+
+export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: { backupPath?: string } = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "missing") return { removed: false, settingsMissing: true };
+
+	const settings = readSettingsObject(settingsRead);
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
 	const nextPackages = [];
 	let removed = false;
 	for (const entry of packages) {
@@ -177,8 +240,7 @@ export async function removeMatchingPackageDeclaration(paths: ConstructPaths, so
 			nextPackages.push(entry);
 			continue;
 		}
-		const normalized = await normalizeSourceForLibrary(rawSource, settingsDir);
-		if (targetMatches.has(rawSource) || targetMatches.has(normalized)) {
+		if (await targetSourceMatches(paths, source, rawSource)) {
 			removed = true;
 			continue;
 		}

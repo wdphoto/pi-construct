@@ -10,16 +10,19 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
-   - Merges Construct library entries, current project package declarations, and Construct metadata.
-   - Applies package on/off diffs through internal package operations.
-   - Keeps unloaded rows clearly labeled and read-only.
+   - Merges Construct library entries, current project package declarations, package filter state, and Construct metadata.
+   - Uses selected rows plus action keys rather than treating checkboxes as current package state.
+   - Enter loads/enables selected packages, `d` disables selected loaded packages, and `r` removes selected project package declarations.
+   - Keeps Installed rows clearly labeled as project declarations not yet loaded into Construct.
 
 3. **Package operation layer**
-   - Turns sources on with Pi's native project-local install path:
+   - Loads available sources with Pi's native project-local install path:
      ```bash
      pi install <source> -l --approve
      ```
-   - Turns sources off with Pi's native project-local remove path:
+   - Disables loaded sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
+   - Enables disabled sources by clearing those all-empty package resource filters.
+   - Removes package declarations only through the explicit dashboard remove action, using Pi's native project-local remove path first:
      ```bash
      pi remove <source> -l --approve
      ```
@@ -31,12 +34,17 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
    - Contains remembered package source strings and saved profiles.
    - Updated only by explicit `/construct load`, `/construct unload`, and `/construct profile save` commands.
 
-5. **Project metadata layer**
+5. **Known-project index layer**
+   - User-local file: `~/.pi/agent/construct/projects.json`.
+   - Tracks projects Construct has touched and their package declarations.
+   - Counts are informational only and should be labeled as “known projects,” not full filesystem usage.
+
+6. **Project metadata layer**
    - Project-local file: `.pi/construct.json`.
    - Advisory only; `.pi/settings.json` wins when there is disagreement.
    - Tracks Construct-managed package items and enabled state.
 
-6. **Inventory layer**
+7. **Inventory layer**
    - Reads `.pi/settings.json` for project package declarations.
    - Reads `.pi/construct.json` for advisory state.
    - Uses `pi.getCommands()`, `pi.getAllTools()`, and `pi.getActiveTools()` for runtime diagnostics only.
@@ -115,6 +123,11 @@ Rules:
 - Metadata only.
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Read-only commands must not create this file.
+
+## Related design notes
+
+- `docs/pi-config-and-construct.md` explains how Construct differs from Pi's native `pi config` resource toggles and records the filter-based disarm direction.
+- `docs/package-disable-design.md` records the disable/disarm package action model while keeping Construct's own menu.
 
 ## Lifecycle behavior
 

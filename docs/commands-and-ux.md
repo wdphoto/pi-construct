@@ -41,7 +41,7 @@ Unload means removing resources from the Construct library.
 - Unload output should use “Construct forgot” style wording so it is clear the package itself was not disabled or removed.
 - Unload may show “known projects” assignment counts from Construct's user-local project index. These counts are informational only and never block unload.
 
-If an unloaded package is still active in `.pi/settings.json`, it appears under `Unloaded` in the dashboard.
+If a project package declaration has not been loaded into Construct, it appears under `Installed` in the dashboard.
 
 ## `/construct autoload`
 
@@ -85,16 +85,19 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 Sections:
 
 - `Loaded` — Construct-managed packages active in this project.
+- `Disabled` — Construct-managed packages declared in this project with all package resource filters set to `[]`.
+- `Installed` — project package declarations that Construct has not loaded yet.
 - `Available` — remembered packages that can be loaded here.
-- `Unloaded` — active project package declarations that Construct has not loaded yet; read-only in the dashboard.
 
 Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 
 Controls:
 
 - type to search/filter;
-- Space toggles enabled package rows;
-- Enter applies selected package diffs;
+- Space selects rows;
+- Enter loads/enables selected `Available` or `Disabled` packages;
+- `d` disables selected `Loaded` packages by package filters;
+- `r` removes selected `Loaded`, `Disabled`, or `Installed` package declarations from the project;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when at least one change succeeded;
 - after apply, Esc returns to the session without reloading.

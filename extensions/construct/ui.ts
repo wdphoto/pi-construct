@@ -132,15 +132,29 @@ export interface CheckboxPickerApplyResult {
 	confirmAction?: "reload";
 }
 
+export type CheckboxPickerSubmitAction = "confirm" | "disable" | "remove";
+
 export interface CheckboxPickerResult {
 	selectedIds: string[];
 	closeAction?: "confirm" | "cancel";
 	confirmAction?: "reload";
+	submitAction?: CheckboxPickerSubmitAction;
 }
 
 export interface CheckboxPickerOptions {
 	confirmHint?: string;
-	onSubmit?: (selectedIds: string[], update: (title: string, lines: string[]) => void, signal: AbortSignal) => Promise<CheckboxPickerApplyResult>;
+	footerHint?: string;
+	initialSelection?: "checked" | "empty";
+	actions?: {
+		disable?: boolean;
+		remove?: boolean;
+	};
+	onSubmit?: (
+		selectedIds: string[],
+		update: (title: string, lines: string[]) => void,
+		signal: AbortSignal,
+		action: CheckboxPickerSubmitAction,
+	) => Promise<CheckboxPickerApplyResult>;
 }
 
 function fuzzyMatches(text: string, query: string): boolean {
@@ -161,7 +175,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 	if (ctx.mode !== "tui") return undefined;
 
 	return ctx.ui.custom<CheckboxPickerResult | undefined>((tui, theme, keybindings, done) => {
-		const checked = new Set(items.filter((item) => item.checked).map((item) => item.id));
+		const checked = new Set(options.initialSelection === "empty" ? [] : items.filter((item) => item.checked).map((item) => item.id));
 		let query = "";
 		let selected = 0;
 		let phase: "pick" | "applying" | "done" = "pick";
@@ -275,16 +289,48 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (start > 0 || end < visibleItems.length || query) lines.push(theme.fg("muted", `  (${selected + 1}/${visibleItems.length}${query ? ` of ${items.length}` : ""})`));
 			const item = selectedItem();
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
-			lines.push("", theme.fg("muted", `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`));
+			lines.push("", theme.fg("muted", options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`));
+			if (options.actions?.disable || options.actions?.remove) lines.push(theme.fg("muted", `  Selected: ${checked.size}`));
 			cachedWidth = width;
 			cachedLines = lines.map((line) => truncateToWidth(line, width));
 			return cachedLines;
+		}
+
+		function selectedIds(): string[] {
+			return [...checked];
 		}
 
 		function close(result: CheckboxPickerResult | undefined): void {
 			submitAbort?.abort();
 			clearInterval(animationTimer);
 			done(result);
+		}
+
+		function startSubmit(action: CheckboxPickerSubmitAction): void {
+			submittedIds = selectedIds();
+			if (!options.onSubmit) {
+				close({ selectedIds: submittedIds, submitAction: action });
+				return;
+			}
+			phase = "applying";
+			applyStartedAt = Date.now();
+			const abort = new AbortController();
+			submitAbort = abort;
+			spinnerTick = 0;
+			setApplyState("Applying Construct changes", ["Preparing changes…"]);
+			void (async () => {
+				try {
+					const result = await options.onSubmit!(submittedIds ?? [], setApplyState, abort.signal, action);
+					phase = "done";
+					applyConfirmHint = result.confirmHint ?? "Press Enter/Esc to return to session";
+					applyConfirmAction = result.confirmAction;
+					setApplyState(result.title, result.lines);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					phase = "done";
+					setApplyState("Construct changes failed", [`! ${message}`]);
+				}
+			})();
 		}
 
 		function handleInput(data: string): void {
@@ -349,30 +395,15 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.confirm")) {
-				submittedIds = [...checked];
-				if (!options.onSubmit) {
-					close({ selectedIds: submittedIds });
-					return;
-				}
-				phase = "applying";
-				applyStartedAt = Date.now();
-				const abort = new AbortController();
-				submitAbort = abort;
-				spinnerTick = 0;
-				setApplyState("Applying Construct changes", ["Preparing changes…"]);
-				void (async () => {
-					try {
-						const result = await options.onSubmit!(submittedIds ?? [], setApplyState, abort.signal);
-						phase = "done";
-						applyConfirmHint = result.confirmHint ?? "Press Enter/Esc to return to session";
-						applyConfirmAction = result.confirmAction;
-						setApplyState(result.title, result.lines);
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						phase = "done";
-						setApplyState("Construct changes failed", [`! ${message}`]);
-					}
-				})();
+				startSubmit("confirm");
+				return;
+			}
+			if (options.actions?.disable && data.toLowerCase() === "d" && checked.size > 0) {
+				startSubmit("disable");
+				return;
+			}
+			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~") && checked.size > 0) {
+				startSubmit("remove");
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.cancel")) {

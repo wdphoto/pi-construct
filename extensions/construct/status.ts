@@ -50,12 +50,18 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 	const knownProjects = parseKnownProjects(userProjects);
 	const packages = getPackages(projectSettings);
 	const packageSources = new Set<string>();
+	const disabledPackageSources = new Set<string>();
 	const settingsDir = dirname(paths.projectSettingsPath);
 	for (const pkg of packages) {
 		packageSources.add(pkg.source);
-		if (pkg.form !== "invalid") packageSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
+		if (pkg.disabledByFilters) disabledPackageSources.add(pkg.source);
+		if (pkg.form !== "invalid") {
+			const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
+			packageSources.add(normalized);
+			if (pkg.disabledByFilters) disabledPackageSources.add(normalized);
+		}
 	}
-	const managed = await getManagedItems(projectConstruct, packageSources, paths);
+	const managed = await getManagedItems(projectConstruct, packageSources, paths, disabledPackageSources);
 	return {
 		paths,
 		userCatalog,
@@ -151,7 +157,7 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
 		return acc;
 	}, {});
-	const packageLines = data.packages.map((pkg) => `- ${pkg.source} (${pkg.form})`);
+	const packageLines = data.packages.map((pkg) => `- ${pkg.source} (${pkg.form}${pkg.disabledByFilters ? ", disabled by filters" : ""})`);
 	const managedLines = data.managed.map((item) => {
 		const enabled = item.enabled === undefined ? "unknown" : item.enabled ? "enabled" : "disabled";
 		const source = item.source ? ` — ${item.source}` : "";

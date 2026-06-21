@@ -6,13 +6,19 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.10 - 2026-06-21
+
 ### Added
 - Added a user-local known-project index and informational known-project assignment counts in status/unload flows.
+- Added dashboard recognition for Pi package objects disabled by resource filters.
+- Added `docs/pi-config-and-construct.md` and `docs/package-disable-design.md` to capture Pi config overlap and the package disable/remove model.
 
 ### Changed
-- Renamed dashboard sections/counters to `Loaded`, `Available`, and `Unloaded`.
+- Changed the dashboard to the state model `Loaded`, `Disabled`, `Installed`, and `Available`.
+- Changed dashboard TUI actions to selected rows plus explicit actions: Space selects, Enter loads/enables, `d` disables, and `r` removes project declarations.
 - Clarified `/construct unload` output so it says Construct forgot resources while leaving package declarations and active packages alone.
 - Construct now waits for the current agent response to finish before file-changing operations and lets dashboard applies cancel before the next package-changing step.
+- `/construct status` now distinguishes metadata drift from packages disabled by Pi package filters.
 
 ### Removed
 - Removed the quiet `/construct run` dashboard alias; `/construct` is the dashboard entrypoint.

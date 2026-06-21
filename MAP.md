@@ -9,7 +9,7 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [x] Keep assignment counts informational only. Unload should not block or hard-warn just because a resource is used by multiple known projects, because unload does not delete it from those projects.
 - [x] Design and implement the known-project index under `~/.pi/agent/construct/`.
 - [x] Label assignment counts carefully as “known projects” so we do not imply a full filesystem scan.
-- [ ] Research Pi's native `pi config` and resource-configuration flows, then decide which UI/language patterns Construct should mirror.
+- [x] Research Pi's native `pi config` and resource-configuration flows, then decide which UI/language patterns Construct should mirror. See `docs/pi-config-and-construct.md`.
 - [x] Remove the quiet `/construct run` alias; `/construct` and “Construct Loadout” remain the public language.
 - [ ] Sweep active docs for stale `sync`, `reload`, `roadmap`, and old-plan language. Keep historical changelog entries intact.
 
@@ -23,7 +23,9 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 
 ## v0.0.x — dashboard polish
 
-- [ ] Decide whether unloaded rows should remain read-only or become loadable directly from the dashboard.
+- [x] Prototype Pi-native filter-based disarm mode: keep package declarations but set package resource filters to `[]`. See `docs/package-disable-design.md`.
+- [ ] Manually verify dashboard action keys in TUI: Space selects, Enter loads/enables, `d` disables, `r` removes, result-panel Enter reloads.
+- [ ] Decide whether Installed rows should remain `/construct load` guidance or become loadable directly from the dashboard.
 - [ ] Bring profile apply into the newer in-panel progress/result flow.
 - [ ] Fold profiles into the main `/construct` TUI as first-class selectable rows/groups if it stays simple.
 - [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
@@ -34,6 +36,6 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [ ] Consider lazy imports for heavier Construct modules if dashboard/profile/copy/import code grows, following pi-resource-center's startup-speed pattern. Keep the entrypoint lean.
 - [ ] Polish package source labels, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
 - [ ] Reference Pi's `DefaultPackageManager` and `SettingsManager` discovery patterns when implementing known-project counts, but keep Construct's model limited to user-local known projects rather than broad resource management.
-- [ ] Resource-level package filters only if truly needed.
+- [ ] Resource-level package filters only if truly needed beyond the all-resources disabled state.
 - [ ] Optional local-file packaging/export for `.pi/extensions`, prompts, skills, and themes.
 - [ ] Optional parallel package installs/removals, but only after safe locking or merge semantics exist.

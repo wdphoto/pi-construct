@@ -220,7 +220,7 @@ PROJECT_E="$TMP/project-local-only"
 mkdir -p "$HOME_E" "$PROJECT_E"
 write_settings_with_pkg "$PROJECT_E"
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct' 2>&1)"
-grep -Fq 'Unloaded' <<<"$OUTPUT"
+grep -Fq 'Installed' <<<"$OUTPUT"
 grep -Fq 'construct-invalid-drift-package' <<<"$OUTPUT"
 test ! -e "$PROJECT_E/.pi/construct.json"
 

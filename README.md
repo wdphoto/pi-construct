@@ -4,18 +4,26 @@
 
 The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources.
 
-Use the `/construct` command, select your loadout with the `spacebar`, and hit `Enter` to apply.
+Use the `/construct` command, select packages with the `spacebar`, then choose an action: `Enter` loads/enables, `d` disables, and `r` removes project declarations.
 
 ```text
 Construct Loadout
 =================
 Project: /Users/you/project
-2 loaded · 3 available · 1 unloaded
+2 loaded · 1 disabled · 1 installed · 3 available
 
 Loaded
 ------
 [x] pi-web-access  npm:pi-web-access
 [x] pi-subagents   git:github.com/your-org/pi-subagents
+
+Disabled
+--------
+[-] pi-tripwire     git:github.com/your-org/pi-tripwire
+
+Installed
+---------
+[i] local-tooling   /Users/you/dev/local-tooling
 
 Available
 ---------
@@ -23,11 +31,7 @@ Available
 [ ] pi-chrome       npm:pi-chrome
 [ ] pi-ask-user     git:github.com/your-org/pi-ask-user
 
-Unloaded
---------
-[!] local-tooling   /Users/you/dev/local-tooling
-
-Space toggles. Enter applies. Esc cancels.
+Space selects · Enter loads/enables · d disables · r removes declarations · Esc cancels.
 
 Run `/construct load` to add project-level resources to the Construct.
 
@@ -47,7 +51,7 @@ Load that package declaration into the Construct:
 /construct load
 ```
 
-In another project, run `/construct`. The menu shows remembered packages and lets you toggle them on or off for that project.
+In another project, run `/construct`. The menu shows remembered packages and lets you load, enable, disable, or explicitly remove project package declarations.
 
 After applying loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when you are ready.
 

@@ -99,6 +99,28 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Loaded"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
 
+printf '== disabled package filters are recognized ==\n'
+python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [{
+    "source": source,
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": [],
+}]}, indent=2) + "\n")
+PY
+DASHBOARD_OUTPUT="$(run_pi '/construct')"
+[[ "$DASHBOARD_OUTPUT" == *"0 loaded · 1 disabled"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"[-] pkg"* || "$DASHBOARD_OUTPUT" == *"[-] construct-fixture-pkg"* ]]
+STATUS_OUTPUT="$(run_pi '/construct status')"
+[[ "$STATUS_OUTPUT" == *"enabled in Construct metadata, disabled by package filters"* ]]
+
 printf '== autoload disabled ==\n'
 python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
 import json
