@@ -114,6 +114,8 @@ export async function waitForIdleBeforeConstructWrite(
 	}
 }
 
+export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success";
+
 export interface CheckboxPickerItem {
 	id: string;
 	label: string;
@@ -122,7 +124,12 @@ export interface CheckboxPickerItem {
 	checked: boolean;
 	disabled?: boolean;
 	section?: string;
+	sectionTone?: CheckboxPickerTone;
 	marker?: string;
+	stateIcon?: string;
+	stateLabel?: string;
+	stateTone?: CheckboxPickerTone;
+	actionLabel?: string;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -214,7 +221,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function searchableText(item: CheckboxPickerItem): string {
-			return [item.label, item.value, item.description, item.section].filter(Boolean).join(" ");
+			return [item.label, item.value, item.description, item.section, item.stateLabel, item.actionLabel].filter(Boolean).join(" ");
 		}
 
 		function filteredItems(): CheckboxPickerItem[] {
@@ -294,19 +301,34 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const start = Math.max(0, Math.min(selected - Math.floor(maxVisible / 2), visibleItems.length - maxVisible));
 			const end = Math.min(start + maxVisible, visibleItems.length);
 			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
+			const stateTexts = visibleItems.map((item) => (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : ""));
+			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
 
 			let previousSection: string | undefined;
 			for (let index = start; index < end; index += 1) {
 				const item = visibleItems[index];
 				if (!item) continue;
 				if (item.section && item.section !== previousSection) {
-					lines.push(theme.fg("accent", item.section));
+					lines.push(theme.fg(item.sectionTone ?? "accent", item.section));
 					previousSection = item.section;
 				}
 				const isSelected = index === selected;
-				const marker = item.marker ?? (item.disabled ? "[!]" : checked.has(item.id) ? "[x]" : "[ ]");
 				const cursor = isSelected ? "> " : "  ";
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
+
+				if (item.stateLabel) {
+					const stateText = `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}`;
+					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
+					const selectMarker = item.disabled ? "   " : checked.has(item.id) ? "[x]" : "[ ]";
+					const action = checked.has(item.id) && item.actionLabel ? theme.fg("accent", `  → ${item.actionLabel}`) : item.disabled && item.actionLabel ? theme.fg("muted", `  ${item.actionLabel}`) : "";
+					let line = `${cursor}${selectMarker} ${theme.fg(item.stateTone ?? "accent", paddedState)}  ${paddedLabel}  ${item.value}${action}`;
+					if (item.disabled) line = theme.fg("muted", `${cursor}${selectMarker} ${paddedState}  ${paddedLabel}  ${item.value}${item.actionLabel ? `  ${item.actionLabel}` : ""}`);
+					else if (isSelected) line = theme.bold(line);
+					lines.push(truncateToWidth(line, width));
+					continue;
+				}
+
+				const marker = item.marker ?? (item.disabled ? "[!]" : checked.has(item.id) ? "[x]" : "[ ]");
 				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
 				else if (isSelected) line = theme.bold(line);
@@ -316,7 +338,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (start > 0 || end < visibleItems.length || query) lines.push(theme.fg("muted", `  (${selected + 1}/${visibleItems.length}${query ? ` of ${items.length}` : ""})`));
 			const item = selectedItem();
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
-			lines.push("", theme.fg("muted", options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`));
+			lines.push("");
+			const footerLines = (options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`).split("\n");
+			for (const footerLine of footerLines) lines.push(theme.fg("muted", footerLine));
 			if (options.actions?.remove) lines.push(theme.fg("muted", `  Selected: ${checked.size}`));
 			cachedWidth = width;
 			cachedLines = lines.map((line) => truncateToWidth(line, width));

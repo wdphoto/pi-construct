@@ -85,7 +85,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`.
-- Autoload is off by default, quit-only, trusted-project/TUI-only, and always confirms before writing.
+- Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It can prompt for new `.pi/settings.json` package declarations during a session and still scans on quit.
 - Profiles exist but remain WIP in public docs.
 - Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
 - `/construct copy` is a decided goal: print a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers. Plan for a matching import flow with preview/confirmation.
@@ -102,6 +102,38 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Before editing any `.pi/settings.json`, create a backup.
 - Never write secrets, tokens, API keys, auth material, or generated package cache paths.
 - Keep extra slash commands out unless clearly needed.
+
+## Shipping protocol
+
+When the user says “ship it,” treat that as a release request, not just a commit request.
+
+Update all relevant release surfaces before tagging/publishing:
+
+- package version in `package.json` and `package-lock.json`
+- `CHANGELOG.md` release entry/date
+- README and docs for any user-facing behavior changes
+- git commit on `main`
+- git tag, pushed to origin
+- GitHub Release for the shipped tag, marked latest when appropriate
+
+Run the release validation before tagging or publishing:
+
+```bash
+npm run check
+npm run smoke:all
+npm run release:verify
+npm publish --dry-run --access public
+```
+
+Do **not** assume npm publishing is complete just because git is tagged. If npm publish is needed, stop after dry-run and tell the user exactly when to run the npm command/2FA step, for example:
+
+```bash
+npm publish --access public
+# or
+npm publish --access public --otp=123456
+```
+
+After a human npm publish, verify with `npm view pi-construct version` and make sure GitHub’s latest release matches the shipped version.
 
 ## Validation
 

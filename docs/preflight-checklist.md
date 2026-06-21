@@ -18,8 +18,8 @@ Protect the manual product model:
 ```text
 /construct
 /construct status
-/construct load
-/construct unload
+/construct load [id-or-source ...]
+/construct unload [id-or-source ...]
 /construct autoload
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
@@ -38,7 +38,8 @@ Expected:
 
 Expected:
 
-- `/construct load` asks in TUI mode.
+- `/construct load` asks in TUI mode and shows only unloaded/adoptable project declarations.
+- `/construct load <id-or-source ...>` directly loads matching unloaded/adoptable declarations.
 - `/construct load` explicitly loads current project package sources in print mode.
 - Load writes the user library and `.pi/construct.json` only because the user explicitly ran load.
 - Load does not install, remove, reload, copy, execute, or alter `.pi/settings.json`.
@@ -48,7 +49,7 @@ Expected:
 Expected:
 
 - `/construct unload` asks in TUI mode.
-- `/construct unload <id-or-source>` removes matching resources from the Construct library.
+- `/construct unload <id-or-source ...>` removes matching resources from the Construct library.
 - Unload prunes matching profile entries and current-project Construct metadata.
 - Unload does not remove package declarations from `.pi/settings.json`.
 - Unload does not uninstall project packages.
@@ -60,9 +61,10 @@ Expected:
 - Autoload is off by default.
 - `/construct autoload` toggles on/off.
 - `/construct autoload on|off|status` works explicitly.
-- Autoload runs only on quit/exit, not reload or session switch.
+- Autoload watches `.pi/settings.json` during trusted TUI sessions and prompts for newly declared compatible packages after Pi is idle.
+- Autoload also scans on quit/exit, not reload or session switch.
 - Autoload requires confirmation before writing.
-- Autoload does not install, execute, reload, or alter `.pi/settings.json`.
+- Autoload does not install, enable, execute, reload, or alter `.pi/settings.json`.
 
 ## Profiles
 
@@ -100,7 +102,8 @@ Before adding new behavior, ask:
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
 - Do profiles still store only library ids/sources and apply explicitly?
-- Is Enter still the fastest safe path for the common install/disable/enable/load actions?
+- Is Enter still the fastest safe path for common install/disable/enable actions?
+- Is `/construct load` still the only adoption path for Unloaded rows?
 
 ## Local development
 
@@ -127,10 +130,8 @@ Repository-local `.pi/settings.json` and `.pi/construct.json` are personal/dev-m
 
 ```bash
 npm run check
-npm run smoke
-npm run e2e-smoke
-npm run invalid-drift-smoke
-npm run install-smoke
+npm run smoke:all
+npm run release:verify
 ```
 
 Expected: all pass and no generated package caches/temp files are added to git.

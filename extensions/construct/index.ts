@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { handleAutoload, maybePromptAutoloadOnShutdown } from "./commands/autoload.js";
+import { handleAutoload, maybePromptAutoloadOnShutdown, maybeStartAutoloadWatcher } from "./commands/autoload.js";
 import { handleDashboard } from "./commands/dashboard.js";
 import { handleLoad } from "./commands/load.js";
 import { handleProfile } from "./commands/profiles.js";
@@ -8,6 +8,7 @@ import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
 
 export default function constructExtension(pi: ExtensionAPI) {
+	pi.on("session_start", maybeStartAutoloadWatcher);
 	pi.on("session_shutdown", maybePromptAutoloadOnShutdown);
 
 	pi.registerCommand("construct", {

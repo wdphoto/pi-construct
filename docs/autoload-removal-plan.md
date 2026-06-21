@@ -1,67 +1,79 @@
-# Autoload removal plan
+# Lifecycle and autoload model
 
 ## Decision
 
-Construct should have **no active startup behavior** in the current product.
+Construct keeps `/construct autoload` as an explicit on/off toggle, but has **no startup behavior**.
 
 - Do not open Construct when a project loads.
-- Do not prompt `Load it into the Construct?` on startup.
-- Do not load, install, remove, reload, or write Construct state from lifecycle hooks.
-- Keep `/construct load` as the explicit public adoption command.
-- Current autoload is opt-in, exit-only, and always confirmed.
+- Do not prompt to load resources on startup.
+- Do not install, remove, reload, or write Construct state from startup hooks.
+- Keep `/construct load` as the explicit adoption command.
 
-## Implemented fix
+Autoload is off by default and always asks before writing.
 
-Active autoload code was removed instead of kept as legacy compatibility:
+Product note: keep autoload transparent. It should surface compatible unloaded package declarations, show source strings, and require confirmation. It should not silently adopt packages under the hood.
 
-- Removed the `session_start` registration from `extensions/construct/index.ts`.
-- Removed the `maybeOfferAutoload()` lifecycle flow.
-- Removed old active autoload behavior.
-- Removed `/construct autosync` compatibility command.
-- Removed user-local skip handling and autoload settings helpers.
-- Removed `userSkipsPath` from Construct paths/types.
-- Updated status/load output to make manual load the current model.
-
-## Old local data
-
-Older development builds may have written user-local files under `~/.pi/agent/construct/`, for example:
-
-- `settings.json` with old `autoload` / `autosync` keys;
-- `skips.json` with projects where the old startup prompt was declined.
-
-Because nobody else is using this yet, there is no migration or compatibility shim. New code simply does not read those keys or files. They are inert leftover data and can be deleted manually if desired.
-
-## New project behavior
-
-A project with no `.pi/construct.json` should still open the full `/construct` loadout/dashboard view when the user explicitly runs `/construct`.
-
-Read-only commands must not create `.pi/construct.json` just to display project state.
-
-Friendly first-run/never-loaded messaging is parked in `TODO.md` under Wishlist.
-
-## Current command model
+## Current behavior
 
 ### `/construct`
 
-Main loadout/dashboard command. It opens the full loadout view whether or not `.pi/construct.json` exists.
+Main loadout command. It opens or prints the loadout view whether or not `.pi/construct.json` exists.
 
 ### `/construct status`
 
-Read-only project/user status. Missing `.pi/construct.json` is reported as a missing metadata file; status does not create it and does not mention any active autoload capability.
+Read-only status. Missing `.pi/construct.json` is reported as missing metadata; status does not create it.
 
 ### `/construct load`
 
-Public/default adoption command.
+Explicit adoption command.
 
 - Reads current project `.pi/settings.json` package declarations.
-- Updates Construct library and `.pi/construct.json` metadata only because the user explicitly ran the command.
-- Does not install, remove, reload, or run in the background.
+- Writes the Construct library and selected `.pi/construct.json` metadata.
+- Does not install packages, remove packages, reload Pi, execute package code, or edit `.pi/settings.json`.
 
 ### `/construct autoload`
 
-Opt-in exit prompt. It is off by default. When on, it checks for unloaded resources during session quit and asks before loading them into the Construct.
+Opt-in transparent adoption prompt.
 
-It does not run on startup, reload, or session switching. It never installs packages or edits `.pi/settings.json`.
+```text
+/construct autoload        # toggle on/off
+/construct autoload on     # enable
+/construct autoload off    # disable
+/construct autoload status # show state
+```
+
+When enabled, autoload requires:
+
+- TUI mode;
+- UI availability;
+- trusted project;
+- unloaded/adoptable package declarations;
+- user confirmation.
+
+It has two transparent checks:
+
+1. **During the session:** Construct watches `.pi/settings.json` or the nearest available parent path. When package declarations change, it waits for Pi to be idle, diffs package declarations against Construct metadata/library, and asks about newly declared compatible packages one by one.
+2. **On quit:** Construct scans for remaining unloaded/adoptable package declarations and asks before loading them into Construct.
+
+If confirmed, autoload performs the same metadata-only adoption as `/construct load`. It never installs packages, enables resources, edits `.pi/settings.json`, or reloads Pi.
+
+Pi extension docs/types do not currently expose a first-class package-install event, so Construct does not depend on a private install hook. The settings watcher gives prompt after-install visibility, while the exit-time scan remains the reliable fallback.
+
+See `docs/autoload-transparency.md` for watcher mechanics, cost, security posture, caveats, and future UX improvements.
+
+## Removed legacy behavior
+
+Older development builds experimented with active startup adoption. That model is gone.
+
+Removed behavior:
+
+- `session_start` adoption prompt;
+- `maybeOfferAutoload()` startup flow;
+- `/construct autosync` compatibility command;
+- old skip-list handling;
+- `userSkipsPath` in Construct paths/types.
+
+Older local data such as `~/.pi/agent/construct/skips.json` is inert and can be deleted manually. `~/.pi/agent/construct/settings.json` is still used for the current `autoload` boolean.
 
 ## Validation
 
@@ -69,10 +81,7 @@ Use disposable homes/projects only.
 
 ```bash
 npm run check
-./scripts/smoke.sh
-./scripts/e2e-smoke.sh
-./scripts/invalid-drift-smoke.sh
-./scripts/install-smoke.sh
+npm run smoke:all
 ```
 
 Targeted new-project check:
@@ -84,4 +93,4 @@ HOME="$TMP/home" pi install "$PWD" --approve
 (cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
 ```
 
-Expected: `/construct` opens the full loadout view, status reports missing Construct metadata, and `.pi/construct.json` does not exist afterward.
+Expected: status reports missing Construct metadata and `.pi/construct.json` is not created.

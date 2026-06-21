@@ -4,7 +4,7 @@ Construct is a Pi-native loadout menu, not a package manager.
 
 ## Goal
 
-Keep Pi global config lean while making project-level Pi capabilities easy to see and toggle from one place.
+Keep Pi global config lean while making project-level Pi capabilities easy to see, install, disable, enable, and remove from one project-local menu.
 
 The source of truth remains normal Pi project config, especially `.pi/settings.json`.
 
@@ -28,15 +28,15 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
 
 ## Mental model
 
-- `/construct` arms the current project with resources already in the Construct.
-- `/construct load` adds current project resources to the Construct.
-- `/construct unload` removes resources from the Construct.
+- `/construct` is the project loadout menu.
+- `/construct load` adds existing project package declarations to the Construct.
+- `/construct unload` makes Construct forget resources without changing project package declarations.
 - `/reload` is Pi's public reload command; dashboard Enter uses `ctx.reload()` internally.
 
 ## Hard rules
 
 - Keep loadout changes manual and explicit.
-- Construct must not silently install, enable, copy, load, update, reload, or write project files.
+- Construct must not silently install, enable, disable, remove, copy, load, update, reload, or write project files.
 - Autoload is off by default and always confirms before writing.
 - `/construct load` is manual adoption only.
 - `/construct unload` never edits `.pi/settings.json` or uninstalls project packages.
@@ -67,6 +67,18 @@ User library and profiles:
 
 ```text
 ~/.pi/agent/construct/catalog.json
+```
+
+Known-project index:
+
+```text
+~/.pi/agent/construct/projects.json
+```
+
+User Construct settings:
+
+```text
+~/.pi/agent/construct/settings.json
 ```
 
 Project metadata:

@@ -24,24 +24,25 @@ Project: /Users/you/site
 
 Installed
 ---------
-[x] pi-web-access   npm:pi-web-access
-[x] pi-subagents    git:github.com/your-org/pi-subagents
+[ ] ✓ Active     pi-web-access   npm:pi-web-access
+[ ] ✓ Active     pi-subagents    git:github.com/your-org/pi-subagents
 
 Disabled
 --------
-[-] pi-browser      npm:pi-browser
+[ ] – Disabled   pi-browser      npm:pi-browser
 
 Available
 ---------
-[ ] pi-lens         git:github.com/your-org/pi-lens
-[ ] pi-chrome       npm:pi-chrome
-[ ] pi-ask-user     git:github.com/your-org/pi-ask-user
+[ ] + Available  pi-lens         git:github.com/your-org/pi-lens
+[ ] + Available  pi-chrome       npm:pi-chrome
+[ ] + Available  pi-ask-user     git:github.com/your-org/pi-ask-user
 
 Unloaded
 --------
-[u] local-tooling   ../local-tooling
+    ◇ Unloaded   local-tooling   ../local-tooling  read-only
 
-TUI controls: Space selects · Enter applies · r removes · Esc cancels.
+Legend: [ ] selectable · [x] selected · ✓ Active disables · – Disabled enables · + Available installs · ◇ Unloaded.
+Controls: Space selects · Enter applies · r removes project installs · Esc cancels.
 ```
 
 States:

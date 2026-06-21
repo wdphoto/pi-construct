@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js"
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction } from "../ui.js";
+import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 import { disablePackageResourcesInProject, enablePackageResourcesInProject, loadPackageIntoProject, removePackageFromProject } from "../package-ops.js";
 
 type DashboardSection = "Installed" | "Disabled" | "Available" | "Unloaded";
@@ -20,7 +20,6 @@ interface DashboardPackage {
 	section: DashboardSection;
 	checked: boolean;
 	disabled?: boolean;
-	marker?: string;
 	description?: string;
 	managed?: boolean;
 	disabledByFilters?: boolean;
@@ -138,7 +137,6 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Unloaded",
 			checked: false,
 			disabled: true,
-			marker: "[u]",
 			disabledByFilters: pkg.disabledByFilters,
 			description: pkg.disabledByFilters
 				? "Read-only here. Installed in this project and disabled by filters, but not loaded into Construct yet. Run /construct load to load it into Construct."
@@ -158,22 +156,62 @@ function dashboardSummary(packages: DashboardPackage[]): string {
 	return `${installed} installed · ${disabled} disabled · ${available} available · ${unloaded} unloaded`;
 }
 
-function printMarker(item: DashboardPackage): string {
-	if (item.section === "Installed") return "[x]";
-	if (item.section === "Disabled") return "[-]";
-	if (item.section === "Unloaded") return "[u]";
-	return "[ ]";
+function sectionTone(section: DashboardSection): CheckboxPickerTone {
+	if (section === "Installed") return "success";
+	if (section === "Disabled") return "warning";
+	if (section === "Unloaded") return "muted";
+	return "accent";
+}
+
+function stateIcon(section: DashboardSection): string {
+	if (section === "Installed") return "✓";
+	if (section === "Disabled") return "–";
+	if (section === "Unloaded") return "◇";
+	return "+";
+}
+
+function stateLabel(section: DashboardSection): string {
+	if (section === "Installed") return "Active";
+	if (section === "Unloaded") return "Unloaded";
+	return section;
+}
+
+function actionLabel(section: DashboardSection): string | undefined {
+	if (section === "Installed") return "disable";
+	if (section === "Disabled") return "enable";
+	if (section === "Available") return "install";
+	if (section === "Unloaded") return "read-only";
+	return undefined;
+}
+
+function selectionMarker(item: DashboardPackage): string {
+	return item.disabled ? "   " : "[ ]";
+}
+
+function dashboardLine(item: DashboardPackage, stateWidth: number, labelWidth: number): string {
+	const state = `${stateIcon(item.section)} ${stateLabel(item.section)}`;
+	const paddedState = state + " ".repeat(Math.max(0, stateWidth - state.length));
+	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
+	const action = item.disabled ? `  ${actionLabel(item.section) ?? "read-only"}` : "";
+	return `${selectionMarker(item)} ${paddedState}  ${paddedLabel}  ${item.displaySource}${action}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
 	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+	const stateWidth = Math.max(...packages.map((item) => `${stateIcon(item.section)} ${stateLabel(item.section)}`.length), 0);
+	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		lines.push(section, "-".repeat(section.length));
-		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${printMarker(item)} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
+		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, stateWidth, labelWidth)) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("TUI controls: Space selects · Enter applies · r removes · Esc cancels.", "", "Run /construct load to add new project-level resources to the Construct.");
+	lines.push(
+		"Legend: [ ] selectable · [x] selected · ✓ Active disables · – Disabled enables · + Available installs · ◇ Unloaded.",
+		"Controls: Space selects · Enter applies · r removes project installs · Esc cancels.",
+		"",
+		"Run /construct load to add unloaded resources to the Construct.",
+	);
 	return lines.join("\n");
 }
 
@@ -235,14 +273,18 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		value: item.displaySource,
 		description: item.description,
 		section: item.section,
+		sectionTone: sectionTone(item.section),
 		checked: false,
 		disabled: item.disabled,
-		marker: item.marker,
+		stateIcon: stateIcon(item.section),
+		stateLabel: stateLabel(item.section),
+		stateTone: sectionTone(item.section),
+		actionLabel: actionLabel(item.section),
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		initialSelection: "empty",
 		confirmHint: "Enter applies",
-		footerHint: "  Type to filter · Space selects · Enter applies · r removes · Esc cancels",
+		footerHint: "  [x] selected · ✓ disables · – enables · + installs · ◇ Unloaded\n  Space selects · Enter applies · r removes project installs · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {

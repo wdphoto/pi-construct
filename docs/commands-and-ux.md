@@ -9,7 +9,7 @@ Construct is centered on one primary command: `/construct`.
 /construct status      # read-only diagnostics
 /construct load [id-or-source ...]    # add current project resources to the Construct
 /construct unload [id-or-source ...]  # remove resources from the Construct
-/construct autoload    # toggle exit prompt for loading new resources
+/construct autoload    # optional exit prompt for loading new resources
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
 /construct profile apply <name>  # WIP, not public yet
@@ -17,9 +17,11 @@ Construct is centered on one primary command: `/construct`.
 
 No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc returns to the session without reloading.
 
+User-facing copy should prefer **library** over **catalog** except when naming the file path.
+
 ## `/construct load`
 
-Load means adding existing project-level Pi package declarations to the Construct.
+Load means adding existing project-level Pi package declarations to the Construct library and current-project Construct metadata.
 
 - `/construct load` opens the picker in TUI mode with only unloaded/adoptable project package declarations.
 - `/construct load` adds all currently loadable project package declarations in print mode.
@@ -47,7 +49,7 @@ If a project package declaration has not been loaded into Construct, it appears 
 
 ## `/construct autoload`
 
-Autoload is off by default. When enabled, it runs only on session quit and always asks before loading anything.
+Autoload is off by default. When enabled, it watches for new project package declarations during the session and also checks on session quit. It always asks before loading anything into Construct.
 
 ```text
 /construct autoload        # toggle on/off
@@ -60,9 +62,11 @@ Autoload rules:
 
 - trusted projects only;
 - TUI only;
-- quit/exit only, not reload or session switching;
+- session-time `.pi/settings.json` changes are offered one by one after Pi is idle;
+- quit/exit still scans for any remaining unloaded resources;
 - always requires confirmation;
 - never installs packages;
+- never enables resources;
 - never edits `.pi/settings.json`;
 - only writes the Construct library and `.pi/construct.json` after confirmation.
 
@@ -89,7 +93,7 @@ Sections:
 - `Installed` — Construct-managed packages active in this project.
 - `Disabled` — Construct-managed packages declared in this project with all package resource filters set to `[]`.
 - `Available` — remembered packages that can be installed here.
-- `Unloaded` — read-only project package declarations that Construct has not loaded/adopted yet; use `/construct load` to adopt them.
+- `Unloaded` — project package declarations that Construct has not loaded/adopted yet; use `/construct load` to adopt them.
 
 Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 
@@ -97,8 +101,11 @@ Controls:
 
 - type to search/filter;
 - Space selects rows;
+- row grammar separates selection from state: `[x]` means selected, while `✓ Active`, `– Disabled`, `+ Available`, or `◇ Unloaded` describe current state;
+- keep the state key short: `◇ Unloaded`, not `read-only`; put commands on a separate controls line;
+- selected rows show the pending Enter action where useful, such as `→ disable`, `→ enable`, or `→ install`;
 - Enter applies the obvious state change for actionable rows: install `Available`, disable `Installed`, or enable `Disabled`;
-- Unloaded rows are read-only in `/construct`; use `/construct load` to load/adopt them into Construct;
+- Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
