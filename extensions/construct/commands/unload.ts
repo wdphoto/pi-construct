@@ -172,7 +172,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 			`Construct forgot: ${selected.length} resource${selected.length === 1 ? "" : "s"}`,
 			metadata.removed > 0 ? `Current project Construct metadata removed: ${metadata.removed}` : "Current project Construct metadata removed: 0",
 			"Project package declarations were left alone in .pi/settings.json.",
-			currentProject.active > 0 ? `Still active in this project: ${currentProject.active} resource${currentProject.active === 1 ? "" : "s"} (shown as Installed in /construct).` : "No selected resources are active in this project's .pi/settings.json.",
+			currentProject.active > 0 ? `Still active in this project: ${currentProject.active} resource${currentProject.active === 1 ? "" : "s"} (shown as Unloaded in /construct).` : "No selected resources are active in this project's .pi/settings.json.",
 			...knownProjectLines,
 			"Known-project counts are informational only.",
 			"Packages may still be active in other projects too; unload only removes Construct ownership/metadata.",

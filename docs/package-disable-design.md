@@ -36,10 +36,10 @@ This is closer to Pi's native resource-configuration model and avoids firing a r
 
 Use distinct words for distinct operations:
 
-- **Loaded**: package declaration is present and at least one package resource type can load.
-- **Disabled** or **Disarmed**: package declaration is present, but Construct/Pi filters disable all package-contained resource types.
-- **Installed**: source is declared in the project but not loaded into Construct metadata/library.
+- **Installed**: source is declared in the project, Construct-managed, and at least one package resource type can load.
+- **Disabled** or **Disarmed**: source is declared in the project and Construct/Pi filters disable all package-contained resource types.
 - **Available**: source is remembered in the Construct library but not declared in this project.
+- **Unloaded**: source is declared in the project but not loaded into Construct metadata/library.
 - **Removed from project**: package declaration is removed from `.pi/settings.json`.
 - **Unloaded from Construct**: resource is forgotten from Construct library/metadata only; project package declarations are left alone.
 
@@ -52,33 +52,33 @@ Keep the one Construct menu. Do not open or embed `pi config`.
 Default dashboard sections could become:
 
 ```text
-Loaded
-------
+Installed
+---------
 [x] package-a    npm:package-a
 
 Disabled
 --------
 [-] package-b    npm:package-b
 
-Installed
----------
-[i] package-d    /local/package-d
-
 Available
 ---------
 [ ] package-c    npm:package-c
+
+Unloaded
+--------
+[u] package-d    /local/package-d
 ```
 
 Possible markers:
 
-- `[x]` loaded / active
+- `[x]` installed / active
 - `[-]` disabled/disarmed by filters
-- `[i]` installed/project-declared but not loaded into Construct
 - `[ ]` available / not declared here
+- `[u]` unloaded / project-declared but not loaded into Construct
 
 ## Interaction model
 
-Use `Installed` narrowly to mean “declared in this project but not loaded into Construct.” This is project-level state, not a claim about Pi's package cache.
+Use `Installed` narrowly to mean “active in this project and Construct-managed.” This is project-level state, not a claim about Pi's package cache internals. Use `Unloaded` for project declarations not loaded/adopted into Construct.
 
 ### Implemented action model
 
@@ -87,58 +87,37 @@ Space selects rows. The action key decides what happens to selected rows.
 Current controls:
 
 ```text
-Space selects · Enter loads/enables · d disables · r removes project declarations · Esc cancels
+Space selects · Enter applies · r removes · Esc cancels
 ```
 
 Current behavior:
 
-- Enter loads/enables selected packages:
+- Enter applies the obvious state transition for actionable rows:
   - `Available` -> install/declare into this project using Pi's normal project-local install path.
+  - `Installed` -> disable by setting package resource filters to empty arrays.
   - `Disabled` -> enable by clearing all-empty package resource filters.
-  - `Loaded` -> ignored by the Enter action because it is already enabled.
-- `d` disables selected `Loaded` packages by setting package resource filters to empty arrays.
-- `r` removes selected `Loaded`, `Disabled`, or `Installed` package declarations from the project. Delete may remain a best-effort alias, but terminal Delete handling is not reliable enough to advertise.
+- `Unloaded` rows are read-only in `/construct`; use `/construct load` to load/adopt them into Construct. `/construct load` TUI should show only unloaded/adoptable package declarations.
+- `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project. Delete may remain a best-effort alias, but terminal Delete handling is not reliable enough to advertise.
 - `Available` rows are not project-declared, so `r` has nothing to remove from the project. Use `/construct unload` to make Construct forget library items.
-- `Installed` rows are removable from the project but still guide users to `/construct load` if they want to add them to Construct.
-- Enter on the result panel reloads Pi when changes were applied; Esc returns to the session without reloading.
+- Enter on the result panel reloads Pi when runtime-affecting changes were applied. Esc returns to the session without reloading.
 
 This preserves the favorite install flow: Space select one or more Available packages, press Enter, then Enter reloads from the result panel.
 
-The section heading communicates current state; the checkbox marker communicates row selection in TUI mode. Print mode can still show state markers such as `[x]`, `[-]`, `[i]`, and `[ ]`.
+The section heading communicates current state; the checkbox marker communicates row selection in TUI mode. Print mode can still show state markers such as `[x]`, `[-]`, `[ ]`, and `[u]`.
 
 ### Why not make Space cycle through remove?
 
-Do not cycle `Loaded -> Disabled -> Remove -> Loaded` with Space. It makes the common key include a destructive cleanup action, is harder to explain, and increases the chance of accidentally removing project declarations.
+Do not cycle `Installed -> Disabled -> Remove -> Installed` with Space. It makes the common key include a destructive cleanup action, is harder to explain, and increases the chance of accidentally removing project declarations.
 
-### Deferred alternative: action panel
+### Rejected for now: action panel
 
-The current implementation uses direct action keys. If those feel too hidden or conflict with type-to-filter, replace direct keys with an action panel instead.
+Do not add an action chooser right now. It is safer on paper, but it slows down the core loop too much. Enter should apply the obvious state transition, and `r` should be the explicit confirmed removal path.
 
-### Multi-choice model
-
-If we still need both “disable” and “remove from project,” do not overload Space.
-
-Possible flow:
-
-1. User selects rows with Space.
-2. User presses Enter.
-3. If selected changes include turning loaded packages off, show an action panel:
-
-```text
-Turn off selected packages how?
-
-> Disable resources, keep package declarations  (recommended)
-  Remove package declarations from this project
-  Cancel
-```
-
-Recommended default: **Disable resources, keep package declarations**.
-
-This keeps ordinary users on the safer Pi-native path while preserving a deliberate removal escape hatch.
+If manual testing proves `r` is still too hidden, revisit a compact remove confirmation flow before adding a broader action chooser.
 
 ### Keybinding caveat
 
-The current `d` action only fires when at least one row is selected; otherwise `d` remains normal filter text. If this feels surprising in manual TUI testing, move disable/remove behind an action panel.
+Only `r` is a direct action key now, and it only starts removal when at least one row is selected. Otherwise typed characters remain normal filter text. Removal must show a warning/confirmation before changing files.
 
 ## Settings semantics
 
@@ -229,9 +208,10 @@ Status should distinguish:
 
 Dashboard labels should make the source of truth clear:
 
+- `Installed` = declared in `.pi/settings.json`, active, and Construct-managed.
 - `Disabled` = declared in `.pi/settings.json`, package resources disabled by filters.
 - `Available` = remembered by Construct but absent from `.pi/settings.json`.
-- `Installed` = present in `.pi/settings.json` but not loaded into Construct.
+- `Unloaded` = present in `.pi/settings.json` but not loaded into Construct.
 
 ## Safety rules
 
@@ -254,15 +234,16 @@ enablePackageResourcesInProject(paths, { source, id })
 removePackageFromProject(pi, paths, { source, id })
 ```
 
-Current smoke coverage verifies read/status detection for disabled package filters. Manual TUI verification is still needed for action keys and result-panel reload behavior.
+Current smoke coverage verifies read/status detection for disabled package filters. Manual TUI verification is still needed for action keys, remove confirmation, and result-panel reload behavior.
 
 ## Recommendation
 
 Keep this split:
 
-- Enter action: load/enable selected packages.
-- `d` action: disable selected loaded packages, keeping package declarations.
-- `r` action: explicitly remove selected project package declarations.
+- Enter action: install Available, disable Installed, and enable Disabled packages.
+- Unloaded rows: read-only in `/construct`; load/adopt them with `/construct load`.
+- `r` action: confirm, then explicitly remove selected Installed or Disabled project package declarations.
+- No public `d` action; it duplicates Enter and conflicts mentally with type-to-filter.
 - `/construct unload`: library/metadata-only, never edits `.pi/settings.json`.
 
 This makes Construct more native to Pi while preserving its separate product identity and quiet one-menu workflow.

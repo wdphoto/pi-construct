@@ -81,15 +81,15 @@ Check in real TUI usage:
 
 - fuzzy search works;
 - Space selects package rows;
-- Enter loads/enables selected Available or Disabled rows;
-- `d` disables selected Loaded rows;
-- `r` removes selected Loaded, Disabled, or Installed package declarations;
+- Enter installs Available, disables Installed, and enables Disabled rows;
+- Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
+- `r` shows a warning, then removes selected Installed or Disabled package declarations;
 - Esc cancels;
 - package rows stay primary;
-- Installed rows are clear and do not flood the view;
+- Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;
-- after changes, Enter reloads Pi and Esc returns to the session.
+- after runtime-affecting changes, Enter reloads Pi and Esc returns to the session.
 
 ## Design review prompts
 
@@ -100,7 +100,7 @@ Before adding new behavior, ask:
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
 - Do profiles still store only library ids/sources and apply explicitly?
-- Would Installed package loading be clearer as `/construct load` guidance or as a dashboard Enter action?
+- Is Enter still the fastest safe path for the common install/disable/enable/load actions?
 
 ## Local development
 

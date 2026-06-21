@@ -5,10 +5,10 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js"
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem, type CheckboxPickerSubmitAction } from "../ui.js";
+import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction } from "../ui.js";
 import { disablePackageResourcesInProject, enablePackageResourcesInProject, loadPackageIntoProject, removePackageFromProject } from "../package-ops.js";
 
-type DashboardSection = "Loaded" | "Disabled" | "Installed" | "Available";
+type DashboardSection = "Installed" | "Disabled" | "Available" | "Unloaded";
 type DashboardAction = "Install" | "Enable" | "Disable" | "Remove";
 type DashboardStep = { action: DashboardAction; item: DashboardPackage; state: "pending" | "running" | "done" | "failed"; error?: string };
 
@@ -23,9 +23,10 @@ interface DashboardPackage {
 	marker?: string;
 	description?: string;
 	managed?: boolean;
+	disabledByFilters?: boolean;
 }
 
-const dashboardSections: DashboardSection[] = ["Loaded", "Disabled", "Installed", "Available"];
+const dashboardSections: DashboardSection[] = ["Installed", "Disabled", "Available", "Unloaded"];
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
@@ -101,14 +102,15 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			label: item.id,
 			source: item.source,
 			displaySource: compactSource(item.source),
-			section: declared ? (disabledByFilters ? "Disabled" : "Loaded") : "Available",
+			section: declared ? (disabledByFilters ? "Disabled" : "Installed") : "Available",
 			checked: false,
 			managed: true,
+			disabledByFilters,
 			description: declared
 				? disabledByFilters
-					? "Declared in this project, but package resources are disabled by Pi filters. Press Enter to enable selected disabled packages."
-					: "Active in this project. Press d to disable selected loaded packages, or r to remove declarations."
-				: "Remembered by Construct, not declared in this project. Press Enter to load selected packages.",
+					? "Installed in this project, but package resources are disabled by Pi filters. Press Enter to enable selected packages, or r to remove them from this project."
+					: "Installed and active in this project. Press Enter to disable selected packages, or r to remove them from this project."
+				: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
 		});
 	}
 
@@ -121,7 +123,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			displaySource: compactSource(item.source),
 			section: "Available",
 			checked: false,
-			description: "Remembered by Construct, not declared in this project. Press Enter to load selected packages.",
+			description: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
 		});
 	}
 
@@ -129,16 +131,18 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const normalized = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
 		if (managedSources.has(pkg.source) || managedSources.has(normalized)) continue;
 		packages.push({
-			id: `installed:${normalized}`,
+			id: `unloaded:${normalized}`,
 			label: deriveId(normalized),
 			source: normalized,
 			displaySource: compactSource(normalized),
-			section: "Installed",
+			section: "Unloaded",
 			checked: false,
-			marker: "[i]",
+			disabled: true,
+			marker: "[u]",
+			disabledByFilters: pkg.disabledByFilters,
 			description: pkg.disabledByFilters
-				? "Declared in this project and disabled by filters, but not loaded into Construct yet. Press r to remove it from the project, or run /construct load to add it to Construct."
-				: "Declared in this project, but not loaded into Construct yet. Press r to remove it from the project, or run /construct load to add it to Construct.",
+				? "Read-only here. Installed in this project and disabled by filters, but not loaded into Construct yet. Run /construct load to load it into Construct."
+				: "Read-only here. Installed in this project, but not loaded into Construct yet. Run /construct load to load it into Construct.",
 		});
 	}
 
@@ -147,17 +151,17 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 }
 
 function dashboardSummary(packages: DashboardPackage[]): string {
-	const loaded = packages.filter((item) => item.section === "Loaded").length;
+	const installed = packages.filter((item) => item.section === "Installed").length;
 	const disabled = packages.filter((item) => item.section === "Disabled").length;
 	const available = packages.filter((item) => item.section === "Available").length;
-	const installed = packages.filter((item) => item.section === "Installed").length;
-	return `${loaded} loaded · ${disabled} disabled · ${installed} installed · ${available} available`;
+	const unloaded = packages.filter((item) => item.section === "Unloaded").length;
+	return `${installed} installed · ${disabled} disabled · ${available} available · ${unloaded} unloaded`;
 }
 
 function printMarker(item: DashboardPackage): string {
-	if (item.marker) return item.marker;
-	if (item.section === "Loaded") return "[x]";
+	if (item.section === "Installed") return "[x]";
 	if (item.section === "Disabled") return "[-]";
+	if (item.section === "Unloaded") return "[u]";
 	return "[ ]";
 }
 
@@ -169,33 +173,53 @@ function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warn
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${printMarker(item)} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("TUI controls: Space selects · Enter loads/enables · d disables · r removes declarations · Esc cancels.", "", "Run /construct load to add new project-level resources to the Construct.");
+	lines.push("TUI controls: Space selects · Enter applies · r removes · Esc cancels.", "", "Run /construct load to add new project-level resources to the Construct.");
 	return lines.join("\n");
 }
 
 function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardPackage): DashboardAction | undefined {
 	if (action === "confirm") {
 		if (item.section === "Available") return "Install";
+		if (item.section === "Installed") return "Disable";
 		if (item.section === "Disabled") return "Enable";
 		return undefined;
 	}
-	if (action === "disable") return item.section === "Loaded" ? "Disable" : undefined;
-	if (action === "remove") return item.section === "Loaded" || item.section === "Disabled" || item.section === "Installed" ? "Remove" : undefined;
+	if (action === "remove") return item.section === "Installed" || item.section === "Disabled" ? "Remove" : undefined;
 	return undefined;
 }
 
 function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
-	if (action === "confirm") return ["No load/enable changes were selected.", "Select Available or Disabled packages, then press Enter."];
-	if (action === "disable") return ["No loaded packages were selected to disable.", "Select Loaded packages, then press d."];
+	if (action === "confirm") return ["No Construct package changes were selected.", "Select Installed, Disabled, or Available packages, then press Enter.", "Unloaded rows are read-only here; use /construct load to load them into Construct."];
 	return [
-		"No project-declared packages were selected to remove.",
-		"Select Loaded, Disabled, or Installed packages, then press r.",
-		"Available packages are not declared in this project; use /construct unload to forget them from the Construct library.",
+		"No installed project packages were selected to remove.",
+		"Select Installed or Disabled packages, then press r.",
+		"Available packages are not installed in this project; use /construct unload to forget them from the Construct library.",
+		"Unloaded rows are read-only here; remove them with Pi directly if needed.",
 	];
 }
 
 function resultError(result: { error?: string; stderr?: string; exitCode?: number }): string {
 	return result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
+}
+
+function removeConfirmationFor(packages: DashboardPackage[], ids: string[]): CheckboxPickerConfirmation | undefined {
+	const selected = new Set(ids);
+	const removable = packages.filter((item) => selected.has(item.id) && (item.section === "Installed" || item.section === "Disabled"));
+	if (removable.length === 0) return undefined;
+	const preview = removable.slice(0, 8).map((item) => `- ${item.label}: ${item.source}`);
+	const extra = removable.length > preview.length ? [`…and ${removable.length - preview.length} more`] : [];
+	return {
+		title: "Remove from this project?",
+		confirmHint: "Press Enter to remove · Esc cancels",
+		lines: [
+			`This will run project-local \`pi remove\` for ${removable.length} package${removable.length === 1 ? "" : "s"}.`,
+			"It edits .pi/settings.json after creating a backup.",
+			"It does not delete global Pi package caches.",
+			"",
+			...preview,
+			...extra,
+		],
+	};
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
@@ -217,9 +241,10 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		initialSelection: "empty",
-		confirmHint: "Enter loads/enables",
-		footerHint: "  Type to filter · Space selects · Enter loads/enables · d disables · r removes declarations · Esc cancels",
-		actions: { disable: true, remove: true },
+		confirmHint: "Enter applies",
+		footerHint: "  Type to filter · Space selects · Enter applies · r removes · Esc cancels",
+		actions: { remove: true },
+		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {
 			const selected = new Set(ids);
 			const steps: DashboardStep[] = [];
@@ -261,9 +286,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				const result = step.action === "Install"
 					? await loadPackageIntoProject(pi, paths, { source: step.item.source, item: { id: step.item.id, kind: "package", source: step.item.source } })
 					: step.action === "Enable"
-						? await enablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.id })
+						? await enablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
 						: step.action === "Disable"
-							? await disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.id })
+							? await disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
 							: await removePackageFromProject(pi, paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
 				if (result.ok) {
 					completed.push({ action: step.action, item: step.item });
@@ -295,7 +320,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				confirmAction: appliedChanges > 0 ? "reload" : undefined,
 				lines: [
 					cancelled ? "Cancelled before remaining changes." : undefined,
-					installed.length > 0 ? `Loaded: ${installed.length}` : undefined,
+					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
 					...installed.map((item) => `+ ${item.label}: ${item.source}`),
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 					...enabled.map((item) => `+ ${item.label}: ${item.source}`),

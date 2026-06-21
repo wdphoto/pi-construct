@@ -24,8 +24,8 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 ## v0.0.x — dashboard polish
 
 - [x] Prototype Pi-native filter-based disarm mode: keep package declarations but set package resource filters to `[]`. See `docs/package-disable-design.md`.
-- [ ] Manually verify dashboard action keys in TUI: Space selects, Enter loads/enables, `d` disables, `r` removes, result-panel Enter reloads.
-- [ ] Decide whether Installed rows should remain `/construct load` guidance or become loadable directly from the dashboard.
+- [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies, `r` confirms/removes, result-panel Enter reloads.
+- [x] Decide dashboard state/action language: Installed, Disabled, Available, Unloaded; Enter applies Installed/Disabled/Available transitions; Unloaded is read-only in `/construct`; no public `d` key.
 - [ ] Bring profile apply into the newer in-panel progress/result flow.
 - [ ] Fold profiles into the main `/construct` TUI as first-class selectable rows/groups if it stays simple.
 - [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.

@@ -11,16 +11,17 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
 
 2. **Dashboard layer**
    - Merges Construct library entries, current project package declarations, package filter state, and Construct metadata.
-   - Uses selected rows plus action keys rather than treating checkboxes as current package state.
-   - Enter loads/enables selected packages, `d` disables selected loaded packages, and `r` removes selected project package declarations.
-   - Keeps Installed rows clearly labeled as project declarations not yet loaded into Construct.
+   - Uses selected rows plus one fast normal action and one destructive action rather than treating checkboxes as current package state.
+   - Enter applies the obvious state change for actionable rows: install Available, disable Installed, or enable Disabled.
+   - `r` asks for confirmation, then removes selected Installed or Disabled project package declarations.
+   - Keeps Unloaded rows clearly labeled as read-only project declarations not yet loaded into Construct; `/construct load` is the adoption path.
 
 3. **Package operation layer**
    - Loads available sources with Pi's native project-local install path:
      ```bash
      pi install <source> -l --approve
      ```
-   - Disables loaded sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
+   - Disables installed/active sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
    - Enables disabled sources by clearing those all-empty package resource filters.
    - Removes package declarations only through the explicit dashboard remove action, using Pi's native project-local remove path first:
      ```bash

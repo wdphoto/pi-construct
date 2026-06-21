@@ -7,8 +7,8 @@ Construct is centered on one primary command: `/construct`.
 ```text
 /construct             # one loadout menu / dashboard
 /construct status      # read-only diagnostics
-/construct load        # add current project resources to the Construct
-/construct unload      # remove resources from the Construct
+/construct load [id-or-source ...]    # add current project resources to the Construct
+/construct unload [id-or-source ...]  # remove resources from the Construct
 /construct autoload    # toggle exit prompt for loading new resources
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
@@ -21,19 +21,21 @@ No separate public toggle/library/catalog/reload command family for now. After d
 
 Load means adding existing project-level Pi package declarations to the Construct.
 
-- `/construct load` opens the picker in TUI mode.
+- `/construct load` opens the picker in TUI mode with only unloaded/adoptable project package declarations.
 - `/construct load` adds all currently loadable project package declarations in print mode.
+- `/construct load <id-or-source ...>` directly loads matching unloaded/adoptable project package declarations.
 - Load reads `.pi/settings.json` and can write:
   - `~/.pi/agent/construct/catalog.json`
   - `.pi/construct.json`
 - Load never installs, removes, reloads, copies files, executes package code, or edits `.pi/settings.json`.
+- Direct load arguments must already match project package declarations; use `pi install <source> -l --approve` or the dashboard Available section to add a package to the project first.
 
 ## `/construct unload`
 
 Unload means removing resources from the Construct library.
 
 - `/construct unload` opens a picker in TUI mode.
-- `/construct unload <id-or-source>` removes matching library resources in print mode.
+- `/construct unload <id-or-source ...>` removes matching library resources directly.
 - Unload removes matching entries from the user Construct library.
 - Unload prunes matching entries from saved profiles.
 - Unload removes matching advisory metadata from the current project's `.pi/construct.json` when present.
@@ -41,7 +43,7 @@ Unload means removing resources from the Construct library.
 - Unload output should use “Construct forgot” style wording so it is clear the package itself was not disabled or removed.
 - Unload may show “known projects” assignment counts from Construct's user-local project index. These counts are informational only and never block unload.
 
-If a project package declaration has not been loaded into Construct, it appears under `Installed` in the dashboard.
+If a project package declaration has not been loaded into Construct, it appears under `Unloaded` in the dashboard.
 
 ## `/construct autoload`
 
@@ -84,10 +86,10 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 
 Sections:
 
-- `Loaded` — Construct-managed packages active in this project.
+- `Installed` — Construct-managed packages active in this project.
 - `Disabled` — Construct-managed packages declared in this project with all package resource filters set to `[]`.
-- `Installed` — project package declarations that Construct has not loaded yet.
-- `Available` — remembered packages that can be loaded here.
+- `Available` — remembered packages that can be installed here.
+- `Unloaded` — read-only project package declarations that Construct has not loaded/adopted yet; use `/construct load` to adopt them.
 
 Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
 
@@ -95,11 +97,11 @@ Controls:
 
 - type to search/filter;
 - Space selects rows;
-- Enter loads/enables selected `Available` or `Disabled` packages;
-- `d` disables selected `Loaded` packages by package filters;
-- `r` removes selected `Loaded`, `Disabled`, or `Installed` package declarations from the project;
+- Enter applies the obvious state change for actionable rows: install `Available`, disable `Installed`, or enable `Disabled`;
+- Unloaded rows are read-only in `/construct`; use `/construct load` to load/adopt them into Construct;
+- `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project;
 - Esc cancels without writing before apply;
-- after apply, Enter reloads Pi when at least one change succeeded;
+- after apply, Enter reloads Pi when runtime-affecting settings changed;
 - after apply, Esc returns to the session without reloading.
 
 Keep hints subtle and summaries quiet. Success output should be verbose enough to show changed packages, then end with the Enter-to-reload / Esc-to-return choice.

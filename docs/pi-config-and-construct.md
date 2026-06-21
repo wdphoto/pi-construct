@@ -54,7 +54,7 @@ Current dashboard behavior separates package actions:
 
 - Load available package: `pi install <source> -l --approve`
 - Enable disabled package: clear all-empty package resource filters
-- Disable loaded package: set package resource filters to `[]`
+- Disable installed/active package: set package resource filters to `[]`
 - Remove from project: explicit `r` action using `pi remove <source> -l --approve` first
 
 Construct also keeps advisory metadata:
@@ -105,7 +105,7 @@ Current answers:
 - A package with all resource arrays set to `[]` is shown as `Disabled`.
 - `/construct load` can still adopt disabled package declarations as package declarations; broader disabled-specific load UX can be refined later.
 - Profile apply still resets toward enabled/current behavior and can be revisited separately.
-- Dashboard Enter loads/enables selected packages; `d` disables selected loaded packages; `r` explicitly removes project package declarations.
+- Dashboard Enter applies the obvious state change for actionable rows: install Available, disable Installed, or enable Disabled. Unloaded rows are read-only there; `/construct load` adopts them. `r` explicitly confirms and removes Installed or Disabled project package declarations.
 - Status/drift distinguishes “disabled by package filters” from “missing from .pi/settings.json”.
 
 ## What we can reuse safely
@@ -160,6 +160,6 @@ Keep the disable/remove split:
 - Remove package declarations only through explicit cleanup actions.
 - Keep `/construct unload` as Construct-library/metadata-only.
 
-Continue to validate the TUI action keys manually. If direct `d`/`r` keys feel hidden or conflict with type-to-filter, move disable/remove behind an action panel.
+Continue to validate the TUI action keys manually. Enter should stay fast for normal state changes; `r` should stay explicit and confirmed because it removes project package declarations.
 
 See `docs/package-disable-design.md` for the dashboard/action design.

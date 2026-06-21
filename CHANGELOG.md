@@ -6,6 +6,19 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.11 - 2026-06-21
+
+### Added
+- Added `docs/dashboard-action-model-plan.md` for the accepted dashboard state/key model.
+- Added a dashboard remove confirmation before project-local package removal.
+- Added `/construct load <id-or-source ...>` to directly adopt matching unloaded project package declarations.
+
+### Changed
+- Changed dashboard states to `Installed`, `Disabled`, `Available`, and `Unloaded`.
+- Changed dashboard Enter to apply the obvious state transition for actionable rows: install Available, disable Installed, or enable Disabled.
+- Kept Unloaded rows read-only in `/construct`; `/construct load` remains the adoption path and now shows only unloaded/adoptable package declarations.
+- Removed the public `d` dashboard action; `r` remains the explicit remove key for Installed and Disabled rows.
+
 ## 0.0.10 - 2026-06-21
 
 ### Added

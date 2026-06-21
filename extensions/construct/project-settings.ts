@@ -106,10 +106,12 @@ export function upsertConstructItem(
 	declaredSource: string,
 	requestedSource: string,
 	paths: ConstructPaths,
+	options: { enabled?: boolean } = {},
 ): JsonObject {
 	const existingItems = isObject(construct.items) ? construct.items : {};
 	const now = new Date().toISOString();
 	const existingItem = isObject(existingItems[itemId]) ? existingItems[itemId] : {};
+	const enabled = options.enabled ?? true;
 	return {
 		...construct,
 		version: 1,
@@ -123,7 +125,7 @@ export function upsertConstructItem(
 				kind: "package",
 				source: declaredSource,
 				...(declaredSource === requestedSource ? {} : { requestedSource }),
-				enabled: true,
+				enabled,
 				loadedAt: typeof existingItem.loadedAt === "string" ? existingItem.loadedAt : now,
 				updatedAt: now,
 			},

@@ -123,6 +123,32 @@ assert sources == expected, construct
 assert all(item.get("enabled") is True for item in items.values()), construct
 PY
 
+printf '== direct load source selects matching declaration ==\n'
+HOME_DIRECT="$TMP/home-direct-load"
+PROJECT_DIRECT="$TMP/project-direct-load"
+mkdir -p "$HOME_DIRECT" "$PROJECT_DIRECT/.pi"
+cat > "$PROJECT_DIRECT/.pi/settings.json" <<'JSON'
+{
+  "packages": ["npm:construct-direct-one", "npm:construct-direct-two"]
+}
+JSON
+OUTPUT="$(construct_pi "$HOME_DIRECT" "$PROJECT_DIRECT" '/construct load npm:construct-direct-one' 2>&1)"
+grep -Fq 'Construct load complete.' <<<"$OUTPUT"
+python3 - "$HOME_DIRECT" "$PROJECT_DIRECT" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+construct = json.loads((project / ".pi/construct.json").read_text())
+assert [item.get("source") for item in catalog.get("items", [])] == ["npm:construct-direct-one"], catalog
+items = list(construct.get("items", {}).values())
+assert len(items) == 1, construct
+assert items[0].get("source") == "npm:construct-direct-one", construct
+assert items[0].get("enabled") is True, construct
+PY
+
 printf '== drift: metadata enabled but settings missing source ==\n'
 HOME_D="$TMP/home-drift"
 PROJECT_D="$TMP/project-drift"
@@ -220,8 +246,42 @@ PROJECT_E="$TMP/project-local-only"
 mkdir -p "$HOME_E" "$PROJECT_E"
 write_settings_with_pkg "$PROJECT_E"
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct' 2>&1)"
-grep -Fq 'Installed' <<<"$OUTPUT"
+grep -Fq 'Unloaded' <<<"$OUTPUT"
 grep -Fq 'construct-invalid-drift-package' <<<"$OUTPUT"
 test ! -e "$PROJECT_E/.pi/construct.json"
+
+printf '== load disabled declaration preserves disabled metadata ==\n'
+HOME_H="$TMP/home-load-disabled"
+PROJECT_H="$TMP/project-load-disabled"
+mkdir -p "$HOME_H" "$PROJECT_H/.pi"
+python3 - "$PROJECT_H" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [{
+  "source": source,
+  "extensions": [],
+  "skills": [],
+  "prompts": [],
+  "themes": []
+}]}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_H" "$PROJECT_H" '/construct load' 2>&1)"
+grep -Fq 'Construct load complete.' <<<"$OUTPUT"
+python3 - "$PROJECT_H" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+construct = json.loads((project / ".pi/construct.json").read_text())
+items = construct.get("items", {})
+assert len(items) == 1, construct
+assert next(iter(items.values())).get("enabled") is False, construct
+PY
+OUTPUT="$(construct_pi "$HOME_H" "$PROJECT_H" '/construct status' 2>&1)"
+grep -Fq 'Construct-managed: 0 enabled · 1 disabled' <<<"$OUTPUT"
+! grep -Fq 'drift:' <<<"$OUTPUT"
 
 printf 'invalid/drift smoke ok\n'

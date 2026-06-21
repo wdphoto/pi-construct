@@ -13,10 +13,11 @@ interface LoadCandidate {
 	id: string;
 	source: string;
 	alreadyKnown?: boolean;
+	disabledByFilters?: boolean;
 }
 
 interface LoadArgs {
-	warnings: string[];
+	queries: string[];
 }
 
 async function constructManagedSources(paths: Awaited<ReturnType<typeof getPaths>>): Promise<Set<string>> {
@@ -50,7 +51,7 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 		if (seen.has(source)) continue;
 		seen.add(source);
 		const catalogId = catalogItemsBySource.get(pkg.source) ?? catalogItemsBySource.get(source);
-		const candidate = { id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined };
+		const candidate = { id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined, disabledByFilters: pkg.disabledByFilters };
 		if (managedSources.has(pkg.source) || managedSources.has(source)) alreadyManaged.push(candidate);
 		else adoptable.push(candidate);
 	}
@@ -61,8 +62,48 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 }
 
 function parseLoadArgs(args: string): LoadArgs {
-	const tokens = args.split(/\s+/).filter(Boolean);
-	return { warnings: tokens.map((token) => `Unknown load argument ignored: ${token}`) };
+	return { queries: args.split(/\s+/).filter(Boolean) };
+}
+
+async function candidateMatchesQuery(paths: Awaited<ReturnType<typeof getPaths>>, candidate: LoadCandidate, query: string): Promise<boolean> {
+	if (candidate.id === query || candidate.source === query) return true;
+	const settingsDir = dirname(paths.projectSettingsPath);
+	const normalized = new Set([
+		await normalizeSourceForLibrary(query, settingsDir),
+		await normalizeSourceForLibrary(query, paths.cwd),
+	]);
+	return normalized.has(candidate.source);
+}
+
+async function findLoadCandidates(
+	paths: Awaited<ReturnType<typeof getPaths>>,
+	candidates: { adoptable: LoadCandidate[]; alreadyManaged: LoadCandidate[] },
+	queries: string[],
+): Promise<{ selected: LoadCandidate[]; alreadyManaged: string[]; missing: string[] }> {
+	const selected = new Map<string, LoadCandidate>();
+	const alreadyManaged: string[] = [];
+	const missing: string[] = [];
+	for (const query of queries) {
+		const adoptableMatches: LoadCandidate[] = [];
+		for (const candidate of candidates.adoptable) {
+			if (await candidateMatchesQuery(paths, candidate, query)) adoptableMatches.push(candidate);
+		}
+		if (adoptableMatches.length > 0) {
+			for (const candidate of adoptableMatches) selected.set(candidate.source, candidate);
+			continue;
+		}
+
+		let managedMatch = false;
+		for (const candidate of candidates.alreadyManaged) {
+			if (await candidateMatchesQuery(paths, candidate, query)) {
+				managedMatch = true;
+				break;
+			}
+		}
+		if (managedMatch) alreadyManaged.push(query);
+		else missing.push(query);
+	}
+	return { selected: [...selected.values()], alreadyManaged, missing };
 }
 
 export interface ConstructLoadResult {
@@ -78,6 +119,7 @@ export async function loadSourcesIntoConstruct(
 	paths: Awaited<ReturnType<typeof getPaths>>,
 	constructRead: Awaited<ReturnType<typeof readJson>>,
 	selectedSources: string[],
+	options: { enabledBySource?: Map<string, boolean> } = {},
 ): Promise<ConstructLoadResult> {
 	const added: CatalogItem[] = [];
 	let alreadyKnown = 0;
@@ -95,7 +137,8 @@ export async function loadSourcesIntoConstruct(
 		for (const source of selectedSources) {
 			const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
 			const itemId = uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source);
-			construct = upsertConstructItem(construct, itemId, source, source, paths);
+			const enabled = options.enabledBySource?.get(source);
+			construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });
 			metadataChanged += 1;
 		}
 		await writeJson(paths.projectConstructPath, construct);
@@ -128,11 +171,6 @@ export function formatLoadResult(result: ConstructLoadResult): string {
 export async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const loadArgs = parseLoadArgs(args);
 	const paths = await getPaths(ctx);
-
-	if (loadArgs.warnings.length > 0) {
-		showText(ctx, ["Usage: /construct load", "", "Construct load reads this project's package declarations and adds them to the Construct.", ...loadArgs.warnings.map((warning) => `! ${warning}`)].join("\n"));
-		return;
-	}
 
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "invalid") {
@@ -174,7 +212,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 		return;
 	}
 
-	if (candidates.adoptable.length === 0) {
+	if (candidates.adoptable.length === 0 && loadArgs.queries.length === 0) {
 		showText(
 			ctx,
 			[
@@ -189,26 +227,21 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	let selectedSources: string[] = [];
-	if (ctx.mode === "tui") {
-		const pickerItems: CheckboxPickerItem[] = [
-			...candidates.adoptable.map((candidate) => ({
-				id: candidate.source,
-				label: candidate.id,
-				value: candidate.source,
-				description: candidate.alreadyKnown ? "Already in the Construct library; load will arm project metadata." : undefined,
-				checked: false,
-				section: "NOT IN CONSTRUCT — available to load",
-			})),
-			...candidates.alreadyManaged.map((candidate) => ({
-				id: `managed:${candidate.source}`,
-				label: candidate.id,
-				value: candidate.source,
-				checked: true,
-				disabled: true,
-				section: "ALREADY IN CONSTRUCT — read-only",
-				marker: "[x]",
-			})),
-		];
+	const selectionWarnings: string[] = [];
+	if (loadArgs.queries.length > 0) {
+		const direct = await findLoadCandidates(paths, candidates, loadArgs.queries);
+		selectedSources = direct.selected.map((candidate) => candidate.source);
+		selectionWarnings.push(...direct.alreadyManaged.map((query) => `Already Construct-managed here: ${query}`));
+		selectionWarnings.push(...direct.missing.map((query) => `Not an unloaded project package declaration: ${query}`));
+	} else if (ctx.mode === "tui") {
+		const pickerItems: CheckboxPickerItem[] = candidates.adoptable.map((candidate) => ({
+			id: candidate.source,
+			label: candidate.id,
+			value: candidate.source,
+			description: candidate.alreadyKnown ? "Already in the Construct library; load will arm project metadata." : undefined,
+			checked: false,
+			section: "UNLOADED — available to load",
+		}));
 		const selected = await pickCheckboxes(ctx, "Construct load — add project resources", pickerItems);
 		if (!selected) {
 			showText(ctx, "Construct load cancelled. No files were changed.");
@@ -221,15 +254,17 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (selectedSources.length === 0) {
-		showText(ctx, "No resources selected for Construct load. No files were changed.");
+		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), "No files were changed."].join("\n"));
 		return;
 	}
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct load");
 
+	const enabledBySource = new Map(candidates.adoptable.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
 	let result: ConstructLoadResult;
 	try {
-		result = await loadSourcesIntoConstruct(ctx, paths, constructRead, selectedSources);
+		result = await loadSourcesIntoConstruct(ctx, paths, constructRead, selectedSources, { enabledBySource });
+		result.warnings.push(...selectionWarnings);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct load failed.\n${message}`);
