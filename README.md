@@ -71,7 +71,6 @@ After runtime-affecting loadout changes, press Enter on the final Construct pane
 /construct status      # read-only diagnostics
 /construct load [id-or-source ...]    # add current project package declarations to the Construct
 /construct unload [id-or-source ...]  # remove resources from the Construct
-/construct autoload    # toggle exit prompt for loading new resources
 /construct profile list          # WIP, not public yet
 /construct profile save <name>   # WIP, not public yet
 /construct profile apply <name>  # WIP, not public yet
