@@ -128,8 +128,10 @@ export interface CheckboxPickerItem {
 	marker?: string;
 	stateIcon?: string;
 	stateLabel?: string;
+	stateText?: string;
 	stateTone?: CheckboxPickerTone;
 	actionLabel?: string;
+	actionTone?: CheckboxPickerTone;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -157,6 +159,8 @@ export interface CheckboxPickerConfirmation {
 export interface CheckboxPickerOptions {
 	confirmHint?: string;
 	footerHint?: string;
+	filterLabel?: string;
+	filterHint?: string;
 	initialSelection?: "checked" | "empty";
 	actions?: {
 		remove?: boolean;
@@ -221,7 +225,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function searchableText(item: CheckboxPickerItem): string {
-			return [item.label, item.value, item.description, item.section, item.stateLabel, item.actionLabel].filter(Boolean).join(" ");
+			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText, item.actionLabel].filter(Boolean).join(" ");
 		}
 
 		function filteredItems(): CheckboxPickerItem[] {
@@ -283,7 +287,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (cachedLines && cachedWidth === width) return cachedLines;
 			const visibleItems = filteredItems();
 			if (selected >= visibleItems.length) selected = Math.max(0, visibleItems.length - 1);
-			const lines: string[] = [theme.fg("accent", theme.bold(title)), theme.fg("muted", `  Search: ${query || "type to filter"}`), ""];
+			const filterLabel = options.filterLabel ?? "Filter";
+			const filterHint = options.filterHint ?? "Type to narrow by name/source · Backspace edits";
+			const filterValue = query ? theme.fg("accent", query) : theme.fg("muted", "all items");
+			const lines: string[] = [theme.fg("accent", theme.bold(title)), `${filterLabel}: ${filterValue}`, theme.fg("muted", `  ${filterHint}`), ""];
 			if (items.length === 0) {
 				lines.push(theme.fg("muted", "  No items available"), "", theme.fg("muted", "  Esc to close"));
 				cachedWidth = width;
@@ -301,7 +308,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const start = Math.max(0, Math.min(selected - Math.floor(maxVisible / 2), visibleItems.length - maxVisible));
 			const end = Math.min(start + maxVisible, visibleItems.length);
 			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
-			const stateTexts = visibleItems.map((item) => (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : ""));
+			const stateTexts = visibleItems.map((item) => item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? ""));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
 
 			let previousSection: string | undefined;
@@ -316,11 +323,11 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				const cursor = isSelected ? "> " : "  ";
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 
-				if (item.stateLabel) {
-					const stateText = `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}`;
+				const stateText = item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? "");
+				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = item.disabled ? "   " : checked.has(item.id) ? "[x]" : "[ ]";
-					const action = checked.has(item.id) && item.actionLabel ? theme.fg("accent", `  → ${item.actionLabel}`) : item.disabled && item.actionLabel ? theme.fg("muted", `  ${item.actionLabel}`) : "";
+					const action = checked.has(item.id) && item.actionLabel ? theme.fg(item.actionTone ?? "accent", `  → ${item.actionLabel}`) : item.disabled && item.actionLabel ? theme.fg("muted", `  ${item.actionLabel}`) : "";
 					let line = `${cursor}${selectMarker} ${theme.fg(item.stateTone ?? "accent", paddedState)}  ${paddedLabel}  ${item.value}${action}`;
 					if (item.disabled) line = theme.fg("muted", `${cursor}${selectMarker} ${paddedState}  ${paddedLabel}  ${item.value}${item.actionLabel ? `  ${item.actionLabel}` : ""}`);
 					else if (isSelected) line = theme.bold(line);

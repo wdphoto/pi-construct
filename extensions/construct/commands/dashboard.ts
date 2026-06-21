@@ -157,10 +157,14 @@ function dashboardSummary(packages: DashboardPackage[]): string {
 }
 
 function sectionTone(section: DashboardSection): CheckboxPickerTone {
-	if (section === "Installed") return "success";
-	if (section === "Disabled") return "warning";
 	if (section === "Unloaded") return "muted";
 	return "accent";
+}
+
+function stateTone(section: DashboardSection): CheckboxPickerTone {
+	if (section === "Installed") return "success";
+	if (section === "Available") return "accent";
+	return "muted";
 }
 
 function stateIcon(section: DashboardSection): string {
@@ -184,26 +188,30 @@ function actionLabel(section: DashboardSection): string | undefined {
 	return undefined;
 }
 
+function actionTone(section: DashboardSection): CheckboxPickerTone {
+	if (section === "Installed") return "warning";
+	if (section === "Disabled") return "success";
+	if (section === "Unloaded") return "muted";
+	return "accent";
+}
+
 function selectionMarker(item: DashboardPackage): string {
 	return item.disabled ? "   " : "[ ]";
 }
 
-function dashboardLine(item: DashboardPackage, stateWidth: number, labelWidth: number): string {
-	const state = `${stateIcon(item.section)} ${stateLabel(item.section)}`;
-	const paddedState = state + " ".repeat(Math.max(0, stateWidth - state.length));
+function dashboardLine(item: DashboardPackage, labelWidth: number): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
 	const action = item.disabled ? `  ${actionLabel(item.section) ?? "read-only"}` : "";
-	return `${selectionMarker(item)} ${paddedState}  ${paddedLabel}  ${item.displaySource}${action}`;
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${item.displaySource}${action}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
 	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
-	const stateWidth = Math.max(...packages.map((item) => `${stateIcon(item.section)} ${stateLabel(item.section)}`.length), 0);
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		lines.push(section, "-".repeat(section.length));
-		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, stateWidth, labelWidth)) : ["- none"]), "");
+		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
@@ -278,12 +286,16 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		disabled: item.disabled,
 		stateIcon: stateIcon(item.section),
 		stateLabel: stateLabel(item.section),
-		stateTone: sectionTone(item.section),
+		stateText: stateIcon(item.section),
+		stateTone: stateTone(item.section),
 		actionLabel: actionLabel(item.section),
+		actionTone: actionTone(item.section),
 	}));
 	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
 		initialSelection: "empty",
 		confirmHint: "Enter applies",
+		filterLabel: "Filter packages",
+		filterHint: "Type to narrow by package, source, state, or action · Backspace edits",
 		footerHint: "  [x] selected · ✓ disables · – enables · + installs · ◇ Unloaded\n  Space selects · Enter applies · r removes project installs · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),

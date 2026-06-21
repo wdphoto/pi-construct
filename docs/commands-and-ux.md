@@ -101,9 +101,12 @@ Controls:
 
 - type to search/filter;
 - Space selects rows;
-- row grammar separates selection from state: `[x]` means selected, while `✓ Active`, `– Disabled`, `+ Available`, or `◇ Unloaded` describe current state;
+- row grammar separates selection from state: `[x]` means selected, while compact icons `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
+- keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
+- make the filter obvious with a label such as `Filter packages:` and a hint that typing narrows by package/source/state/action;
+- keep colors quiet: section headings are mostly accent, Unloaded is muted, state icons carry state color, and selected action arrows carry action color;
 - keep the state key short: `◇ Unloaded`, not `read-only`; put commands on a separate controls line;
-- selected rows show the pending Enter action where useful, such as `→ disable`, `→ enable`, or `→ install`;
+- selected rows show the pending Enter action where useful, such as warning-toned `→ disable`, success-toned `→ enable`, or accent-toned `→ install`;
 - Enter applies the obvious state change for actionable rows: install `Available`, disable `Installed`, or enable `Disabled`;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project;
