@@ -2,24 +2,34 @@
 
 # The Construct
 
-The Construct is a global [Pi](https://pi.dev) extension for managing project-level resources.
+The Construct is a small global [Pi](https://pi.dev) extension for managing project-local package loadouts.
 
-Use the `/construct` command, select packages with the `spacebar`, then press `Enter` to apply the obvious state change. Press `r` to remove installed project package declarations after a warning. Unloaded rows are read-only there; use `/construct load` to adopt them into Construct.
+It does **not** replace `pi install`, `pi remove`, or `pi config`. Normal Pi project files remain the source of truth. Construct remembers package sources you choose to load into its library, then gives you a fast `/construct` menu for installing, enabling, disabling, and removing those project package declarations.
+
+## Loadout menu
+
+Run:
+
+```text
+/construct
+```
+
+Example:
 
 ```text
 Construct Loadout
 =================
-Project: /Users/you/project
+Project: /Users/you/site
 2 installed · 1 disabled · 3 available · 1 unloaded
 
 Installed
 ---------
-[x] pi-web-access  npm:pi-web-access
-[x] pi-subagents   git:github.com/your-org/pi-subagents
+[x] pi-web-access   npm:pi-web-access
+[x] pi-subagents    git:github.com/your-org/pi-subagents
 
 Disabled
 --------
-[-] pi-tripwire     git:github.com/your-org/pi-tripwire
+[-] pi-browser      npm:pi-browser
 
 Available
 ---------
@@ -29,33 +39,67 @@ Available
 
 Unloaded
 --------
-[u] local-tooling   /Users/you/dev/local-tooling
+[u] local-tooling   ../local-tooling
 
-Space selects · Enter applies · r removes · Esc cancels.
-
-Run `/construct load` to add project-level resources to the Construct.
-
+TUI controls: Space selects · Enter applies · r removes · Esc cancels.
 ```
+
+States:
+
+| State | Meaning | Enter | `r` |
+| --- | --- | --- | --- |
+| `Installed` | active in this project and Construct-managed | disable | remove from project, after warning |
+| `Disabled` | installed here, but Pi package resource filters are off | enable | remove from project, after warning |
+| `Available` | remembered by Construct, not installed in this project | install into project | no-op |
+| `Unloaded` | declared in this project, not loaded into Construct | read-only | read-only |
+
+Use `/construct load` to adopt `Unloaded` rows into Construct.
+
+After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when ready.
 
 ## Basic workflow
 
-Install a Pi package locally in your project:
+Install a Pi package locally in a project:
 
 ```bash
-pi install <source> -l --approve
+pi install npm:package-name -l --approve
 ```
 
-Load that package declaration into the Construct:
+Load that package declaration into Construct:
 
 ```text
-/construct load
-# or load one matching project declaration directly
 /construct load npm:package-name
 ```
 
-In another project, run `/construct`. The menu shows remembered packages and lets you install, enable, disable, or explicitly remove installed project package declarations. Unloaded project declarations stay read-only in this menu; run `/construct load` to add them to Construct.
+Or open the load picker for all unloaded project declarations:
 
-After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when you are ready.
+```text
+/construct load
+```
+
+In another project, run `/construct`, select an `Available` package with Space, then press Enter to install it into that project.
+
+## Commands
+
+```text
+/construct                         # open the loadout menu
+/construct status                  # read-only diagnostics
+/construct load [id-or-source ...] # adopt project package declarations into Construct
+/construct unload [id-or-source ...] # forget resources from Construct
+```
+
+Direct examples:
+
+```text
+/construct load npm:pi-web-access
+/construct unload npm:pi-web-access
+```
+
+Notes:
+
+- `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages.
+- `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
+- Use `r` in `/construct` to remove an installed Construct-managed package declaration from the current project.
 
 ## How it works
 
@@ -64,28 +108,7 @@ After runtime-affecting loadout changes, press Enter on the final Construct pane
 - `~/.pi/agent/construct/catalog.json` is your user-local Construct library.
 - `~/.pi/agent/construct/projects.json` is a user-local index of projects Construct has touched; assignment counts are informational only.
 
-## Commands
-
-```text
-/construct             # open the loadout menu
-/construct status      # read-only diagnostics
-/construct load [id-or-source ...]    # add current project package declarations to the Construct
-/construct unload [id-or-source ...]  # remove resources from the Construct
-/construct profile list          # WIP, not public yet
-/construct profile save <name>   # WIP, not public yet
-/construct profile apply <name>  # WIP, not public yet
-```
-
-Direct load/unload examples:
-
-```text
-/construct load npm:pi-web-access
-/construct unload npm:pi-web-access
-```
-
-`/construct load <source>` adopts an existing project package declaration; install new packages with `pi install <source> -l --approve` or from the `/construct` Available section.
-
-## Install
+## Install Construct
 
 Install from npm:
 
@@ -101,7 +124,7 @@ pi install git:github.com/wdphoto/pi-construct
 pi install https://github.com/wdphoto/pi-construct
 ```
 
-## Uninstall
+## Remove Construct
 
 Remove the Construct extension using the same source form you installed with:
 
