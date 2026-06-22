@@ -9,34 +9,15 @@ Scratchpad for research notes, open questions, and ideas that are not yet commit
 - Decide what Construct can mirror without depending on brittle Pi internals.
 - Question: can we reuse public APIs, or should we only copy UX patterns?
 
-## Research: `/construct copy` and import snippets
+## Research: saved loadout sharing import UX
 
-Goal: export the current project's enabled Construct loadout as a shareable snippet.
+Moved to the roadmap and `docs/profiles-and-sharing-plan.md`: saved loadouts are now the up-next shareable grouping model.
 
-Current bias:
+Open questions that remain scratchpad-level:
 
-- Print JSON first.
-- Let the user copy/paste the snippet manually.
-- Avoid direct dependency on Pi internal clipboard helpers unless a public API appears.
-- Later, add import for the same snippet with preview/confirmation before writing.
-
-Open questions:
-
-- Command names: `/construct copy` and `/construct import`?
-- Should the snippet represent only enabled Construct-managed resources, or also unloaded resources?
-- Should it include a human name/profile name?
-- Should it preserve exact source strings or normalize local paths out?
-
-Possible snippet shape:
-
-```json
-{
-  "version": 1,
-  "kind": "construct-loadout",
-  "name": "optional-name",
-  "sources": ["npm:pi-web-access", "git:github.com/org/pi-tools"]
-}
-```
+- Best TUI paste experience for `/construct import`.
+- Whether `/construct copy <saved-name>` should accept fuzzy saved-loadout names or exact ids only.
+- Whether import should offer to run immediately after saving, or keep run as a second explicit action.
 
 ## Research: known-project cleanup/doctor
 
@@ -52,6 +33,5 @@ Open questions:
 - Autoload follow-up: if Pi exposes a stable package-install event later, consider replacing or supplementing the `.pi/settings.json` watcher. Keep prompts explicit and source-visible.
 - First-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind explicit opt-in only.
-- Groups/profiles as simple lists of remembered source ids.
 - Pi package filters as a fine-grained toggle layer, e.g. keep a package declared but set `extensions: []`, `skills: []`, `prompts: []`, or `themes: []`.
 - Wishlist: optional package details view for individual package-contained resources. Example: a package/extension adds several skills, and Construct could someday show them underneath the package so a user can filter one skill off without disabling or removing the whole package. Keep this out of the main loadout view unless deliberately promoted; Pi config/resource-center already owns broad resource browsing.

@@ -22,6 +22,47 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [x] Add an “after settings change” prompt for autoload-on projects: watch `.pi/settings.json` during a session, wait for idle, then offer to load newly declared compatible packages one by one.
 - [x] Avoid silent under-the-hood adoption; show source strings and make the user confirm.
 
+## v0.0.x — saved loadouts
+
+See `docs/profiles-and-sharing-plan.md`. Public copy should say saved loadout / saved; `profile` is mostly the internal catalog model.
+
+- [x] Add `/construct save <name>` as the canonical command for saving the current active Construct resource grouping.
+- [x] Add `/construct run <saved-name>` as the canonical command for applying/running a saved loadout in the current project.
+- [x] Keep `/construct profile save/list/apply` as compatibility aliases while docs move to the shorter language.
+- [x] Save only active Construct resources. Disabled resources are skipped.
+- [x] During TUI save, offer active project resources not loaded into Construct; selected rows are loaded into Construct and included, unselected rows are skipped.
+- [x] Never append or merge on save. If the saved name exists, TUI asks before replacing it; non-TUI replacement refuses for now.
+- [x] Make save summaries show included, newly loaded/included, skipped active-unloaded, and skipped disabled counts.
+- [x] Add smoke coverage for `/construct save`, `/construct saved`, and `/construct run`.
+- [x] Bring run/apply into the newer in-panel progress/result/reload flow used by the dashboard.
+- [x] Fold saved loadouts into the main `/construct` TUI as compact first-class rows/groups if it stays simple.
+
+## v0.0.x — saved loadout sharing
+
+See `docs/profiles-and-sharing-plan.md`.
+
+- [x] Add `/construct copy [saved-name]` to print a small JSON snippet for a saved loadout or the current active Construct grouping.
+- [x] Keep `/construct copy` print-first for now. Do not depend on Pi internal clipboard helpers unless Pi exposes a public API.
+- [x] Add `/construct import` for pasted saved-loadout snippets, with preview/confirmation before writing anything.
+- [x] Define and validate the snippet schema: `kind`, `version`, `name`, active package sources, no secrets, no local cache paths.
+- [x] Warn on local path sources during copy/import because they are usually not shareable across machines.
+- [x] Add smoke coverage for copy/import preview using disposable projects and disposable HOME.
+- [x] Add manual/TUI coverage notes for confirmed import writes.
+
+## v0.0.x — native project resources
+
+See `docs/project-resource-loadout-plan.md`. This follows saved loadouts so the resource model does not churn under the save/run UX.
+
+- [ ] Treat Construct as a project-level Pi resource manager, not only a package loadout menu.
+- [ ] Add direct support for native Pi resource kinds: packages, extensions, skills, prompts, and themes.
+- [ ] Use Pi's exported `DefaultPackageManager.resolve()` / `SettingsManager` model for resource inventory instead of reimplementing Pi discovery rules.
+- [ ] Show direct project resources such as `.pi/skills/*/SKILL.md`, `.pi/prompts/*.md`, `.pi/themes/*.json`, and `.pi/extensions/*.ts` in status/dashboard.
+- [ ] Extend `/construct load` to adopt unloaded direct project resources, with project-local resources marked non-portable until a safe copy/export flow exists.
+- [ ] Toggle direct resource enablement with Pi-native `+path` / `-path` settings overrides, matching `pi config` behavior.
+- [ ] Keep file deletion out of scope; removing auto-discovered direct resources should disable/unmanage, not delete project files.
+- [ ] Update dashboard language from package-centric `Installed` copy to resource-neutral `Active` copy in the same release as direct resources.
+- [ ] Add smoke coverage for direct skills first, then prompts, themes, and extensions.
+
 ## v0.0.x — autoload polish
 
 - [ ] Manually verify autoload settings-watcher prompts in TUI.
@@ -31,22 +72,12 @@ Roadmap and action list for The Construct. If work is decided, track it here. Sc
 - [ ] Rebind the watcher directly to `.pi/settings.json` when the file appears after session start.
 - [ ] Prefer a future public Pi package-install/settings-change event over filesystem watching if Pi exposes one.
 
-## v0.0.x — shareable loadouts
-
-- [ ] Add `/construct copy` to print a small JSON snippet for the current project's enabled Construct loadout.
-- [ ] Keep `/construct copy` print-first for now. Do not depend on Pi internal clipboard helpers unless Pi exposes a public API.
-- [ ] Add an import path for that snippet, likely `/construct import`, with preview/confirmation before writing anything.
-- [ ] Define the snippet schema: version, sources, optional profile/name, no secrets, no local cache paths.
-- [ ] Add smoke coverage for copy/import round trip using disposable projects.
-
 ## v0.0.x — dashboard polish
 
 - [x] Prototype Pi-native filter-based disarm mode: keep package declarations but set package resource filters to `[]`. See `docs/package-disable-design.md`.
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies, `r` confirms/removes, result-panel Enter reloads.
 - [x] Decide dashboard state/action language: Installed, Disabled, Available, Unloaded; Enter applies Installed/Disabled/Available transitions; Unloaded rows are read-only in `/construct`; no public `d` key.
 - [x] Split dashboard row grammar into selection marker plus compact state icon: `[x]` selected, `✓`, `–`, `+`, `◇`; color only the state icon column in TUI: active green, disabled muted green, available yellow, unloaded gray.
-- [ ] Bring profile apply into the newer in-panel progress/result flow.
-- [ ] Fold profiles into the main `/construct` TUI as first-class selectable rows/groups if it stays simple.
 - [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
 - [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance.
 

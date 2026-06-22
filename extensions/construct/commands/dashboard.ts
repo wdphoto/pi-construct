@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths } from "../types.js";
+import type { CatalogData, CatalogProfile, ConstructPaths } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js";
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
@@ -8,24 +8,37 @@ import { getPackages } from "../project-settings.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 import { disablePackageResourcesInProject, enablePackageResourcesInProject, loadPackageIntoProject, removePackageFromProject } from "../package-ops.js";
 
-type DashboardSection = "Installed" | "Disabled" | "Available" | "Unloaded";
+type DashboardSection = "Saved" | "Installed" | "Disabled" | "Available" | "Unloaded";
+type PackageDashboardSection = Exclude<DashboardSection, "Saved">;
 type DashboardAction = "Install" | "Enable" | "Disable" | "Remove";
-type DashboardStep = { action: DashboardAction; item: DashboardPackage; state: "pending" | "running" | "done" | "failed"; error?: string };
+type DashboardOperationItem = { id: string; label: string; source: string; displaySource: string; managed?: boolean };
+type DashboardStep = { action: DashboardAction; item: DashboardOperationItem; state: "pending" | "running" | "done" | "failed"; error?: string };
 
-interface DashboardPackage {
-	id: string;
-	label: string;
-	source: string;
-	displaySource: string;
-	section: DashboardSection;
+interface DashboardPackage extends DashboardOperationItem {
+	type: "package";
+	section: PackageDashboardSection;
 	checked: boolean;
 	disabled?: boolean;
 	description?: string;
-	managed?: boolean;
 	disabledByFilters?: boolean;
+	matchSources: string[];
 }
 
-const dashboardSections: DashboardSection[] = ["Installed", "Disabled", "Available", "Unloaded"];
+interface DashboardSavedLoadout {
+	type: "saved";
+	id: string;
+	label: string;
+	value: string;
+	section: "Saved";
+	checked: boolean;
+	disabled?: boolean;
+	description?: string;
+	sources: string[];
+}
+
+type DashboardItem = DashboardPackage | DashboardSavedLoadout;
+
+const dashboardSections: DashboardSection[] = ["Saved", "Installed", "Disabled", "Available", "Unloaded"];
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
@@ -42,8 +55,24 @@ function compactSource(source: string): string {
 	return source;
 }
 
-function sortDashboardPackages(packages: DashboardPackage[]): DashboardPackage[] {
-	return packages.sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.label.localeCompare(b.label) || a.source.localeCompare(b.source));
+function itemSortValue(item: DashboardItem): string {
+	return item.type === "saved" ? item.value : item.source;
+}
+
+function sortDashboardPackages(packages: DashboardItem[]): DashboardItem[] {
+	return packages.sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.label.localeCompare(b.label) || itemSortValue(a).localeCompare(itemSortValue(b)));
+}
+
+function uniqueSorted(sources: string[]): string[] {
+	return [...new Set(sources.filter((source) => source.trim().length > 0))].sort();
+}
+
+function savedLoadoutSources(catalog: CatalogData, profile: CatalogProfile): string[] {
+	return uniqueSorted(
+		profile.sources.length > 0
+			? profile.sources
+			: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string"),
+	);
 }
 
 async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
@@ -86,17 +115,36 @@ async function projectPackageSourceSets(paths: ConstructPaths): Promise<{
 	return { packages, declaredSources, disabledSources };
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardPackage[]; warnings: string[] }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[] }> {
 	const { paths, catalog, warnings } = await loadCatalog(ctx);
 	const project = await projectPackageSourceSets(paths);
 	const managed = await managedPackages(paths);
 	const managedSources = new Set(managed.flatMap((item) => [...item.matchSources]));
-	const packages: DashboardPackage[] = [];
+	const packages: DashboardItem[] = [];
+
+	for (const profile of catalog.profiles) {
+		const sources = savedLoadoutSources(catalog, profile);
+		packages.push({
+			type: "saved",
+			id: `saved:${profile.id}`,
+			label: profile.id,
+			value: `${sources.length} resource${sources.length === 1 ? "" : "s"}`,
+			section: "Saved",
+			checked: false,
+			disabled: sources.length === 0,
+			sources,
+			description:
+				sources.length === 0
+					? "Saved loadout has no resources."
+					: `Saved loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to run it in this project.`,
+		});
+	}
 
 	for (const item of managed) {
 		const declared = [...item.matchSources].some((source) => project.declaredSources.has(source));
 		const disabledByFilters = [...item.matchSources].some((source) => project.disabledSources.has(source));
 		packages.push({
+			type: "package",
 			id: item.id,
 			label: item.id,
 			source: item.source,
@@ -105,6 +153,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: false,
 			managed: true,
 			disabledByFilters,
+			matchSources: uniqueSorted([item.source, ...item.matchSources]),
 			description: declared
 				? disabledByFilters
 					? "Installed in this project, but package resources are disabled by Pi filters. Press Enter to enable selected packages, or r to remove them from this project."
@@ -116,12 +165,14 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	for (const item of catalog.items) {
 		if (managedSources.has(item.source) || project.declaredSources.has(item.source)) continue;
 		packages.push({
+			type: "package",
 			id: item.id,
 			label: item.id,
 			source: item.source,
 			displaySource: compactSource(item.source),
 			section: "Available",
 			checked: false,
+			matchSources: [item.source],
 			description: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
 		});
 	}
@@ -130,6 +181,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const normalized = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
 		if (managedSources.has(pkg.source) || managedSources.has(normalized)) continue;
 		packages.push({
+			type: "package",
 			id: `unloaded:${normalized}`,
 			label: deriveId(normalized),
 			source: normalized,
@@ -138,6 +190,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: false,
 			disabled: true,
 			disabledByFilters: pkg.disabledByFilters,
+			matchSources: uniqueSorted([pkg.source, normalized]),
 			description: pkg.disabledByFilters
 				? "Read-only here. Installed in this project and disabled by filters, but not loaded into Construct yet. Run /construct load to load it into Construct."
 				: "Read-only here. Installed in this project, but not loaded into Construct yet. Run /construct load to load it into Construct.",
@@ -148,21 +201,22 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	return { paths, packages, warnings };
 }
 
-function dashboardCounts(packages: DashboardPackage[]): { installed: number; disabled: number; available: number; unloaded: number } {
+function dashboardCounts(packages: DashboardItem[]): { installed: number; disabled: number; available: number; unloaded: number } {
+	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
 	return {
-		installed: packages.filter((item) => item.section === "Installed").length,
-		disabled: packages.filter((item) => item.section === "Disabled").length,
-		available: packages.filter((item) => item.section === "Available").length,
-		unloaded: packages.filter((item) => item.section === "Unloaded").length,
+		installed: packageItems.filter((item) => item.section === "Installed").length,
+		disabled: packageItems.filter((item) => item.section === "Disabled").length,
+		available: packageItems.filter((item) => item.section === "Available").length,
+		unloaded: packageItems.filter((item) => item.section === "Unloaded").length,
 	};
 }
 
-function dashboardSummary(packages: DashboardPackage[]): string {
+function dashboardSummary(packages: DashboardItem[]): string {
 	const counts = dashboardCounts(packages);
 	return `${counts.installed} installed · ${counts.disabled} disabled · ${counts.available} available · ${counts.unloaded} unloaded`;
 }
 
-function dashboardPickerTitle(packages: DashboardPackage[]): string {
+function dashboardPickerTitle(packages: DashboardItem[]): string {
 	const counts = dashboardCounts(packages);
 	return `Loadout: ${counts.installed} installed | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
 }
@@ -175,10 +229,12 @@ function stateTone(section: DashboardSection): CheckboxPickerTone {
 	if (section === "Installed") return "green";
 	if (section === "Disabled") return "mutedGreen";
 	if (section === "Available") return "warning";
+	if (section === "Saved") return "accent";
 	return "muted";
 }
 
 function stateIcon(section: DashboardSection): string {
+	if (section === "Saved") return "◆";
 	if (section === "Installed") return "✓";
 	if (section === "Disabled") return "–";
 	if (section === "Unloaded") return "◇";
@@ -191,34 +247,37 @@ function stateLabel(section: DashboardSection): string {
 	return section;
 }
 
-function selectionMarker(item: DashboardPackage): string {
+function selectionMarker(item: DashboardItem): string {
 	return item.disabled ? "   " : "[ ]";
 }
 
-function dashboardLine(item: DashboardPackage, labelWidth: number): string {
+function dashboardLine(item: DashboardItem, labelWidth: number): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
-	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${item.displaySource}`;
+	const value = item.type === "saved" ? item.value : item.displaySource;
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
 }
 
-function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
+function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[]): string {
 	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
+		if (section === "Saved" && sectionItems.length === 0) continue;
 		lines.push(section, "-".repeat(section.length));
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
-		"Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Controls: Space selects · Enter applies/runs · r removes installed/disabled · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
 	return lines.join("\n");
 }
 
-function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardPackage): DashboardAction | undefined {
+function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardItem): DashboardAction | undefined {
+	if (item.type !== "package") return undefined;
 	if (action === "confirm") {
 		if (item.section === "Available") return "Install";
 		if (item.section === "Installed") return "Disable";
@@ -230,7 +289,7 @@ function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardPack
 }
 
 function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
-	if (action === "confirm") return ["No Construct package changes were selected.", "Select Installed, Disabled, or Available packages, then press Enter.", "Unloaded rows are read-only here; use /construct load to load them into Construct."];
+	if (action === "confirm") return ["No Construct package changes were selected.", "Select Saved, Installed, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to load them into Construct."];
 	return [
 		"No installed project packages were selected to remove.",
 		"Select Installed or Disabled packages, then press r.",
@@ -243,9 +302,9 @@ function resultError(result: { error?: string; stderr?: string; exitCode?: numbe
 	return result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
 }
 
-function removeConfirmationFor(packages: DashboardPackage[], ids: string[]): CheckboxPickerConfirmation | undefined {
+function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
 	const selected = new Set(ids);
-	const removable = packages.filter((item) => selected.has(item.id) && (item.section === "Installed" || item.section === "Disabled"));
+	const removable = packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.id) && (item.section === "Installed" || item.section === "Disabled"));
 	if (removable.length === 0) return undefined;
 	const preview = removable.slice(0, 8).map((item) => `- ${item.label}: ${item.source}`);
 	const extra = removable.length > preview.length ? [`…and ${removable.length - preview.length} more`] : [];
@@ -263,6 +322,37 @@ function removeConfirmationFor(packages: DashboardPackage[], ids: string[]): Che
 	};
 }
 
+function operationFromPackage(item: DashboardPackage): DashboardOperationItem {
+	return { id: item.id, label: item.label, source: item.source, displaySource: item.displaySource, managed: item.managed };
+}
+
+function operationFromSource(source: string): DashboardOperationItem {
+	return { id: deriveId(source), label: deriveId(source), source, displaySource: compactSource(source) };
+}
+
+function packageMatchesSource(item: DashboardPackage, source: string): boolean {
+	return item.source === source || item.matchSources.includes(source);
+}
+
+function packageStateRank(section: PackageDashboardSection): number {
+	if (section === "Installed") return 0;
+	if (section === "Disabled") return 1;
+	if (section === "Unloaded") return 2;
+	return 3;
+}
+
+function findPackageForSavedSource(packages: DashboardPackage[], source: string): DashboardPackage | undefined {
+	return packages.filter((item) => packageMatchesSource(item, source)).sort((a, b) => packageStateRank(a.section) - packageStateRank(b.section))[0];
+}
+
+function actionForSavedSource(item: DashboardPackage | undefined): DashboardAction | undefined {
+	if (!item) return "Install";
+	if (item.section === "Installed") return undefined;
+	if (item.section === "Disabled") return "Enable";
+	if (item.section === "Available") return "Install";
+	return item.disabledByFilters ? "Enable" : undefined;
+}
+
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
@@ -273,7 +363,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerItems: CheckboxPickerItem[] = packages.map((item) => ({
 		id: item.id,
 		label: item.label,
-		value: item.displaySource,
+		value: item.type === "saved" ? item.value : item.displaySource,
 		description: item.description,
 		section: item.section,
 		sectionTone: sectionTone(item.section),
@@ -287,28 +377,51 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
-		confirmHint: "Enter applies",
-		filterLabel: "Filter packages",
-		filterHint: "Type to narrow by package, source, or state · Backspace edits",
+		confirmHint: "Enter applies/runs",
+		filterLabel: "Filter loadouts/packages",
+		filterHint: "Type to narrow by saved loadout, package, source, or state · Backspace edits",
 		stateLegend: [
 			{ icon: "[x]", label: "selected", tone: "muted" },
+			{ icon: "◆", label: "saved", tone: "accent" },
 			{ icon: "✓", label: "active", tone: "green" },
 			{ icon: "–", label: "disabled", tone: "mutedGreen" },
 			{ icon: "+", label: "available", tone: "warning" },
 			{ icon: "◇", label: "unloaded", tone: "muted" },
 		],
-		footerHint: "  Space selects · Enter applies · r removes installed/disabled · Esc cancels",
+		footerHint: "  Space selects · Enter applies/runs · r removes installed/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {
 			const selected = new Set(ids);
+			const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
+			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.id)) : [];
 			const steps: DashboardStep[] = [];
-			for (const item of packages) {
+			const scheduled = new Set<string>();
+			function addStep(action: DashboardAction, item: DashboardOperationItem): void {
+				const key = `${action}:${item.source}`;
+				if (scheduled.has(key)) return;
+				scheduled.add(key);
+				steps.push({ action, item, state: "pending" });
+			}
+			for (const item of packageItems) {
 				if (item.disabled || !selected.has(item.id)) continue;
 				const action = actionForSubmit(submitAction, item);
-				if (action) steps.push({ action, item, state: "pending" });
+				if (action) addStep(action, operationFromPackage(item));
+			}
+			for (const saved of selectedSaved) {
+				for (const source of saved.sources) {
+					const matchingPackage = findPackageForSavedSource(packageItems, source);
+					const action = actionForSavedSource(matchingPackage);
+					if (action) addStep(action, matchingPackage ? operationFromPackage(matchingPackage) : operationFromSource(source));
+				}
 			}
 			if (steps.length === 0) {
+				if (selectedSaved.length > 0) {
+					return {
+						title: "Saved loadout already active",
+						lines: [`Selected saved loadouts: ${selectedSaved.length}`, "No package changes were needed in this project."],
+					};
+				}
 				return { title: "No Construct package changes selected", lines: noChangeLines(submitAction) };
 			}
 
@@ -317,8 +430,8 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				return { title: "Construct Loadout cancelled", lines: ["No files were changed."] };
 			}
 
-			const completed: Array<{ action: DashboardAction; item: DashboardPackage }> = [];
-			const partialRuntimeChanges: Array<{ action: DashboardAction; item: DashboardPackage; error: string }> = [];
+			const completed: Array<{ action: DashboardAction; item: DashboardOperationItem }> = [];
+			const partialRuntimeChanges: Array<{ action: DashboardAction; item: DashboardOperationItem; error: string }> = [];
 			const failures: string[] = [];
 			let needsReload = false;
 
@@ -380,6 +493,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				confirmAction: needsReload ? "reload" : undefined,
 				lines: [
 					cancelled ? "Cancelled before remaining changes." : undefined,
+					selectedSaved.length > 0 ? `Saved loadouts selected: ${selectedSaved.map((item) => item.label).join(", ")}` : undefined,
 					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
 					...installed.map((item) => `+ ${item.label}: ${item.source}`),
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,

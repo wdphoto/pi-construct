@@ -14,7 +14,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "profile", "profiles", "autoload"];
+			const commands = ["status", "load", "unload", "save", "saved", "run", "copy", "import", "profile", "profiles", "autoload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -46,6 +46,31 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			if (command === "save") {
+				await handleProfile(pi, `save ${rest}`.trim(), ctx);
+				return;
+			}
+
+			if (command === "saved") {
+				await handleProfile(pi, "list", ctx);
+				return;
+			}
+
+			if (command === "run") {
+				await handleProfile(pi, `run ${rest}`.trim(), ctx);
+				return;
+			}
+
+			if (command === "copy") {
+				await handleProfile(pi, `copy ${rest}`.trim(), ctx);
+				return;
+			}
+
+			if (command === "import") {
+				await handleProfile(pi, `import ${rest}`.trim(), ctx);
+				return;
+			}
+
 			if (command === "profile" || command === "profiles") {
 				await handleProfile(pi, rest, ctx);
 				return;
@@ -62,7 +87,11 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct load [id-or-source ...]",
 					"- /construct unload [id-or-source ...]",
 					"- /construct autoload [on|off|status]",
-					"- /construct profile list|save|apply <name>",
+					"- /construct save <name>",
+					"- /construct saved",
+					"- /construct run <saved-name>",
+					"- /construct copy [saved-name]",
+					"- /construct import <json>",
 				].join("\n"),
 			);
 		},

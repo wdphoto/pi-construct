@@ -6,6 +6,21 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Added `/construct save <name>`, `/construct saved`, and `/construct run <saved-name>` as the public saved-loadout command language.
+- Added saved-loadout rows to the main `/construct` dashboard.
+- Added `/construct copy [saved-name]` to print a shareable saved-loadout JSON snippet.
+- Added `/construct import <json>` to validate and preview saved-loadout snippets, with TUI confirmation before writing.
+- Added `docs/profiles-and-sharing-plan.md` to capture saved-loadout and sharing decisions.
+
+### Changed
+- Profile save now skips disabled resources and, in TUI, can offer active project resources not loaded into Construct for optional loading/inclusion before saving.
+- Saving over an existing loadout now asks before replacing in TUI and refuses replacement in non-TUI.
+- User-facing docs now prefer saved loadout/saved wording while keeping profile commands as compatibility aliases.
+- `/construct run <saved-name>` now uses the dashboard-style TUI progress/result/reload panel.
+- Selecting saved loadouts in `/construct` runs them through the same package operation flow as package rows, while avoiding duplicate package operations for repeated sources.
+- Copy/import output warns for local path sources and refuses generated Pi package cache paths or source strings that look like secrets.
+
 ## 0.0.12 - 2026-06-21
 
 ### Added

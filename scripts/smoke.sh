@@ -175,7 +175,7 @@ UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
 RELOAD_OUTPUT="$(run_pi '/construct reload')"
 [[ "$RELOAD_OUTPUT" == *"Unknown /construct subcommand: reload"* ]]
 RUN_OUTPUT="$(run_pi '/construct run')"
-[[ "$RUN_OUTPUT" == *"Unknown /construct subcommand: run"* ]]
+[[ "$RUN_OUTPUT" == *"Usage: /construct run <saved-name>"* ]]
 DASHBOARD_ALIAS_OUTPUT="$(run_pi '/construct dashboard')"
 [[ "$DASHBOARD_ALIAS_OUTPUT" == *"Unknown /construct subcommand: dashboard"* ]]
 

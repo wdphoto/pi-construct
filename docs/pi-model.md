@@ -42,3 +42,7 @@ Construct should generate and manage the same files a careful Pi user would writ
 
 Construct's value is not a new resource system. Its value is packaging these idioms into a friendly "load this workflow into this project" experience.
 
+## Construct resource coverage target
+
+Construct should cover the native Pi project resource kinds Pi already understands: packages, extensions, skills, prompt templates, and themes. Direct resources should be managed through the same settings arrays and `+path` / `-path` filters that Pi uses, while packages remain the preferred portable/shareable unit for reusable workflows.
+

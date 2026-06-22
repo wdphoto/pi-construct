@@ -104,7 +104,7 @@ Current answers:
 
 - A package with all resource arrays set to `[]` is shown as `Disabled`.
 - `/construct load` can still adopt disabled package declarations as package declarations; broader disabled-specific load UX can be refined later.
-- Profile apply still resets toward enabled/current behavior and can be revisited separately.
+- Saved-loadout run still resets toward enabled/current behavior and can be revisited separately.
 - Dashboard Enter applies the obvious state change for actionable rows: install Available, disable Installed, or enable Disabled. Unloaded rows are read-only there; `/construct load` adopts them. `r` explicitly confirms and removes Installed or Disabled project package declarations.
 - Status/drift distinguishes “disabled by package filters” from “missing from .pi/settings.json”.
 
@@ -150,7 +150,7 @@ Avoid adding broad resource-management commands such as:
 - update/remove resource families
 - a general resource browser
 
-Those belong to Pi config or a resource-center style package. Construct's product lane remains loadouts, profiles, sharing, and known-project context.
+Those belong to Pi config or a resource-center style package. Construct's product lane remains loadouts, saved loadouts, sharing, and known-project context.
 
 ## Current recommendation
 

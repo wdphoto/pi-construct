@@ -119,7 +119,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		"",
 		"Loadout",
 		"-------",
-		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "profile")}`,
+		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "saved loadout")}`,
 		`Known projects: ${data.knownProjects.data.projects.length}`,
 		`Project packages: ${data.packages.length}`,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
@@ -151,7 +151,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 
 function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): string {
 	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
-	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} packages`);
+	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} resources`);
 	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
 	const commandCounts = data.commands.reduce<Record<string, number>>((acc, command) => {
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
@@ -184,8 +184,8 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		`Known-project index: ${describeRead(data.userProjects)}`,
 		`Library items: ${data.catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
-		`Profiles: ${data.catalog.data.profiles.length}`,
-		...formatList(profilePreview, "no profiles saved"),
+		`Saved loadouts: ${data.catalog.data.profiles.length}`,
+		...formatList(profilePreview, "no saved loadouts"),
 		...data.catalog.warnings.map((warning) => `! ${warning}`),
 		`Known projects: ${data.knownProjects.data.projects.length}`,
 		...formatList(knownProjectPreview, "no known projects indexed"),

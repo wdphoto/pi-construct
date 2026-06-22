@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `load`, `unload`, `autoload`, and WIP `profile`.
+- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `saved`, and `run`.
 - No startup prompt/write/adoption behavior; opt-in autoload remains confirmation-only and checks on quit.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -21,9 +21,19 @@ Protect the manual product model:
 /construct load [id-or-source ...]
 /construct unload [id-or-source ...]
 /construct autoload
-/construct profile list          # WIP, not public yet
-/construct profile save <name>   # WIP, not public yet
-/construct profile apply <name>  # WIP, not public yet
+/construct save <name>
+/construct saved
+/construct run <saved-name>
+/construct copy [saved-name]
+/construct import <json>
+```
+
+Compatibility aliases:
+
+```text
+/construct profile list
+/construct profile save <name>
+/construct profile apply <name>
 ```
 
 ## New-project behavior
@@ -50,7 +60,7 @@ Expected:
 
 - `/construct unload` asks in TUI mode.
 - `/construct unload <id-or-source ...>` removes matching resources from the Construct library.
-- Unload prunes matching profile entries and current-project Construct metadata.
+- Unload prunes matching saved-loadout entries and current-project Construct metadata.
 - Unload does not remove package declarations from `.pi/settings.json`.
 - Unload does not uninstall project packages.
 
@@ -66,30 +76,44 @@ Expected:
 - Autoload requires confirmation before writing.
 - Autoload does not install, enable, execute, reload, or alter `.pi/settings.json`.
 
-## Profiles
+## Saved loadouts
 
 Expected:
 
-- Profile commands remain WIP in public copy.
-- `/construct profile save <name>` saves active Construct-managed package sources from the current project.
-- `/construct profile list` shows saved profiles.
-- `/construct profile apply <name>` turns those package sources on in the current project.
-- Profiles are stored in `~/.pi/agent/construct/catalog.json`.
-- Profiles store ids/sources, not package code.
+- `/construct save <name>` saves active Construct resources from the current project.
+- Disabled resources are skipped.
+- In TUI, active resources not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
+- Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
+- `/construct saved` lists saved loadouts.
+- `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
+- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it in the current project.
+- `/construct copy [saved-name]` prints a JSON snippet and warns for local paths.
+- `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
+- Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
+- Saved loadouts store ids/sources, not package code or scripts.
+
+Manual TUI import write check:
+
+1. Use a disposable `HOME` and project.
+2. Run `/construct import '{"kind":"construct-loadout","version":1,"name":"shared","sources":["npm:example"]}'`.
+3. Verify the preview appears before any write.
+4. Press Enter to import.
+5. Verify `~/.pi/agent/construct/catalog.json` contains the imported saved loadout and source.
+6. Verify the current project's `.pi/settings.json` was not created or edited.
 
 ## Dashboard safety
 
 Check in real TUI usage:
 
 - fuzzy search works;
-- Space selects package rows;
-- Enter installs Available, disables Installed, and enables Disabled rows;
+- Space selects saved-loadout and package rows;
+- Enter runs Saved rows, installs Available, disables Installed, and enables Disabled rows;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
 - `r` shows a warning, then removes selected Installed or Disabled package declarations;
 - Esc cancels;
 - package rows stay primary;
 - live TUI title uses the quiet `Loadout:` count format;
-- row text stays plain, section headings use accent/heading color, and only state icons carry color: active green, disabled muted green, available yellow, unloaded gray;
+- row text stays plain, section headings use accent/heading color, and only state icons carry color: saved accent, active green, disabled muted green, available yellow, unloaded gray;
 - Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;
@@ -103,7 +127,7 @@ Before adding new behavior, ask:
 - Does every mutating path require explicit user action?
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
-- Do profiles still store only library ids/sources and apply explicitly?
+- Do saved loadouts still store only library ids/sources and run explicitly?
 - Is Enter still the fastest safe path for common install/disable/enable actions?
 - Is `/construct load` still the only adoption path for Unloaded rows?
 

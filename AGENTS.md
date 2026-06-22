@@ -44,8 +44,9 @@ Core loop:
    pi install <source> -l --approve
    ```
 2. Run `/construct load` to add those project resources to the Construct library.
-3. In another project, run `/construct` to enable/disable remembered resources.
-4. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
+3. Optionally run `/construct save <name>` to save the active Construct resource grouping.
+4. In another project, run `/construct` or `/construct run <name>` to enable remembered resources.
+5. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
 
 Important files:
 
@@ -68,11 +69,21 @@ Support commands:
 - `/construct load`
 - `/construct unload`
 - `/construct autoload`
-- `/construct profile list` (WIP)
-- `/construct profile save <name>` (WIP)
-- `/construct profile apply <name>` (WIP)
+- `/construct save <name>`
+- `/construct saved`
+- `/construct run <saved-name>`
+- `/construct copy [saved-name]`
+- `/construct import <json>`
+
+Compatibility aliases:
+
+- `/construct profile list`
+- `/construct profile save <name>`
+- `/construct profile apply <name>`
 
 Use Pi's normal `/reload` after loadout changes. Do not advertise or re-add `/construct reload`; dashboard Enter can call `ctx.reload()` internally.
+
+`/construct run <saved-name>` is the explicit product-approved command for applying a saved loadout. Do not use `/construct run` as a dashboard alias.
 
 Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `remove`, `on`, `off`, `wipe`, or `reload` command paths without an explicit product decision.
 
@@ -80,17 +91,22 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 
 - `/construct` opens the Construct Loadout dashboard.
 - Dashboard TUI title stays quiet: `Loadout: N installed | N disabled | N available | N unloaded`.
-- Dashboard row text stays plain; only the state icon column is colored: Installed/active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
+- Dashboard row text stays plain; only the state icon column is colored: Saved is accent, Installed/active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
 - `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata.
-- `/construct unload` removes resources from the Construct library/profile refs/current-project metadata only.
+- `/construct unload` removes resources from the Construct library/saved-loadout refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`.
 - Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It can prompt for new `.pi/settings.json` package declarations during a session and still scans on quit.
-- Profiles exist but remain WIP in public docs.
+- Saved loadouts are named groups of active Construct resources. `profile` is mostly the internal catalog term.
+- `/construct save <name>` includes active Construct resources, skips disabled resources, and in TUI offers active unloaded resources for optional loading/inclusion.
+- Saving over an existing loadout never appends or merges; TUI asks before replacing.
+- `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.
+- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it through the dashboard progress/result/reload flow.
 - Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
-- `/construct copy` is a decided goal: print a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers. Plan for a matching import flow with preview/confirmation.
+- `/construct copy [saved-name]` prints a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers.
+- `/construct import <json>` validates and previews pasted snippets; TUI asks before writing, non-TUI previews only.
 
 ## Safety rules
 
