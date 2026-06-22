@@ -6,6 +6,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.12 - 2026-06-21
+
 ### Added
 - Added transparent `/construct autoload` session watching: when autoload is on in a trusted TUI project, Construct watches `.pi/settings.json`, waits for Pi to be idle, and asks before loading newly declared compatible packages into Construct.
 - Added `docs/autoload-transparency.md` to document watcher mechanics, expected cost, security posture, caveats, and UX improvements.
