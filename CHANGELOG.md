@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Changed
+- Clarified README saved-loadout recipe update and removal behavior.
+
 ## 0.0.14 - 2026-06-22
 
 ### Changed

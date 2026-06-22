@@ -85,10 +85,18 @@ Or open the load picker for all unloaded project declarations:
 /construct load
 ```
 
-Save the active Construct package sources as a named loadout:
+Save the active Construct package sources as a named loadout recipe:
 
 ```text
 /construct save web-stack
+```
+
+To update that recipe later, make the desired package sources active and save the same name again. Construct replaces the saved recipe; it does not append or merge.
+
+To delete only the saved recipe:
+
+```text
+/construct remove web-stack
 ```
 
 In another project, run that saved loadout:
@@ -125,7 +133,7 @@ Notes:
 
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
-- `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
+- `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. Saving an existing name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
