@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js"
 import { isObject, readJson } from "../json.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
-import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction } from "../ui.js";
+import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 import { disablePackageResourcesInProject, enablePackageResourcesInProject, loadPackageIntoProject, removePackageFromProject } from "../package-ops.js";
 
 type DashboardSection = "Installed" | "Disabled" | "Available" | "Unloaded";
@@ -20,7 +20,6 @@ interface DashboardPackage {
 	section: DashboardSection;
 	checked: boolean;
 	disabled?: boolean;
-	marker?: string;
 	description?: string;
 	managed?: boolean;
 	disabledByFilters?: boolean;
@@ -138,7 +137,6 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Unloaded",
 			checked: false,
 			disabled: true,
-			marker: "[u]",
 			disabledByFilters: pkg.disabledByFilters,
 			description: pkg.disabledByFilters
 				? "Read-only here. Installed in this project and disabled by filters, but not loaded into Construct yet. Run /construct load to load it into Construct."
@@ -150,30 +148,73 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	return { paths, packages, warnings };
 }
 
-function dashboardSummary(packages: DashboardPackage[]): string {
-	const installed = packages.filter((item) => item.section === "Installed").length;
-	const disabled = packages.filter((item) => item.section === "Disabled").length;
-	const available = packages.filter((item) => item.section === "Available").length;
-	const unloaded = packages.filter((item) => item.section === "Unloaded").length;
-	return `${installed} installed · ${disabled} disabled · ${available} available · ${unloaded} unloaded`;
+function dashboardCounts(packages: DashboardPackage[]): { installed: number; disabled: number; available: number; unloaded: number } {
+	return {
+		installed: packages.filter((item) => item.section === "Installed").length,
+		disabled: packages.filter((item) => item.section === "Disabled").length,
+		available: packages.filter((item) => item.section === "Available").length,
+		unloaded: packages.filter((item) => item.section === "Unloaded").length,
+	};
 }
 
-function printMarker(item: DashboardPackage): string {
-	if (item.section === "Installed") return "[x]";
-	if (item.section === "Disabled") return "[-]";
-	if (item.section === "Unloaded") return "[u]";
-	return "[ ]";
+function dashboardSummary(packages: DashboardPackage[]): string {
+	const counts = dashboardCounts(packages);
+	return `${counts.installed} installed · ${counts.disabled} disabled · ${counts.available} available · ${counts.unloaded} unloaded`;
+}
+
+function dashboardPickerTitle(packages: DashboardPackage[]): string {
+	const counts = dashboardCounts(packages);
+	return `Loadout: ${counts.installed} installed | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
+}
+
+function sectionTone(_section: DashboardSection): CheckboxPickerTone {
+	return "accent";
+}
+
+function stateTone(section: DashboardSection): CheckboxPickerTone {
+	if (section === "Installed") return "green";
+	if (section === "Disabled") return "mutedGreen";
+	if (section === "Available") return "warning";
+	return "muted";
+}
+
+function stateIcon(section: DashboardSection): string {
+	if (section === "Installed") return "✓";
+	if (section === "Disabled") return "–";
+	if (section === "Unloaded") return "◇";
+	return "+";
+}
+
+function stateLabel(section: DashboardSection): string {
+	if (section === "Installed") return "Active";
+	if (section === "Unloaded") return "Unloaded";
+	return section;
+}
+
+function selectionMarker(item: DashboardPackage): string {
+	return item.disabled ? "   " : "[ ]";
+}
+
+function dashboardLine(item: DashboardPackage, labelWidth: number): string {
+	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${item.displaySource}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardPackage[], warnings: string[]): string {
 	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		lines.push(section, "-".repeat(section.length));
-		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => `${printMarker(item)} ${item.label}  ${item.displaySource}`) : ["- none"]), "");
+		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
-	lines.push("TUI controls: Space selects · Enter applies · r removes · Esc cancels.", "", "Run /construct load to add new project-level resources to the Construct.");
+	lines.push(
+		"Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.",
+		"",
+		"Run /construct load to add unloaded resources to the Construct.",
+	);
 	return lines.join("\n");
 }
 
@@ -235,14 +276,28 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		value: item.displaySource,
 		description: item.description,
 		section: item.section,
+		sectionTone: sectionTone(item.section),
 		checked: false,
 		disabled: item.disabled,
-		marker: item.marker,
+		stateIcon: stateIcon(item.section),
+		stateLabel: stateLabel(item.section),
+		stateText: stateIcon(item.section),
+		stateTone: stateTone(item.section),
 	}));
-	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
+	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
+		titleBold: false,
 		confirmHint: "Enter applies",
-		footerHint: "  Type to filter · Space selects · Enter applies · r removes · Esc cancels",
+		filterLabel: "Filter packages",
+		filterHint: "Type to narrow by package, source, or state · Backspace edits",
+		stateLegend: [
+			{ icon: "[x]", label: "selected", tone: "muted" },
+			{ icon: "✓", label: "active", tone: "green" },
+			{ icon: "–", label: "disabled", tone: "mutedGreen" },
+			{ icon: "+", label: "available", tone: "warning" },
+			{ icon: "◇", label: "unloaded", tone: "muted" },
+		],
+		footerHint: "  Space selects · Enter applies · r removes installed/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {
@@ -263,7 +318,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			}
 
 			const completed: Array<{ action: DashboardAction; item: DashboardPackage }> = [];
+			const partialRuntimeChanges: Array<{ action: DashboardAction; item: DashboardPackage; error: string }> = [];
 			const failures: string[] = [];
+			let needsReload = false;
 
 			function progressLines(): string[] {
 				const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
@@ -290,34 +347,37 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 						: step.action === "Disable"
 							? await disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
 							: await removePackageFromProject(pi, paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
+				if (result.needsReload) needsReload = true;
 				if (result.ok) {
 					completed.push({ action: step.action, item: step.item });
 					step.state = "done";
 				} else {
 					step.state = "failed";
 					step.error = resultError(result);
-					failures.push(`${step.item.id}: ${step.error}`);
+					if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ action: step.action, item: step.item, error: step.error });
+					else failures.push(`${step.item.id}: ${step.error}`);
 				}
 				update("Applying Construct Loadout", progressLines());
 			}
 
-			const appliedChanges = completed.length;
+			const appliedChanges = completed.length + partialRuntimeChanges.length;
 			const cancelled = signal.aborted;
 			const byAction = (action: DashboardAction) => completed.filter((step) => step.action === action).map((step) => step.item);
 			const installed = byAction("Install");
 			const enabled = byAction("Enable");
 			const disabled = byAction("Disable");
 			const removed = byAction("Remove");
+			const hasErrors = failures.length > 0 || partialRuntimeChanges.length > 0;
 			return {
 				title: cancelled
 					? appliedChanges > 0
 						? "Construct Loadout cancelled after partial changes"
 						: "Construct Loadout cancelled"
-					: failures.length > 0
+					: hasErrors
 						? "Construct Loadout applied with errors"
 						: "Construct Loadout changes applied",
-				confirmHint: appliedChanges > 0 ? "Press Enter to reload Pi · Esc returns to session" : "Press Enter/Esc to return to session",
-				confirmAction: appliedChanges > 0 ? "reload" : undefined,
+				confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+				confirmAction: needsReload ? "reload" : undefined,
 				lines: [
 					cancelled ? "Cancelled before remaining changes." : undefined,
 					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
@@ -328,6 +388,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 					...disabled.map((item) => `- ${item.label}: ${item.source}`),
 					removed.length > 0 ? `Removed from project: ${removed.length}` : undefined,
 					...removed.map((item) => `- ${item.label}: ${item.source}`),
+					partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
+					...partialRuntimeChanges.map((change) => `! ${change.action} ${change.item.label}: ${change.error}`),
+					partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
 					failures.length > 0 ? `Failures: ${failures.length}` : undefined,
 					...failures.map((failure) => `! ${failure}`),
 				].filter((line): line is string => line !== undefined),

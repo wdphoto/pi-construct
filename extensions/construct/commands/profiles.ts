@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
-import { deriveId, findCatalogItem, loadCatalog, parseCatalog, addSourcesToCatalog } from "../catalog.js";
+import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
@@ -16,6 +16,12 @@ function profileId(name: string): string {
 
 function findProfile(catalog: CatalogData, query: string): CatalogProfile | undefined {
 	return catalog.profiles.find((profile) => profile.id === query || profile.name === query);
+}
+
+function profileSources(catalog: CatalogData, profile: CatalogProfile): string[] {
+	return profile.sources.length > 0
+		? profile.sources
+		: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string");
 }
 
 function usage(): string {
@@ -73,7 +79,13 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct profile save");
 
-	const load = await addSourcesToCatalog(ctx, sources);
+	const currentSources = await activeManagedSources(paths);
+	if (currentSources.length === 0) {
+		showText(ctx, "Construct profile not saved. No active Construct-managed packages found after waiting for Pi to become idle.");
+		return;
+	}
+
+	const load = await addSourcesToCatalog(ctx, currentSources);
 	const remembered = await rememberKnownProject(ctx);
 	if (remembered.warning) load.warnings.push(remembered.warning);
 	if (load.warnings.length > 0) {
@@ -87,7 +99,7 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		return;
 	}
 
-	const items = sources.map((source) => findCatalogItem(catalog.items, source)?.id ?? deriveId(source));
+	const items = currentSources.map((source) => findCatalogItem(catalog.items, source)?.id ?? deriveId(source));
 	const id = profileId(name);
 	const now = new Date().toISOString();
 	const existing = findProfile(catalog, id);
@@ -97,13 +109,13 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		name: name.trim(),
 		kind: "profile",
 		items,
-		sources,
+		sources: currentSources,
 		updatedAt: now,
 		createdAt: typeof existing?.createdAt === "string" ? existing.createdAt : now,
 	};
 	const profiles = [...catalog.profiles.filter((profile) => profile.id !== id), nextProfile].sort((a, b) => a.id.localeCompare(b.id));
 	await writeJson(catalogPaths.userCatalogPath, { ...catalog, version: 1, profiles });
-	await showSummary(ctx, [`Construct profile saved: ${id}`, `Packages: ${sources.length}`, ...sources.map((source) => `- ${source}`)].join("\n"));
+	await showSummary(ctx, [`Construct profile saved: ${id}`, `Packages: ${currentSources.length}`, ...currentSources.map((source) => `- ${source}`)].join("\n"));
 }
 
 async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
@@ -122,9 +134,7 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 		showText(ctx, `Construct profile not found: ${query.trim()}`);
 		return;
 	}
-	const sources = profile.sources.length > 0
-		? profile.sources
-		: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string");
+	let sources = profileSources(catalog, profile);
 	if (sources.length === 0) {
 		showText(ctx, `Construct profile has no package sources: ${profile.id}`);
 		return;
@@ -132,16 +142,39 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct profile apply");
 
+	const fresh = await loadCatalog(ctx);
+	if (fresh.warnings.length > 0) {
+		showText(ctx, ["Construct profile apply failed.", ...fresh.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		return;
+	}
+	const currentProfile = findProfile(fresh.catalog, profile.id) ?? findProfile(fresh.catalog, query.trim());
+	if (!currentProfile) {
+		showText(ctx, `Construct profile not found after waiting for Pi to become idle: ${profile.id}`);
+		return;
+	}
+	sources = profileSources(fresh.catalog, currentProfile);
+	if (sources.length === 0) {
+		showText(ctx, `Construct profile has no package sources: ${currentProfile.id}`);
+		return;
+	}
+
 	const loaded: Array<{ source: string; item?: CatalogItem }> = [];
+	const partialRuntimeChanges: Array<{ source: string; item?: CatalogItem; error: string }> = [];
 	const failures: string[] = [];
+	let needsReload = false;
 	let progress = 0;
 	try {
 		for (const source of sources) {
-			const item = findCatalogItem(catalog.items, source);
+			const item = findCatalogItem(fresh.catalog.items, source);
 			setConstructStatus(ctx, progressStatus("loading", ++progress, sources.length, item?.id ?? deriveId(source)));
 			const result = await loadPackageIntoProject(pi, paths, { source, item });
+			if (result.needsReload) needsReload = true;
 			if (result.ok) loaded.push({ source, item });
-			else failures.push(`${item?.id ?? deriveId(source)}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+			else {
+				const error = result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
+				if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ source, item, error });
+				else failures.push(`${item?.id ?? deriveId(source)}: ${error}`);
+			}
 		}
 	} finally {
 		setConstructStatus(ctx, undefined);
@@ -149,12 +182,17 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 	await showSummary(
 		ctx,
 		[
-			`Construct profile applied: ${profile.id}`,
-			`Turned on: ${loaded.length}/${sources.length}`,
+			`Construct profile applied: ${currentProfile.id}`,
+			`Turned on: ${loaded.length + partialRuntimeChanges.length}/${sources.length}`,
 			...loaded.map(({ source, item }) => `+ ${item?.id ?? deriveId(source)}: ${source}`),
+			partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
+			...partialRuntimeChanges.map(({ source, item, error }) => `! ${item?.id ?? deriveId(source)}: ${error}`),
+			partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
 			...failures.map((failure) => `! ${failure}`),
-			"Reload Pi resources with /reload when ready.",
-		].join("\n"),
+			needsReload ? "Reload Pi resources with /reload when ready." : "No reload needed; no package settings changed.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
 	);
 }
 

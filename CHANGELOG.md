@@ -6,6 +6,23 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Added transparent `/construct autoload` session watching: when autoload is on in a trusted TUI project, Construct watches `.pi/settings.json`, waits for Pi to be idle, and asks before loading newly declared compatible packages into Construct.
+- Added `docs/autoload-transparency.md` to document watcher mechanics, expected cost, security posture, caveats, and UX improvements.
+
+### Changed
+- Construct JSON writes now use temp-file-and-rename atomic writes to reduce the chance of truncated JSON after interrupted writes.
+- Kept autoload explicit and confirmation-only; it still never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
+- Quit-time autoload now labels disabled package declarations in its confirmation prompt and preserves their disabled metadata when loading them into Construct.
+- Updated the `/construct` dashboard row grammar to separate selection from state: `[x]` marks selected rows, while compact color-coded `✓`, `–`, `+`, and `◇` icons show current state.
+- Improved the TUI filter area with an explicit `Filter packages:` label and hint text.
+- Removed trailing per-row action hints from the dashboard to keep rows narrow and avoid implying Enter is the only possible action.
+- Kept `Unloaded` as the user-facing term for project declarations that are not in Construct; `/construct load` remains the adoption path.
+- Dashboard/profile package operations now distinguish metadata-only failures from no-op failures, so runtime-affecting partial changes still get reload guidance.
+- Re-read project/library/profile state after idle waits in load, unload, profile, and package install flows to reduce stale-snapshot overwrites.
+- Simplified the dashboard TUI title to a quiet `Loadout:` count line with pipe separators.
+- Tuned dashboard TUI colors: headings use accent color, active icons use a clearer green, disabled icons use muted green, available icons stay yellow, and unloaded icons stay gray.
+
 ## 0.0.11 - 2026-06-21
 
 ### Added

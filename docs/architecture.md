@@ -14,7 +14,8 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
    - Uses selected rows plus one fast normal action and one destructive action rather than treating checkboxes as current package state.
    - Enter applies the obvious state change for actionable rows: install Available, disable Installed, or enable Disabled.
    - `r` asks for confirmation, then removes selected Installed or Disabled project package declarations.
-   - Keeps Unloaded rows clearly labeled as read-only project declarations not yet loaded into Construct; `/construct load` is the adoption path.
+   - Keeps Unloaded rows clearly labeled as project declarations not yet loaded into Construct; `/construct load` is the adoption path.
+   - In TUI mode, keeps the title quiet (`Loadout: ...`), row text plain, and color limited to the state icon column: active green, disabled muted green, available yellow, unloaded gray.
 
 3. **Package operation layer**
    - Loads available sources with Pi's native project-local install path:
@@ -29,6 +30,7 @@ Construct is a global Pi extension / Pi package with one primary command: `/cons
      ```
    - Falls back to conservative `.pi/settings.json` edits only when needed.
    - Backs up `.pi/settings.json` before direct edits.
+   - Re-reads relevant project/Construct JSON after idle waits or long-running package operations before merging metadata.
 
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
@@ -125,13 +127,18 @@ Rules:
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Read-only commands must not create this file.
 
+## Write behavior
+
+Construct writes JSON through a shared helper that writes a complete temporary file in the same directory, flushes it, then renames it over the target. Direct `.pi/settings.json` edits still create a timestamped backup first.
+
 ## Related design notes
 
 - `docs/pi-config-and-construct.md` explains how Construct differs from Pi's native `pi config` resource toggles and records the filter-based disarm direction.
 - `docs/package-disable-design.md` records the disable/disarm package action model while keeping Construct's own menu.
+- `docs/autoload-transparency.md` records autoload watcher mechanics, cost, caveats, and future UX improvements.
 
 ## Lifecycle behavior
 
-Construct has no startup behavior. It does not prompt, load, install, reload, or write files just because Pi starts.
+Construct does not open menus, install packages, reload Pi, or write files just because Pi starts.
 
-Autoload is an explicit opt-in shutdown behavior. When enabled, it may prompt on session quit only, and it must confirm before writing Construct library/metadata files.
+Autoload is explicit opt-in behavior. Its reliable baseline is the session-quit scan: when enabled in a trusted TUI project, Construct can ask before loading unloaded package sources into Construct. The detailed transparency doc also describes the current settings watcher used for after-install visibility. Both paths are confirmation-only and metadata-only.

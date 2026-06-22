@@ -38,36 +38,18 @@ Possible snippet shape:
 }
 ```
 
-## Research: known-project assignment counts
+## Research: known-project cleanup/doctor
 
-Need counts that help users clean up/refactor Pi projects before unloading resources from Construct.
-
-Current bias:
-
-- Maintain a user-local known-project index under `~/.pi/agent/construct/`.
-- Update it whenever Construct sees/touches a project.
-- Count references by source string and maybe normalized source identity.
-- Label as “known projects,” not “all projects.”
+Known-project assignment counts exist now and are informational only. Possible follow-up: a small doctor/cleanup flow that prunes missing project paths from `~/.pi/agent/construct/projects.json` after preview/confirmation.
 
 Open questions:
 
-- What file name/schema? `projects.json`? `assignments.json`?
-- Should stale/missing project paths be pruned automatically or only by a future doctor command?
-- Assignment counts are informational only. Unload should not block or hard-warn when count > 1 because it does not delete/disable the resource from those projects.
-- Should dashboard rows show counts, or only unload/status?
-
-## Research: command wording
-
-`load` and `unload` are staying, but their output needs to be clearer.
-
-Open questions:
-
-- Does “Construct forgot this resource” land better than “Removed from Construct”?
-- Should unload output explicitly say “Still active in this project” when `.pi/settings.json` still has the source?
-- Should `Unloaded` copy say “active in Pi, not loaded into Construct”?
+- Should stale paths be pruned automatically when seen, or only through an explicit cleanup command?
+- Should dashboard rows ever show known-project counts, or should counts stay in status/unload contexts?
 
 ## Ideas not yet committed
 
+- Autoload follow-up: if Pi exposes a stable package-install event later, consider replacing or supplementing the `.pi/settings.json` watcher. Keep prompts explicit and source-visible.
 - First-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind explicit opt-in only.
 - Groups/profiles as simple lists of remembered source ids.

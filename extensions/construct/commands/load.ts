@@ -117,7 +117,6 @@ export interface ConstructLoadResult {
 export async function loadSourcesIntoConstruct(
 	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
 	paths: Awaited<ReturnType<typeof getPaths>>,
-	constructRead: Awaited<ReturnType<typeof readJson>>,
 	selectedSources: string[],
 	options: { enabledBySource?: Map<string, boolean> } = {},
 ): Promise<ConstructLoadResult> {
@@ -133,15 +132,18 @@ export async function loadSourcesIntoConstruct(
 	const { catalog } = await loadCatalog(ctx);
 	let metadataChanged = 0;
 	try {
+		const constructRead = await readJson(paths.projectConstructPath);
 		let construct = parseProjectConstruct(constructRead);
+		let nextMetadataChanged = 0;
 		for (const source of selectedSources) {
 			const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
 			const itemId = uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source);
 			const enabled = options.enabledBySource?.get(source);
 			construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });
-			metadataChanged += 1;
+			nextMetadataChanged += 1;
 		}
 		await writeJson(paths.projectConstructPath, construct);
+		metadataChanged = nextMetadataChanged;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		warnings.push(`Could not update project Construct metadata: ${message}`);
@@ -260,10 +262,30 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct load");
 
-	const enabledBySource = new Map(candidates.adoptable.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
+	try {
+		const freshCandidates = await projectLoadCandidates(paths);
+		const selectedBeforeWait = new Set(selectedSources);
+		const freshSelected = freshCandidates.adoptable.filter((candidate) => selectedBeforeWait.has(candidate.source));
+		const freshSelectedSources = new Set(freshSelected.map((candidate) => candidate.source));
+		selectionWarnings.push(...selectedSources.filter((source) => !freshSelectedSources.has(source)).map((source) => `No longer an unloaded project package declaration after waiting: ${source}`));
+		selectedSources = freshSelected.map((candidate) => candidate.source);
+		candidates = freshCandidates;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		showText(ctx, `Construct load failed.\nCould not re-check project package declarations after waiting.\n${message}`);
+		return;
+	}
+
+	if (selectedSources.length === 0) {
+		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), "No files were changed."].join("\n"));
+		return;
+	}
+
+	const selectedAfterWait = new Set(selectedSources);
+	const enabledBySource = new Map(candidates.adoptable.filter((candidate) => selectedAfterWait.has(candidate.source)).map((candidate) => [candidate.source, !candidate.disabledByFilters]));
 	let result: ConstructLoadResult;
 	try {
-		result = await loadSourcesIntoConstruct(ctx, paths, constructRead, selectedSources, { enabledBySource });
+		result = await loadSourcesIntoConstruct(ctx, paths, selectedSources, { enabledBySource });
 		result.warnings.push(...selectionWarnings);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

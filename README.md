@@ -24,25 +24,28 @@ Project: /Users/you/site
 
 Installed
 ---------
-[x] pi-web-access   npm:pi-web-access
-[x] pi-subagents    git:github.com/your-org/pi-subagents
+[ ] ✓  pi-web-access   npm:pi-web-access
+[ ] ✓  pi-subagents    git:github.com/your-org/pi-subagents
 
 Disabled
 --------
-[-] pi-browser      npm:pi-browser
+[ ] –  pi-browser      npm:pi-browser
 
 Available
 ---------
-[ ] pi-lens         git:github.com/your-org/pi-lens
-[ ] pi-chrome       npm:pi-chrome
-[ ] pi-ask-user     git:github.com/your-org/pi-ask-user
+[ ] +  pi-lens         git:github.com/your-org/pi-lens
+[ ] +  pi-chrome       npm:pi-chrome
+[ ] +  pi-ask-user     git:github.com/your-org/pi-ask-user
 
 Unloaded
 --------
-[u] local-tooling   ../local-tooling
+    ◇  local-tooling   ../local-tooling
 
-TUI controls: Space selects · Enter applies · r removes · Esc cancels.
+Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + available · ◇ unloaded.
+Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.
 ```
+
+In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: active is green, disabled is muted green, available is yellow, and unloaded is gray. Plain output stays uncolored for readability.
 
 States:
 
@@ -55,7 +58,7 @@ States:
 
 Use `/construct load` to adopt `Unloaded` rows into Construct.
 
-After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when ready.
+After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 
 ## Basic workflow
 

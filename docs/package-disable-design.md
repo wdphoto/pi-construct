@@ -1,20 +1,72 @@
-# Package disable/disarm design
+# Package disable/disarm model
 
-This records the dashboard package action model introduced after the Pi config research. It is implemented as an initial pass; exact keybindings/wording can still be refined after manual TUI use.
+Construct uses Pi package filters to turn Construct-managed packages off without removing their project package declarations.
 
-## Context
+## Product boundary
 
-Pi's native `pi config` TUI shows package-contained resources and lets users toggle individual extensions, skills, prompts, and themes. Construct should not reuse or expose that TUI directly; Construct remains its own loadout menu.
+Pi's native `pi config` is the resource selector. It can toggle individual extensions, skills, prompts, and themes inside a package.
 
-However, Pi's underlying package filter model gives Construct a more native way to turn a package “off” without removing its package declaration from `.pi/settings.json`.
+Construct is the loadout menu. It works at package level:
 
-Older Construct dashboard off behavior used Pi's remove path:
+- install/declare remembered packages in the current project;
+- disable or enable a Construct-managed project package;
+- explicitly remove a Construct-managed package declaration from the project;
+- load/adopt project declarations into the Construct library.
 
-```bash
-pi remove <source> -l --approve
+Do not embed `pi config` or grow Construct into a broad resource browser.
+
+## State language
+
+Use these labels consistently:
+
+- **Installed**: declared in `.pi/settings.json`, active, and Construct-managed.
+- **Disabled**: declared in `.pi/settings.json`, Construct-managed, and all package resource filters are empty arrays.
+- **Available**: remembered in the Construct library, not declared in this project.
+- **Unloaded**: declared in this project but not loaded/adopted into Construct.
+- **Removed from project**: package declaration removed from `.pi/settings.json`.
+- **Unloaded from Construct**: forgotten from Construct library/metadata only; project declarations remain untouched.
+
+Prefer `Disabled` in UI copy because it matches Pi config language. `Disarmed` can remain explanatory flavor, not a state name.
+
+## Dashboard action model
+
+Current controls:
+
+```text
+Space selects · Enter applies · r removes · Esc cancels
 ```
 
-Construct now separates disable from removal. Disable/disarm keeps the package source declared and sets all package resource filters to empty arrays:
+Enter applies the obvious non-destructive state transition:
+
+| State | Enter does |
+| --- | --- |
+| `Available` | install/declare into this project with `pi install <source> -l --approve` |
+| `Installed` | disable by setting package resource filters to empty arrays |
+| `Disabled` | enable by clearing all-empty package resource filters |
+| `Unloaded` | no-op/read-only; use `/construct load` |
+
+`r` is the destructive cleanup key:
+
+| State | `r` does |
+| --- | --- |
+| `Installed` | confirm, then remove the project package declaration |
+| `Disabled` | confirm, then remove the project package declaration |
+| `Available` | no-op; use `/construct unload` to forget from the library |
+| `Unloaded` | no-op/read-only; use Pi directly if needed |
+
+No public `d` key. It duplicates Enter for Installed rows and conflicts mentally with type-to-filter.
+
+## Settings semantics
+
+### Disable package resources
+
+A string package declaration:
+
+```json
+"packages": ["npm:some-pi-package"]
+```
+
+becomes an object with every package resource family filtered to none:
 
 ```json
 {
@@ -30,201 +82,49 @@ Construct now separates disable from removal. Disable/disarm keeps the package s
 }
 ```
 
-This is closer to Pi's native resource-configuration model and avoids firing a remove command for ordinary dashboard off actions.
-
-## Terminology
-
-Use distinct words for distinct operations:
-
-- **Installed**: source is declared in the project, Construct-managed, and at least one package resource type can load.
-- **Disabled** or **Disarmed**: source is declared in the project and Construct/Pi filters disable all package-contained resource types.
-- **Available**: source is remembered in the Construct library but not declared in this project.
-- **Unloaded**: source is declared in the project but not loaded into Construct metadata/library.
-- **Removed from project**: package declaration is removed from `.pi/settings.json`.
-- **Unloaded from Construct**: resource is forgotten from Construct library/metadata only; project package declarations are left alone.
-
-Open naming question: `Disabled` is familiar from Pi config; `Disarmed` fits Construct language. Favor `Disabled` in user-facing state if we want native wording, and use “disarm” as explanatory language only if it tests well.
-
-## Proposed dashboard behavior
-
-Keep the one Construct menu. Do not open or embed `pi config`.
-
-Default dashboard sections could become:
-
-```text
-Installed
----------
-[x] package-a    npm:package-a
-
-Disabled
---------
-[-] package-b    npm:package-b
-
-Available
----------
-[ ] package-c    npm:package-c
-
-Unloaded
---------
-[u] package-d    /local/package-d
-```
-
-Possible markers:
-
-- `[x]` installed / active
-- `[-]` disabled/disarmed by filters
-- `[ ]` available / not declared here
-- `[u]` unloaded / project-declared but not loaded into Construct
-
-## Interaction model
-
-Use `Installed` narrowly to mean “active in this project and Construct-managed.” This is project-level state, not a claim about Pi's package cache internals. Use `Unloaded` for project declarations not loaded/adopted into Construct.
-
-### Implemented action model
-
-Space selects rows. The action key decides what happens to selected rows.
-
-Current controls:
-
-```text
-Space selects · Enter applies · r removes · Esc cancels
-```
-
-Current behavior:
-
-- Enter applies the obvious state transition for actionable rows:
-  - `Available` -> install/declare into this project using Pi's normal project-local install path.
-  - `Installed` -> disable by setting package resource filters to empty arrays.
-  - `Disabled` -> enable by clearing all-empty package resource filters.
-- `Unloaded` rows are read-only in `/construct`; use `/construct load` to load/adopt them into Construct. `/construct load` TUI should show only unloaded/adoptable package declarations.
-- `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project. Delete may remain a best-effort alias, but terminal Delete handling is not reliable enough to advertise.
-- `Available` rows are not project-declared, so `r` has nothing to remove from the project. Use `/construct unload` to make Construct forget library items.
-- Enter on the result panel reloads Pi when runtime-affecting changes were applied. Esc returns to the session without reloading.
-
-This preserves the favorite install flow: Space select one or more Available packages, press Enter, then Enter reloads from the result panel.
-
-The section heading communicates current state; the checkbox marker communicates row selection in TUI mode. Print mode can still show state markers such as `[x]`, `[-]`, `[ ]`, and `[u]`.
-
-### Why not make Space cycle through remove?
-
-Do not cycle `Installed -> Disabled -> Remove -> Installed` with Space. It makes the common key include a destructive cleanup action, is harder to explain, and increases the chance of accidentally removing project declarations.
-
-### Rejected for now: action panel
-
-Do not add an action chooser right now. It is safer on paper, but it slows down the core loop too much. Enter should apply the obvious state transition, and `r` should be the explicit confirmed removal path.
-
-If manual testing proves `r` is still too hidden, revisit a compact remove confirmation flow before adding a broader action chooser.
-
-### Keybinding caveat
-
-Only `r` is a direct action key now, and it only starts removal when at least one row is selected. Otherwise typed characters remain normal filter text. Removal must show a warning/confirmation before changing files.
-
-## Settings semantics
-
-### Disable package resources
-
-Given a project package entry:
-
-```json
-"packages": ["npm:some-pi-package"]
-```
-
-Disable becomes:
-
-```json
-"packages": [
-  {
-    "source": "npm:some-pi-package",
-    "extensions": [],
-    "skills": [],
-    "prompts": [],
-    "themes": []
-  }
-]
-```
-
-For an existing object entry, preserve unknown fields if possible and overwrite only these resource filter keys:
-
-```json
-{
-  "source": "npm:some-pi-package",
-  "extensions": [],
-  "skills": [],
-  "prompts": [],
-  "themes": []
-}
-```
+For an existing object package entry, preserve unknown fields where possible and overwrite only these resource filter keys.
 
 ### Enable package resources
 
-Open question: should enabling restore exact previous filters?
+Enabling removes the all-empty filter keys, so Pi returns to manifest/default loading. If the remaining object is only `{ "source": "..." }`, Construct may write it back as the string source form.
 
-Minimum implementation:
-
-- Convert fully disabled object back to string form if no other fields exist.
-- Or remove `extensions`, `skills`, `prompts`, and `themes` keys from the object, causing Pi to load all manifest-allowed resources.
-
-Potential richer implementation:
-
-- Store previous filter state in `.pi/construct.json` before disabling.
-- Restore that filter state when enabling.
-
-Current implementation does not store/restore arbitrary prior filters. Keep that behavior unless users ask for richer filter preservation.
+Construct does **not** currently store and restore arbitrary prior partial filters. Add that only if users need richer resource-filter preservation.
 
 ### Remove package declaration
 
-Removal is an explicit dashboard action, not the default off behavior.
+Removal is explicit and confirmed. Construct tries Pi's normal project-local remove path first:
 
-Removal currently uses Pi's package remove path first, or later can move to Pi's `DefaultPackageManager.removeAndPersist(source, { local: true })` after we verify that direct API is stable enough for extension use.
+```bash
+pi remove <source> -l --approve
+```
+
+If Pi cannot match the source, Construct may fall back to a conservative `.pi/settings.json` edit. Direct settings edits must back up `.pi/settings.json` first.
 
 ## Metadata semantics
 
-`.pi/construct.json` continues to track Construct-managed package items with an `enabled` boolean:
+`.pi/settings.json` remains source of truth.
 
-- `enabled: true`: package intended to be active/loaded.
-- `enabled: false`: package intended to be disabled/disarmed.
+`.pi/construct.json` stores advisory intent:
 
-If we need to distinguish disabled-by-filters from removed-from-project, add a conservative field later:
+- `enabled: true`: Construct expects the package to be active.
+- `enabled: false`: Construct expects the package to be disabled.
 
-```json
-{
-  "kind": "package",
-  "source": "npm:some-pi-package",
-  "enabled": false,
-  "state": "disabled"
-}
-```
+Status/drift should distinguish:
 
-Avoid adding this until implementation needs it; `.pi/settings.json` remains source of truth.
-
-## Status and drift rules
-
-Status should distinguish:
-
-- Construct metadata says enabled, settings missing source: drift.
-- Construct metadata says disabled, settings still has source with all package filters empty: OK.
-- Construct metadata says disabled, settings missing source: removed from project or drift depending wording.
-- Settings has source with all package filters empty but no Construct metadata: project package is disabled outside Construct.
-
-Dashboard labels should make the source of truth clear:
-
-- `Installed` = declared in `.pi/settings.json`, active, and Construct-managed.
-- `Disabled` = declared in `.pi/settings.json`, package resources disabled by filters.
-- `Available` = remembered by Construct but absent from `.pi/settings.json`.
-- `Unloaded` = present in `.pi/settings.json` but not loaded into Construct.
+- metadata enabled, settings missing source: drift;
+- metadata enabled, package disabled by filters: drift;
+- metadata disabled, package declared with all-empty filters: OK;
+- settings package disabled by filters without Construct metadata: project package is disabled outside Construct.
 
 ## Safety rules
 
-- Before direct edits to `.pi/settings.json`, keep backup behavior unless deliberately replaced by Pi's locked `SettingsManager` writes.
-- Wait for Pi idle before writing, same as current Construct file-changing flows.
-- Do not call or embed `pi config` TUI.
-- Do not add broad resource-level management to Construct.
-- Do not silently remove package declarations when user expects disable.
-- Clearly say when reload is needed.
+- Wait for Pi idle before mutating files.
+- Back up `.pi/settings.json` before direct edits.
+- Do not silently remove declarations when the user expects disable.
+- Say when reload is needed.
+- Keep Unloaded rows read-only in `/construct`; adoption belongs to `/construct load`.
 
-## Implementation notes
-
-Current helper shape:
+## Implementation touchpoints
 
 ```ts
 packageResourcesDisabled(entry)
@@ -234,16 +134,4 @@ enablePackageResourcesInProject(paths, { source, id })
 removePackageFromProject(pi, paths, { source, id })
 ```
 
-Current smoke coverage verifies read/status detection for disabled package filters. Manual TUI verification is still needed for action keys, remove confirmation, and result-panel reload behavior.
-
-## Recommendation
-
-Keep this split:
-
-- Enter action: install Available, disable Installed, and enable Disabled packages.
-- Unloaded rows: read-only in `/construct`; load/adopt them with `/construct load`.
-- `r` action: confirm, then explicitly remove selected Installed or Disabled project package declarations.
-- No public `d` action; it duplicates Enter and conflicts mentally with type-to-filter.
-- `/construct unload`: library/metadata-only, never edits `.pi/settings.json`.
-
-This makes Construct more native to Pi while preserving its separate product identity and quiet one-menu workflow.
+Current smoke coverage verifies disabled-filter detection. Manual TUI verification is still useful for action-key feel, remove confirmation copy, and result-panel reload behavior.

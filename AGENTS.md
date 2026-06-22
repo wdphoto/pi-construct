@@ -45,7 +45,7 @@ Core loop:
    ```
 2. Run `/construct load` to add those project resources to the Construct library.
 3. In another project, run `/construct` to enable/disable remembered resources.
-4. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to return and run `/reload` later.
+4. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
 
 Important files:
 
@@ -79,13 +79,15 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 ## Behavior rules
 
 - `/construct` opens the Construct Loadout dashboard.
+- Dashboard TUI title stays quiet: `Loadout: N installed | N disabled | N available | N unloaded`.
+- Dashboard row text stays plain; only the state icon column is colored: Installed/active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
 - `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata.
 - `/construct unload` removes resources from the Construct library/profile refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`.
-- Autoload is off by default, quit-only, trusted-project/TUI-only, and always confirms before writing.
+- Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It can prompt for new `.pi/settings.json` package declarations during a session and still scans on quit.
 - Profiles exist but remain WIP in public docs.
 - Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
 - `/construct copy` is a decided goal: print a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers. Plan for a matching import flow with preview/confirmation.
@@ -100,8 +102,41 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Do not install the extension into live global Pi config unless explicitly requested.
 - Prefer disposable fixture projects for testing project-local writes.
 - Before editing any `.pi/settings.json`, create a backup.
+- Use the shared JSON write helper for Construct JSON writes; it writes via temp file and rename. Mutating flows should re-read relevant JSON state after idle waits or long-running package operations before merging/writing.
 - Never write secrets, tokens, API keys, auth material, or generated package cache paths.
 - Keep extra slash commands out unless clearly needed.
+
+## Shipping protocol
+
+When the user says “ship it,” treat that as a release request, not just a commit request.
+
+Update all relevant release surfaces before tagging/publishing:
+
+- package version in `package.json` and `package-lock.json`
+- `CHANGELOG.md` release entry/date
+- README and docs for any user-facing behavior changes
+- git commit on `main`
+- git tag, pushed to origin
+- GitHub Release for the shipped tag, marked latest when appropriate
+
+Run the release validation before tagging or publishing:
+
+```bash
+npm run check
+npm run smoke:all
+npm run release:verify
+npm publish --dry-run --access public
+```
+
+Do **not** assume npm publishing is complete just because git is tagged. If npm publish is needed, stop after dry-run and tell the user exactly when to run the npm command/2FA step, for example:
+
+```bash
+npm publish --access public
+# or
+npm publish --access public --otp=123456
+```
+
+After a human npm publish, verify with `npm view pi-construct version` and make sure GitHub’s latest release matches the shipped version.
 
 ## Validation
 

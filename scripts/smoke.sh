@@ -118,7 +118,8 @@ source = sys.argv[2]
 PY
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"0 installed · 1 disabled"* ]]
-[[ "$DASHBOARD_OUTPUT" == *"[-] pkg"* || "$DASHBOARD_OUTPUT" == *"[-] construct-fixture-pkg"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"– Disabled"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"pkg"* || "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"enabled in Construct metadata, disabled by package filters"* ]]
 
