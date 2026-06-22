@@ -47,7 +47,7 @@ See `CHANGELOG.md` for version-by-version detail.
 ## v0.0.x — dashboard/status polish
 
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
-- [ ] Tighten status/drift reporting for normalized local paths vs raw `.pi/settings.json` strings.
+- [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance.
 
 ## Later

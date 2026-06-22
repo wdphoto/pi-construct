@@ -157,6 +157,7 @@ Resolution so far:
 
 - Added `collectPackageSourceSets()` in `project-settings.ts` for raw+normalized declared/active/disabled package source sets.
 - Wired it into dashboard, status, saved-loadout save, and unload checks where the existing semantics matched.
+- Added normalized local source details to verbose status package declaration lines so raw relative settings strings are easier to compare with Construct metadata.
 - Avoided a full central snapshot module; callers still own their command-specific classification and UI behavior.
 
 Deferred option: extract more identity helpers only when duplication causes a real bug or a future feature needs it. Avoid turning this into a broad inventory framework.

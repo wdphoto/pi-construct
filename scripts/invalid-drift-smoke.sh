@@ -207,6 +207,13 @@ source = str((project / "pkg").resolve())
 }, indent=2) + "\n")
 PY
 OUTPUT="$(construct_pi "$HOME_F" "$PROJECT_F" '/construct status full' 2>&1)"
+NORMALIZED_PKG="$(python3 - "$PROJECT_F" <<'PY'
+import pathlib
+import sys
+print((pathlib.Path(sys.argv[1]) / "pkg").resolve())
+PY
+)"
+grep -Fq -- "- ../pkg (string, normalized $NORMALIZED_PKG)" <<<"$OUTPUT"
 grep -Fq 'pkg (package, enabled)' <<<"$OUTPUT"
 ! grep -Fq 'drift:' <<<"$OUTPUT"
 

@@ -6,6 +6,7 @@ import { getPaths } from "./paths.js";
 import { collectPackageSourceSets, formatList, getManagedItems, getPackages } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources, directResourceKinds, resourcePlural } from "./resources.js";
+import { normalizeSourceForLibrary } from "./sources.js";
 
 interface StatusData {
 	paths: Awaited<ReturnType<typeof getPaths>>;
@@ -155,7 +156,17 @@ function directResourceLine(resource: StatusData["directResources"]["resources"]
 	return `- ${resource.kind} ${resource.name} (${enabled}, ${resource.source}, ${directResourceState(resource)}${settingsPath}) — ${resource.displayPath}`;
 }
 
-function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): string {
+async function packageDeclarationLine(pkg: StatusData["packages"][number], settingsDir: string): Promise<string> {
+	const details: string[] = [pkg.form];
+	if (pkg.disabledByFilters) details.push("disabled by filters");
+	if (pkg.form !== "invalid" && pkg.source.trim()) {
+		const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
+		if (normalized !== pkg.source) details.push(`normalized ${normalized}`);
+	}
+	return `- ${pkg.source} (${details.join(", ")})`;
+}
+
+async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): Promise<string> {
 	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
 	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
@@ -163,7 +174,7 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
 		return acc;
 	}, {});
-	const packageLines = data.packages.map((pkg) => `- ${pkg.source} (${pkg.form}${pkg.disabledByFilters ? ", disabled by filters" : ""})`);
+	const packageLines = await Promise.all(data.packages.map((pkg) => packageDeclarationLine(pkg, dirname(data.paths.projectSettingsPath))));
 	const managedLines = data.managed.map((item) => {
 		const enabled = item.enabled === undefined ? "unknown" : item.enabled ? "enabled" : "disabled";
 		const source = item.source ? ` — ${item.source}` : "";
@@ -225,5 +236,5 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext, args = ""): Promise<string> {
 	const mode = parseStatusMode(args);
 	const data = await collectStatusData(pi, ctx);
-	return mode.verbose ? buildVerboseStatus(data, mode.warnings) : buildCompactStatus(data, mode.warnings);
+	return mode.verbose ? await buildVerboseStatus(data, mode.warnings) : buildCompactStatus(data, mode.warnings);
 }
