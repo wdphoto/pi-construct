@@ -133,15 +133,22 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 	await waitForIdleBeforeConstructWrite(ctx, "Construct profile apply");
 
 	const loaded: Array<{ source: string; item?: CatalogItem }> = [];
+	const partialRuntimeChanges: Array<{ source: string; item?: CatalogItem; error: string }> = [];
 	const failures: string[] = [];
+	let needsReload = false;
 	let progress = 0;
 	try {
 		for (const source of sources) {
 			const item = findCatalogItem(catalog.items, source);
 			setConstructStatus(ctx, progressStatus("loading", ++progress, sources.length, item?.id ?? deriveId(source)));
 			const result = await loadPackageIntoProject(pi, paths, { source, item });
+			if (result.needsReload) needsReload = true;
 			if (result.ok) loaded.push({ source, item });
-			else failures.push(`${item?.id ?? deriveId(source)}: ${result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`}`);
+			else {
+				const error = result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
+				if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ source, item, error });
+				else failures.push(`${item?.id ?? deriveId(source)}: ${error}`);
+			}
 		}
 	} finally {
 		setConstructStatus(ctx, undefined);
@@ -150,11 +157,16 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 		ctx,
 		[
 			`Construct profile applied: ${profile.id}`,
-			`Turned on: ${loaded.length}/${sources.length}`,
+			`Turned on: ${loaded.length + partialRuntimeChanges.length}/${sources.length}`,
 			...loaded.map(({ source, item }) => `+ ${item?.id ?? deriveId(source)}: ${source}`),
+			partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
+			...partialRuntimeChanges.map(({ source, item, error }) => `! ${item?.id ?? deriveId(source)}: ${error}`),
+			partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
 			...failures.map((failure) => `! ${failure}`),
-			"Reload Pi resources with /reload when ready.",
-		].join("\n"),
+			needsReload ? "Reload Pi resources with /reload when ready." : "No reload needed; no package settings changed.",
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
 	);
 }
 

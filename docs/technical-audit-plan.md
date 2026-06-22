@@ -29,6 +29,7 @@ Result: failed only on one unused import in `extensions/construct/commands/profi
 ## Progress log
 
 - F2 fixed: quit-time autoload now labels disabled package declarations in the confirmation prompt and preserves `enabled: false` metadata for packages disabled by Pi filters.
+- F1 fixed: package operations now report runtime-affecting settings changes separately from metadata-only failures, and dashboard/profile summaries keep reload guidance for those partial changes.
 
 ## What looks healthy
 

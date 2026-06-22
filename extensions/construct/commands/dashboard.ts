@@ -298,7 +298,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			}
 
 			const completed: Array<{ action: DashboardAction; item: DashboardPackage }> = [];
+			const partialRuntimeChanges: Array<{ action: DashboardAction; item: DashboardPackage; error: string }> = [];
 			const failures: string[] = [];
+			let needsReload = false;
 
 			function progressLines(): string[] {
 				const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
@@ -325,18 +327,20 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 						: step.action === "Disable"
 							? await disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
 							: await removePackageFromProject(pi, paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
+				if (result.needsReload) needsReload = true;
 				if (result.ok) {
 					completed.push({ action: step.action, item: step.item });
 					step.state = "done";
 				} else {
 					step.state = "failed";
 					step.error = resultError(result);
-					failures.push(`${step.item.id}: ${step.error}`);
+					if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ action: step.action, item: step.item, error: step.error });
+					else failures.push(`${step.item.id}: ${step.error}`);
 				}
 				update("Applying Construct Loadout", progressLines());
 			}
 
-			const appliedChanges = completed.length;
+			const appliedChanges = completed.length + partialRuntimeChanges.length;
 			const cancelled = signal.aborted;
 			const byAction = (action: DashboardAction) => completed.filter((step) => step.action === action).map((step) => step.item);
 			const installed = byAction("Install");
@@ -351,8 +355,8 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 					: failures.length > 0
 						? "Construct Loadout applied with errors"
 						: "Construct Loadout changes applied",
-				confirmHint: appliedChanges > 0 ? "Press Enter to reload Pi · Esc returns to session" : "Press Enter/Esc to return to session",
-				confirmAction: appliedChanges > 0 ? "reload" : undefined,
+				confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+				confirmAction: needsReload ? "reload" : undefined,
 				lines: [
 					cancelled ? "Cancelled before remaining changes." : undefined,
 					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
@@ -363,6 +367,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 					...disabled.map((item) => `- ${item.label}: ${item.source}`),
 					removed.length > 0 ? `Removed from project: ${removed.length}` : undefined,
 					...removed.map((item) => `- ${item.label}: ${item.source}`),
+					partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
+					...partialRuntimeChanges.map((change) => `! ${change.action} ${change.item.label}: ${change.error}`),
+					partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
 					failures.length > 0 ? `Failures: ${failures.length}` : undefined,
 					...failures.map((failure) => `! ${failure}`),
 				].filter((line): line is string => line !== undefined),

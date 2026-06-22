@@ -45,7 +45,7 @@ Core loop:
    ```
 2. Run `/construct load` to add those project resources to the Construct library.
 3. In another project, run `/construct` to enable/disable remembered resources.
-4. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to return and run `/reload` later.
+4. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
 
 Important files:
 

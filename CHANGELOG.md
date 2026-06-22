@@ -17,6 +17,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Improved the TUI filter area with an explicit `Filter packages:` label and hint text.
 - Removed trailing per-row action hints from the dashboard to keep rows narrow and avoid implying Enter is the only possible action.
 - Kept `Unloaded` as the user-facing term for project declarations that are not in Construct; `/construct load` remains the adoption path.
+- Dashboard/profile package operations now distinguish metadata-only failures from no-op failures, so runtime-affecting partial changes still get reload guidance.
 
 ## 0.0.11 - 2026-06-21
 

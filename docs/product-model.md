@@ -24,7 +24,7 @@ The source of truth remains normal Pi project config, especially `.pi/settings.j
    ```text
    /construct profile apply www
    ```
-6. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to return and run `/reload` later.
+6. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
 
 ## Mental model
 

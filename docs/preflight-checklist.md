@@ -91,7 +91,7 @@ Check in real TUI usage:
 - Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;
-- after runtime-affecting changes, Enter reloads Pi and Esc returns to the session.
+- after runtime-affecting changes, Enter reloads Pi and Esc cancels reload/returns to the session.
 
 ## Design review prompts
 

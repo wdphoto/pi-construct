@@ -15,7 +15,7 @@ Construct is centered on one primary command: `/construct`.
 /construct profile apply <name>  # WIP, not public yet
 ```
 
-No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc returns to the session without reloading.
+No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc cancels reload and returns to the session.
 
 User-facing copy should prefer **library** over **catalog** except when naming the file path.
 
@@ -112,6 +112,6 @@ Controls:
 - `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
-- after apply, Esc returns to the session without reloading.
+- after apply, Esc cancels reload and returns to the session.
 
 Keep hints subtle and summaries quiet. Success output should be verbose enough to show changed packages, then end with the Enter-to-reload / Esc-to-return choice.

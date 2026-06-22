@@ -39,6 +39,8 @@ export interface LoadPackageResult {
 	itemId?: string;
 	declaredSource?: string;
 	backupPath?: string;
+	changedProjectSettings?: boolean;
+	needsReload?: boolean;
 	error?: string;
 	exitCode?: number;
 	stdout?: string;
@@ -82,6 +84,8 @@ export async function loadPackageIntoProject(
 		return {
 			ok: false,
 			backupPath,
+			changedProjectSettings: true,
+			needsReload: true,
 			declaredSource,
 			itemId,
 			metadataOnlyFailure: true,
@@ -89,12 +93,14 @@ export async function loadPackageIntoProject(
 		};
 	}
 
-	return { ok: true, itemId, declaredSource, backupPath };
+	return { ok: true, itemId, declaredSource, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
 export interface DisablePackageResult {
 	ok: boolean;
 	backupPath?: string;
+	changedProjectSettings?: boolean;
+	needsReload?: boolean;
 	error?: string;
 	metadataOnlyFailure?: boolean;
 }
@@ -115,11 +121,11 @@ export async function disablePackageResourcesInProject(paths: ConstructPaths, in
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, false));
 			await rememberKnownProject({ cwd: paths.cwd });
 		} catch (error) {
-			return { ok: false, backupPath, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+			return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
 		}
 	}
 
-	return { ok: true, backupPath };
+	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
 export async function enablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }): Promise<DisablePackageResult> {
@@ -138,17 +144,19 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, true));
 			await rememberKnownProject({ cwd: paths.cwd });
 		} catch (error) {
-			return { ok: false, backupPath, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+			return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
 		}
 	}
 
-	return { ok: true, backupPath };
+	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
 export interface UnloadPackageResult {
 	ok: boolean;
 	backupPath?: string;
 	fallbackWarning?: string;
+	changedProjectSettings?: boolean;
+	needsReload?: boolean;
 	error?: string;
 	exitCode?: number;
 	stdout?: string;
@@ -193,12 +201,14 @@ export async function removePackageFromProject(
 			ok: false,
 			backupPath,
 			fallbackWarning,
+			changedProjectSettings: true,
+			needsReload: true,
 			metadataOnlyFailure: true,
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
 
-	return { ok: true, backupPath, fallbackWarning };
+	return { ok: true, backupPath, fallbackWarning, changedProjectSettings: true, needsReload: true };
 }
 
 export const unloadPackageFromProject = removePackageFromProject;
