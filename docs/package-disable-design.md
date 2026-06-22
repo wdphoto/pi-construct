@@ -6,12 +6,14 @@ Construct uses Pi package filters to turn Construct-managed packages off without
 
 Pi's native `pi config` is the resource selector. It can toggle individual extensions, skills, prompts, and themes inside a package.
 
-Construct is the loadout menu. It works at package level:
+Construct is the loadout menu. Package rows work at package level:
 
 - install/declare remembered packages in the current project;
 - disable or enable a Construct-managed project package;
 - explicitly remove a Construct-managed package declaration from the project;
-- load/adopt project declarations into the Construct library.
+- load/adopt project package declarations into the Construct library.
+
+Construct can also adopt and toggle direct project-local resources such as `.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, and `.pi/extensions/` using Pi-native top-level filters. It still does not browse or toggle individual package-contained resources.
 
 Do not embed `pi config` or grow Construct into a broad resource browser.
 
@@ -19,10 +21,10 @@ Do not embed `pi config` or grow Construct into a broad resource browser.
 
 Use these labels consistently:
 
-- **Installed**: declared in `.pi/settings.json`, active, and Construct-managed.
-- **Disabled**: declared in `.pi/settings.json`, Construct-managed, and all package resource filters are empty arrays.
-- **Available**: remembered in the Construct library, not declared in this project.
-- **Unloaded**: declared in this project but not loaded/adopted into Construct.
+- **Active**: declared/adopted, active, and Construct-managed.
+- **Disabled**: declared/adopted, Construct-managed, and disabled by Pi package or direct-resource filters.
+- **Available**: remembered package source in the Construct library, not declared in this project.
+- **Unloaded**: declared/adoptable in this project but not loaded/adopted into Construct.
 - **Removed from project**: package declaration removed from `.pi/settings.json`.
 - **Unloaded from Construct**: forgotten from Construct library/metadata only; project declarations remain untouched.
 
@@ -41,20 +43,20 @@ Enter applies the obvious non-destructive state transition:
 | State | Enter does |
 | --- | --- |
 | `Available` | install/declare into this project with `pi install <source> -l --approve` |
-| `Installed` | disable by setting package resource filters to empty arrays |
-| `Disabled` | enable by clearing all-empty package resource filters |
+| `Active` | disable by setting package resource filters to empty arrays; direct-resource rows write top-level `-path` filters |
+| `Disabled` | enable by clearing all-empty package resource filters; direct-resource rows write top-level `+path` filters |
 | `Unloaded` | no-op/read-only; use `/construct load` |
 
 `r` is the destructive cleanup key:
 
 | State | `r` does |
 | --- | --- |
-| `Installed` | confirm, then remove the project package declaration |
-| `Disabled` | confirm, then remove the project package declaration |
+| `Active` | for package rows: confirm, then remove the project package declaration; direct-resource rows are not removable in Construct |
+| `Disabled` | for package rows: confirm, then remove the project package declaration; direct-resource rows are not removable in Construct |
 | `Available` | no-op; use `/construct unload` to forget from the library |
 | `Unloaded` | no-op/read-only; use Pi directly if needed |
 
-No public `d` key. It duplicates Enter for Installed rows and conflicts mentally with type-to-filter.
+No public `d` key. It duplicates Enter for Active rows and conflicts mentally with type-to-filter.
 
 ## Settings semantics
 

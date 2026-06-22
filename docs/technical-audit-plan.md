@@ -6,6 +6,8 @@ Scope: current Construct extension code, command flows, dashboard/TUI helper, au
 
 This is a discussion document, not the committed roadmap. Move accepted work into `MAP.md` when we decide to tackle it.
 
+Current note: this audit predates the `profiles` branch saved-loadout work and direct project-resource support. Treat `MAP.md`, `AGENTS.md`, and `docs/commands-and-ux.md` as the current product source of truth; use this file for unresolved technical findings only.
+
 ## Validation run
 
 Passed:
@@ -36,7 +38,7 @@ Result: failed only on one unused import in `extensions/construct/commands/profi
 
 ## What looks healthy
 
-- The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and WIP profiles.
+- The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and saved loadouts (`save`, `saved`, `run`, `copy`, `import`; profile aliases remain compatibility-only).
 - `/construct status` remains read-only and does not create `.pi/construct.json`.
 - `/construct load` and `/construct unload` preserve the intended source-of-truth boundary: `.pi/settings.json` wins, `.pi/construct.json` is advisory.
 - Project settings edits create backups before direct writes.
@@ -145,19 +147,20 @@ Plan:
 - If not, store a filter snapshot in `.pi/construct.json` before disabling and restore it on enable.
 - Avoid a fine-grained resource browser unless there is a deliberate product decision.
 
-### F8 — Profiles remain WIP and use older flow patterns
+### F8 — Saved loadout run/apply flow needs consistency review
 
 Severity: medium  
 Area: UX / consistency  
 Files: `extensions/construct/commands/profiles.ts`, `MAP.md`
 
-Profiles are still public-ish commands but remain WIP in docs. Profile apply uses the older status-line + summary flow rather than the newer in-panel dashboard progress/result flow, and it shares the partial-success reporting issue from F1.
+Saved loadouts are now the user-facing feature; `profile` remains the internal catalog term and compatibility command namespace. The run/apply flow should still be reviewed against the newer dashboard progress/result flow, especially around partial-success handling from F1.
 
 Plan:
 
-- Either keep profiles clearly WIP/secondary, or upgrade profile apply to the same progress/result/reload model as dashboard apply.
+- Keep `profile` aliases secondary and user-facing docs centered on saved loadouts.
+- Upgrade saved-loadout run/apply to the same progress/result/reload model as dashboard apply if needed.
 - Reuse shared operation result handling from F1.
-- Consider folding profiles into the main dashboard only after the core package UI settles.
+- Keep saved loadouts visible in the dashboard only as compact run rows unless deliberately expanded.
 
 ### F9 — Active docs still contain ambiguous autoload/startup wording
 
@@ -248,7 +251,7 @@ Plan:
 ### Pass 3 — UX/product decisions
 
 1. Decide whether package filter restoration matters now (F7).
-2. Decide profile WIP direction: upgrade or keep secondary (F8).
+2. Decide whether saved-loadout run/apply needs more dashboard-style progress/result polish (F8).
 3. Finish manual real-TUI review: spacing, cursor movement, filter clarity, footer wrapping, remove confirmation, result reload.
 
 ### Pass 4 — Maintenance polish
@@ -262,4 +265,4 @@ Plan:
 - Should metadata-only failures still trigger reload by default, or should the result panel offer “reload recommended” without auto-Enter reload?
 - Do we want Construct to preserve partial Pi package filters, or is whole-package enable/disable the correct product boundary for now?
 - How much effort should go into automated TUI testing versus keeping a manual checklist?
-- Should profiles graduate into the dashboard soon, or stay WIP until copy/import lands?
+- Should saved loadouts stay compact in the dashboard, or gain richer management UI later?

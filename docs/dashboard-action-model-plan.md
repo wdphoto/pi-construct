@@ -1,6 +1,6 @@
 # Dashboard action model plan
 
-Status: implemented in the current working tree after `v0.0.10`; pending manual TUI verification.
+Status: implemented. Originally package-only; current dashboard uses `Active` for active package/direct-resource rows and shows adopted direct project resources alongside packages. Manual TUI verification is still useful before release.
 
 ## Problem
 
@@ -21,10 +21,10 @@ That makes the fast path slower and makes the labels do too much work. The bigge
 Use four states:
 
 ```text
-Installed   project-declared, active, and Construct-managed
-Disabled    project-declared, Construct-managed, but package resources are filtered off
-Available   remembered by Construct, not declared in this project
-Unloaded    project-declared, but not loaded/adopted into Construct
+Active      project-declared/adopted, active, and Construct-managed
+Disabled    project-declared/adopted and Construct-managed, but Pi filters are off
+Available   remembered package source, not declared in this project
+Unloaded    project-declared/adoptable, but not loaded/adopted into Construct
 ```
 
 Keep the dashboard fast:
@@ -38,17 +38,17 @@ Space selects · Enter applies · r removes · Esc cancels
 | State | Enter does | Writes `.pi/settings.json`? |
 | --- | --- | --- |
 | `Available` | installs/adds the package to this project with `pi install <source> -l --approve` | yes |
-| `Installed` | disables the package by setting all package resource filters to `[]` | yes |
-| `Disabled` | enables the package by removing the all-empty package resource filters | yes |
+| `Active` | disables the selected package/direct resource by writing Pi filters | yes |
+| `Disabled` | enables the selected package/direct resource by clearing/writing Pi filters | yes |
 | `Unloaded` | read-only in `/construct`; use `/construct load` to adopt it | no |
 
 `r` is the destructive key:
 
 | State | r does |
 | --- | --- |
-| `Installed` | removes the project package declaration |
-| `Disabled` | removes the project package declaration |
-| `Unloaded` | no-op/read-only in `/construct`; use Pi directly if you want to remove project-only package declarations |
+| `Active` | removes the project package declaration for package rows; direct-resource rows are not removable |
+| `Disabled` | removes the project package declaration for package rows; direct-resource rows are not removable |
+| `Unloaded` | no-op/read-only in `/construct`; use Pi directly if you want to remove project-only package declarations/resources |
 | `Available` | no-op; there is no project declaration to remove |
 
 `r` must show a warning/confirmation before applying to removable rows. It is faster than an action chooser but still has friction before a destructive settings edit.
@@ -80,7 +80,7 @@ Use “remove” in controls and result summaries. The confirmation can mention 
 
 ### Do not make Space cycle destructive states
 
-Space only selects. It must not cycle `Installed -> Disabled -> Remove`, because removal is destructive and should not be reachable through the selection key.
+Space only selects. It must not cycle `Active -> Disabled -> Remove`, because removal is destructive and should not be reachable through the selection key.
 
 ### Do not bring back an action chooser
 
@@ -92,7 +92,7 @@ The action chooser is safer but too slow for the core loop. The dashboard is a l
 
 Managed package rows:
 
-- declared in `.pi/settings.json` and not disabled by filters -> `Installed`
+- declared in `.pi/settings.json` and not disabled by filters -> `Active`
 - declared in `.pi/settings.json` and disabled by filters -> `Disabled`
 - not declared in `.pi/settings.json` -> `Available`
 
@@ -105,6 +105,14 @@ Project-only rows:
 - declared in `.pi/settings.json` but not Construct-managed -> `Unloaded`
 - if also disabled by filters, still show as `Unloaded`; the description should mention filters if useful
 - rows are disabled/read-only in `/construct`; `/construct load` is the adoption path
+
+Direct project-resource rows:
+
+- resolved by Pi from `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, or `.pi/themes/`
+- before adoption into `.pi/construct.json` -> `Unloaded`
+- after adoption and active in Pi filters -> `Active`
+- after adoption and disabled by Pi top-level `-path` filter -> `Disabled`
+- no dashboard delete path; direct resource file deletion remains outside Construct
 
 ### Enter behavior implementation
 
@@ -156,7 +164,7 @@ Press Enter to remove · Esc cancels
 Print mode can keep state markers:
 
 ```text
-[x] Installed
+[x] Active
 [-] Disabled
 [ ] Available
 [u] Unloaded
@@ -166,16 +174,16 @@ TUI mode should not force fixed markers on selectable rows, because fixed marker
 
 ## Acceptance criteria
 
-- [x] Dashboard sections and counters are `Installed`, `Disabled`, `Available`, `Unloaded`.
+- [x] Dashboard sections and counters are `Active`, `Disabled`, `Available`, `Unloaded`.
 - [x] No public dashboard hint mentions `d`.
-- [x] Pressing Enter on selected `Installed` rows disables them.
+- [x] Pressing Enter on selected `Active` rows disables them.
 - [x] Pressing Enter on selected `Disabled` rows enables them.
 - [x] Pressing Enter on selected `Available` rows installs/adds them to the project.
 - [x] `Unloaded` rows are read-only in `/construct`.
 - [x] `/construct load` shows only unloaded/adoptable options in TUI mode.
-- [x] `/construct load <id-or-source ...>` directly adopts matching unloaded/adoptable project package declarations.
+- [x] `/construct load <id-or-source-or-path ...>` directly adopts matching unloaded/adoptable project package declarations and direct resources.
 - [x] Pressing `r` on selected actionable project-declared rows shows a confirmation before `pi remove`/fallback settings edit.
 - [x] Pressing `r` on only `Available` rows does not show a destructive warning and reports that nothing project-local can be removed.
-- [x] `/construct unload` output says still-active forgotten packages will show as `Unloaded`, not `Installed` or `Loaded`.
+- [x] `/construct unload` output says still-active forgotten packages will show as `Unloaded`, not `Active` or `Loaded`.
 - [x] Smoke tests cover the renamed sections and disabled-filter detection.
 - [ ] Manual TUI verification confirms the key feel and remove warning copy.
