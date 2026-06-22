@@ -608,7 +608,7 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 
 async function confirmRemoveSavedLoadout(ctx: ExtensionCommandContext, profile: CatalogProfile, sources: string[]): Promise<boolean> {
 	if (ctx.mode !== "tui") return true;
-	return ctx.ui.custom<boolean>((tui, theme, keybindings, done) => {
+	return ctx.ui.custom<boolean>((_tui, theme, keybindings, done) => {
 		const lines = [
 			`Saved loadout: ${profile.id}`,
 			`Package sources: ${sources.length}`,

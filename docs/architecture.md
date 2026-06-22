@@ -2,7 +2,7 @@
 
 Construct is a global Pi extension / Pi package with one primary command: `/construct`.
 
-The current implementation now inventories and toggles packages plus direct project Pi extensions, skills, prompt templates, and themes. The portable library/saved-loadout model remains package-source-only until a direct-resource portability/export model is designed. See `docs/project-resource-loadout-plan.md`.
+The current implementation inventories and toggles packages plus direct project Pi extensions, skills, prompt templates, and themes. The portable library/saved-loadout model remains package-source-only until a direct-resource portability/export model is designed.
 
 ## Layers
 
@@ -135,15 +135,36 @@ Rules:
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Read-only commands must not create this file.
 
+## Resource filter behavior
+
+Construct uses Pi-native resource filters instead of inventing a separate enablement system.
+
+For package rows, disabling keeps the package declaration in `.pi/settings.json` and sets all package resource families to empty arrays:
+
+```json
+{
+  "source": "npm:some-pi-package",
+  "extensions": [],
+  "skills": [],
+  "prompts": [],
+  "themes": []
+}
+```
+
+Enabling a package clears those all-empty filter keys and may collapse `{ "source": "..." }` back to string form. Construct does not currently snapshot and restore arbitrary prior partial filters; package rows are whole-package loadout toggles.
+
+For adopted direct project resources, disabling/enabling writes top-level Pi filter overrides such as `-skills/review/SKILL.md` or `+skills/review/SKILL.md` in the matching resource array. Construct never deletes direct resource files.
+
 ## Write behavior
 
 Construct writes JSON through a shared helper that writes a complete temporary file in the same directory, flushes it, then renames it over the target. Direct `.pi/settings.json` edits still create a timestamped backup first.
 
-## Related design notes
+## Related current docs
 
-- `docs/pi-config-and-construct.md` explains how Construct differs from Pi's native `pi config` resource toggles and records the filter-based disarm direction.
-- `docs/package-disable-design.md` records the disable/disarm package action model while keeping Construct's own menu.
-- `docs/autoload-transparency.md` records autoload watcher mechanics, cost, caveats, and future UX improvements.
+- `docs/product-model.md` defines the product boundary.
+- `docs/commands-and-ux.md` defines the public command and dashboard behavior.
+- `docs/autoload-transparency.md` records autoload behavior and caveats.
+- `docs/safety-and-maintenance.md` records safety rules and maintenance risks.
 
 ## Lifecycle behavior
 

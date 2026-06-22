@@ -1,268 +1,351 @@
 # Construct technical audit and discussion plan
 
-Date: 2026-06-21  
-Branch audited: `tui-cleanup`  
-Scope: current Construct extension code, command flows, dashboard/TUI helper, autoload changes, smoke coverage, and active docs.
+Date: 2026-06-22
+Branch audited: `review/code-audit-0.0.14`
+Base: `v0.0.13` / `44ac751 Release 0.0.13`
 
-This is a discussion document, not the committed roadmap. Move accepted work into `MAP.md` when we decide to tackle it.
+This is a review/discussion document. It is not the committed roadmap. Move accepted work into `MAP.md` only after we choose a direction.
 
-Current note: this audit predates the `profiles` branch saved-loadout work and direct project-resource support. Treat `MAP.md`, `AGENTS.md`, and `docs/commands-and-ux.md` as the current product source of truth; use this file for unresolved technical findings only.
+## Executive read
+
+Construct is functionally healthy, but the bloat is real. The npm package is small; the weight is cognitive:
+
+- saved-loadout code is concentrated in one 1,017-line command file;
+- the generic TUI picker has become a mini framework;
+- dashboard and saved-loadout run flows duplicate operation/progress/result logic;
+- old design-plan docs now outnumber current source-of-truth docs;
+- the next roadmap item (`/construct scan`) can stay lean only if it remains read-only and separate from the dashboard.
+
+No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
+
+My opinionated recommendation: finish this stabilization/trim pass before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, and a hygiene check exists; next, split saved-loadout and TUI operation code along the seams already visible in the implementation.
 
 ## Validation run
 
 Passed:
 
 ```bash
-git diff --check main...HEAD
+npm run check
 npm run smoke:all
-npm run release:verify
+npm audit --omit=dev
+npm pack --dry-run
 ```
 
-Secret scan found no checked-in credentials; hits were policy/doc text and local variable names only.
+Extension-load smoke with disposable home/project passed:
 
-Extra static hygiene check:
+```bash
+REPO="$PWD"
+TMP="$(mktemp -d)"
+mkdir -p "$TMP/home" "$TMP/project"
+(cd "$TMP/project" && HOME="$TMP/home" pi --no-extensions -e "$REPO" -p '/construct status' --approve)
+```
+
+Static hygiene probe found one issue:
 
 ```bash
 npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false
+# extensions/construct/commands/profiles.ts(611,33): error TS6133: 'tui' is declared but its value is never read.
 ```
 
-Result: failed only on one unused import in `extensions/construct/commands/profiles.ts` (`parseCatalog`).
+Package size from dry-run:
 
-## Progress log
+```text
+package size: 50.9 kB
+unpacked size: 225.2 kB
+files: 21
+```
 
-- F2 fixed: quit-time autoload now labels disabled package declarations in the confirmation prompt and preserves `enabled: false` metadata for packages disabled by Pi filters.
-- F1 fixed: package operations now report runtime-affecting settings changes separately from metadata-only failures, and dashboard/profile summaries keep reload guidance for those partial changes.
-- F9/F11 fixed: high-level autoload docs now avoid misleading “no startup behavior” wording, and the unused profile import was removed.
-- F3 fixed: shared JSON writes now use temp-file-and-rename atomic writes; `.pi/settings.json` direct edits still keep timestamped backups.
-- F4 fixed: load/unload/profile/package install flows now re-read relevant state after idle waits or long-running package operations before writing merged JSON.
+Code/documentation size snapshot:
 
-## What looks healthy
+```text
+extensions/construct/*.ts total: 4,700 lines
+largest source files:
+- commands/profiles.ts      1,017
+- commands/dashboard.ts       632
+- ui.ts                       567
+- commands/load.ts            462
+- project-settings.ts         316
 
-- The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and saved loadouts (`save`, `list`, `run`, `share`, `remove`, `import`).
-- `/construct status` remains read-only and does not create `.pi/construct.json`.
-- `/construct load` and `/construct unload` preserve the intended source-of-truth boundary: `.pi/settings.json` wins, `.pi/construct.json` is advisory.
-- Project settings edits create backups before direct writes.
-- Autoload is opt-in, TUI/trusted-project only, and confirmation-gated.
-- The dashboard state grammar is now simpler: selection marker plus state icon, with `Unloaded` read-only.
-- The disposable smoke suite covers the main print/e2e/install/drift paths.
+docs/*.md total before consolidation: 2,169 lines
+active docs after consolidation: 1,093 lines
+```
 
-## Findings
+## What is healthy
 
-### F1 — Partial runtime changes can be reported as failures without reload guidance
+- The public command surface remains intentionally small: `/construct`, `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, `import`.
+- `.pi/settings.json` remains source of truth; `.pi/construct.json` stays advisory.
+- Mutating flows wait for idle before writes and re-read important JSON state near writes.
+- JSON writes use temp-file + fsync + rename.
+- Project `.pi/settings.json` direct edits create backups first.
+- Package operations use Pi's public CLI contract for install/remove instead of private install internals.
+- Direct resource inventory uses Pi's exported `DefaultPackageManager.resolve()` / `SettingsManager` model with `onMissing => "skip"`.
+- Smoke coverage is broad for print/e2e/install/drift cases and disposable homes.
+- Share/import safety rejects obvious secret-looking URLs and generated package cache paths.
 
-Severity: high  
-Area: safety / user recovery  
-Files: `extensions/construct/package-ops.ts`, `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/profiles.ts`
+## Findings and options
 
-Package operations can change `.pi/settings.json` successfully, then fail while updating Construct metadata. Those results set `metadataOnlyFailure`, but dashboard/profile apply flows currently count only `result.ok` as a completed change. If every selected operation lands in this partial state, the final panel may show errors without the Enter-to-reload prompt even though runtime-affecting project settings changed.
+### A1 — Duplicate TUI row ids can still collapse selection — fixed on review branch
 
-Plan:
-
-- Introduce a shared operation result shape with explicit flags like `changedProjectSettings`, `changedConstructMetadata`, `needsReload`, and `metadataWarning`.
-- Treat metadata-only failures as partial success in user summaries.
-- Reload prompt should be based on `needsReload`, not just `result.ok`.
-- Apply the same result handling to dashboard apply and profile apply.
-
-### F2 — Exit-time autoload does not preserve disabled-filter intent
-
-Severity: high  
-Area: correctness / drift  
-File: `extensions/construct/commands/autoload.ts`
-
-The session watcher passes `enabledBySource` into `loadSourcesIntoConstruct`, so a newly noticed disabled package is loaded with `enabled: false`. The quit-time fallback calls `loadSourcesIntoConstruct(ctx, paths, constructRead, sources)` without that map, so disabled package declarations can be adopted as `enabled: true`, creating immediate drift.
-
-Plan:
-
-- Build `enabledBySource` in `maybePromptAutoloadOnShutdown` from `candidate.disabledByFilters`.
-- Add a regression fixture for disabled declarations loaded through the autoload fallback path, or at least a direct unit/pure helper test around candidate-to-enabled mapping.
-
-### F3 — JSON writes are direct, not atomic
-
-Severity: medium-high  
-Area: data durability  
-Files: `extensions/construct/json.ts`, all write callers
-
-`writeJson` writes directly to the target file. An interrupted process can leave user library/settings/project metadata truncated or invalid. Direct `.pi/settings.json` edits have backups, but Construct user files and `.pi/construct.json` do not.
-
-Plan:
-
-- Replace `writeJson` internals with temp-file + rename in the same directory.
-- Consider optional timestamped backups before destructive user-library writes such as `/construct unload` and profile overwrites.
-- Keep `/construct status` read-only.
-
-### F4 — Some file reads happen before idle waits and can become stale
-
-Severity: medium  
-Area: concurrency / correctness  
-Files: `extensions/construct/commands/load.ts`, `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/profiles.ts`
-
-Several flows inspect files, then wait for Pi/agent idle, then write using the earlier snapshot. If something else changes Construct metadata or settings while the command is waiting, a stale write can overwrite newer state.
-
-Plan:
-
-- Move final reads as close as possible to writes, after the idle wait.
-- Re-read `.pi/construct.json` inside `loadSourcesIntoConstruct` or pass a thunk/read option instead of a pre-read snapshot.
-- For dashboard apply, rebuild or validate selected package state immediately before applying if the wait was non-trivial.
-
-### F5 — Autoload watcher has a known parent-path gap
-
-Severity: medium  
-Area: reliability  
-Files: `extensions/construct/commands/autoload.ts`, `docs/autoload-transparency.md`
-
-When `.pi/settings.json` does not exist at session start, the watcher falls back to `.pi/` or the project root. If `.pi/` is created after startup, the root watcher may notice the directory creation, but it does not rebind to `.pi/settings.json`; later settings-file writes can be missed until quit-time fallback.
-
-Plan:
-
-- Recompute and rebind the watch target after parent-directory creation or after any scheduled autoload check.
-- Keep quit-time scan as the reliable fallback.
-- Add a targeted manual or mocked watcher test for “project starts without `.pi/`, then package install creates it”.
-
-### F6 — Duplicate catalog ids can collapse TUI selection
-
-Severity: medium  
-Area: TUI correctness  
+Severity: high for TUI correctness
 Files: `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/unload.ts`, `extensions/construct/ui.ts`
 
-Smoke coverage deliberately allows duplicate catalog ids with different sources. Some TUI picker rows still use `item.id` as the checkbox id, so duplicate ids can collapse selection state or make rows impossible to disambiguate in interactive flows.
+Smoke coverage allows duplicate catalog ids with different sources, but TUI picker rows still use friendly ids as row ids in a few paths:
 
-Plan:
+- dashboard package rows use `id: item.id`;
+- `/construct unload` TUI picker rows use `id: item.id`.
 
-- Use a stable internal row id such as `${id}\0${source}` for picker identity.
-- Keep the visible label as the friendly package id.
-- Apply this to dashboard Available rows and `/construct unload` TUI rows first.
+If two remembered sources derive the same id, Space/Enter can select both as one logical checkbox or make one impossible to target.
 
-### F7 — Package filter toggles intentionally lose partial filter state
+Resolution:
 
-Severity: medium  
-Area: product semantics / user trust  
-Files: `extensions/construct/project-settings.ts`, `docs/package-disable-design.md`
+- Dashboard and unload TUI picker ids now use stable internal row keys instead of visible package ids.
+- Visible labels still use the friendly package/saved-loadout ids.
+- Existing smoke coverage passes; full interactive duplicate-id selection still belongs in manual TUI verification until a TUI harness exists.
 
-Disabling overwrites all package resource filter keys with empty arrays. Enabling removes those keys. This is simple and documented, but it cannot restore a user’s prior partial package filters.
+### A2 — `commands/profiles.ts` is doing too much
 
-Plan:
+Severity: medium-high maintainability
+File: `extensions/construct/commands/profiles.ts`
 
-- Decide whether this is acceptable for the near-term package-level model.
-- If acceptable, keep copy explicit: Construct enables/disables the whole package, not individual resources.
-- If not, store a filter snapshot in `.pi/construct.json` before disabling and restore it on enable.
-- Avoid a fine-grained resource browser unless there is a deliberate product decision.
+This one file owns save, list, run, share, remove, import parsing, paste UI, confirmation UIs, progress panels, snippet validation, source safety checks, and storage writes. The name is also stale in user-facing product language: `profile` is internal storage, but the feature is saved loadouts.
 
-### F8 — Saved loadout run/apply flow needs consistency review
+Options:
 
-Severity: medium  
-Area: UX / consistency  
-Files: `extensions/construct/commands/profiles.ts`, `MAP.md`
+1. **Minimal rename/split**
+   - `commands/saved-loadouts.ts` for command dispatcher.
+   - Keep internal `CatalogProfile` type for storage compatibility.
+   - Split helpers into `saved-loadouts/share.ts`, `saved-loadouts/import.ts`, `saved-loadouts/run.ts`, `saved-loadouts/save.ts`.
 
-Saved loadouts are now the user-facing feature; `profile` remains the internal catalog term only. The run/apply flow should still be reviewed against the newer dashboard progress/result flow, especially around partial-success handling from F1.
+2. **Domain layer first**
+   - Add `saved-loadouts.ts` domain module with pure helpers: id, lookup, sources, snippet validation, replacement diff.
+   - Leave command UI functions in place temporarily.
 
-Plan:
+3. **Do nothing until next saved-loadout feature**
+   - Lowest churn, but it makes every future change harder.
 
-- Keep user-facing docs centered on saved loadouts; do not advertise unreleased profile aliases.
-- Upgrade saved-loadout run/apply to the same progress/result/reload model as dashboard apply if needed.
-- Reuse shared operation result handling from F1.
-- Keep saved loadouts visible in the dashboard only as compact recipe/spotlight rows unless deliberately expanded.
+Recommendation: option 2 first, then option 1 if the diff is clean. Do not add more saved-loadout behavior while this file stays at 1k lines.
 
-### F9 — Active docs still contain ambiguous autoload/startup wording
+### A3 — The generic checkbox picker is becoming a framework
 
-Severity: medium  
-Area: docs / product clarity  
-Files: `docs/autoload-removal-plan.md`, `docs/architecture.md`
+Severity: medium maintainability
+File: `extensions/construct/ui.ts`
 
-The current implementation registers a session-start watcher when autoload is enabled. Some docs still say Construct has “no startup behavior.” The intended meaning is “no startup prompt/write/adoption,” but the wording is easy to misread now that a watcher attaches on session start.
+`pickCheckboxes()` now handles filtering, section rendering, state-icon rendering, saved-row related markers, quick-select, remove confirmation, apply progress, cancellation, result panels, scrolling, and custom footer text.
 
-Plan:
+That was a good incremental path, but it is now carrying dashboard-specific semantics through generic options.
 
-- Replace broad “no startup behavior” language with “no startup prompt, adoption, install, reload, or write.”
-- State that opt-in autoload may attach a lightweight settings watcher on session start.
+Options:
 
-### F10 — The generic TUI picker is carrying a lot of behavior
+1. **Keep it stable, extract only pure render helpers**
+   - Lowest behavior risk.
+   - Makes `ui.ts` easier to scan but does not reduce conceptual load much.
 
-Severity: low-medium  
-Area: maintainability  
-Files: `extensions/construct/ui.ts`, `extensions/construct/commands/dashboard.ts`
+2. **Split picker phases**
+   - `pickCheckboxes()` only selects/filters rows.
+   - `showProgressPanel()` handles applying/result/reload panel.
+   - `confirmPanel()` handles destructive confirmations.
 
-`pickCheckboxes` now owns filtering, section rendering, state icon rendering, remove confirmation, apply progress, cancellation, result panels, scrolling, and custom footer text. This is still workable, but it is becoming a small framework.
+3. **Move dashboard-specific row semantics out of picker**
+   - Picker supports only generic `relatedIds` and `quickSelectIds`.
+   - Dashboard owns all labels and action language.
 
-Plan:
+Recommendation: option 2. It would also let saved-loadout run reuse the same progress/result panel instead of carrying a second custom implementation.
 
-- Keep it stable for the current dashboard pass.
-- Later split pure rendering helpers from state machine/control-flow helpers.
-- Keep dashboard-specific semantics in `dashboard.ts`; keep `ui.ts` generic.
+### A4 — Dashboard apply and saved-loadout run duplicate operation orchestration
 
-### F11 — Static hygiene is light
+Severity: medium maintainability / consistency
+Files: `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/profiles.ts`, `extensions/construct/package-ops.ts`
 
-Severity: low  
-Area: maintainability  
-Files: `tsconfig.json`, `extensions/construct/commands/profiles.ts`
+Both flows build steps, wait for idle, apply package operations one at a time, track partial metadata failures, compute reload guidance, and render progress lines. They are close but not identical.
 
-Strict TypeScript is on, but unused imports/locals are not part of the normal check. A one-off no-unused run caught one unused import.
+Recommendation:
 
-Plan:
+- Extract a small operation runner, not a giant abstraction:
+  - input: steps `{ action, label, source, direct? }`;
+  - callback: progress lines;
+  - output: completed, partial runtime changes, failures, needsReload, cancelled.
+- Keep dashboard-specific step construction in `dashboard.ts`.
+- Keep saved-loadout source expansion in saved-loadout code.
 
-- Remove the unused `parseCatalog` import.
-- Consider adding `noUnusedLocals` / `noUnusedParameters` to `npm run check`, or add a separate `npm run check:hygiene` if that is too strict while features are WIP.
+This is likely the best code-fat reduction per line changed.
 
-### F12 — Test coverage is good for print/e2e, thin for real TUI/autoload watcher behavior
+### A5 — State collection is repeated across modules
 
-Severity: low-medium  
-Area: test coverage  
-Files: `scripts/*.sh`
+Severity: medium maintainability / drift risk
+Files: `dashboard.ts`, `load.ts`, `status.ts`, `profiles.ts`, `project-settings.ts`
 
-The smoke suite gives strong disposable-home coverage for print-mode command behavior, install discovery, duplicate/drift cases, and package disable detection. It does not exercise real interactive TUI key handling, watcher timing, confirm prompts, or partial operation failures.
+Several modules independently collect package declarations, normalize local paths, match Construct metadata, detect disabled filters, and classify package state. The logic is readable in each place, but subtle differences are accumulating.
 
-Plan:
+Options:
 
-- Keep current smoke suite as the release baseline.
-- Add pure helper tests for source identity, dashboard package classification, and operation-result aggregation.
-- Add a manual TUI checklist before merge/release until we have an automated TUI harness.
-- Add a targeted autoload watcher/quit fallback test only if Pi exposes a stable way to drive confirmations.
+1. **Central snapshot module**
+   - `state.ts` or `inventory.ts` returns a normalized `ConstructSnapshot` with packages, direct resources, catalog, metadata, warnings.
+   - Dashboard/status/load/save consume the same classification helpers.
 
-### F13 — Branch history contains superseded color experiments
+2. **Only extract source identity helpers**
+   - Lower churn; keep callers separate.
 
-Severity: low  
-Area: release hygiene  
-Branch: `tui-cleanup`
+3. **Leave until a bug appears**
+   - The current smoke suite catches many drift cases.
 
-The branch has commits for row color experiments that were later backed out to icon-only coloring. That is fine for exploration, but noisy for merge history.
+Recommendation: start with option 2. A full snapshot module could become a second framework. Extract only the repeated identity/classification helpers that make duplicate/drift bugs likely.
 
-Plan:
+### A6 — Static hygiene is close; add a cheap gate — fixed on review branch
 
-- Before merging to `main`, squash or rebase into coherent commits, likely:
-  1. autoload transparency/watcher behavior;
-  2. dashboard layout/state grammar;
-  3. docs/smoke updates.
+Severity: low-medium
+Files: `tsconfig.json`, `package.json`, `profiles.ts`
 
-## Proposed tackle order
+Strict TypeScript passes, but `noUnusedLocals/noUnusedParameters` is intentionally separate from the normal check.
 
-### Pass 1 — Correctness before merge
+Resolution:
 
-1. Fix F2: preserve disabled metadata in quit-time autoload.
-2. Fix F1: make partial runtime changes visible and reload-worthy.
-3. Fix F9/F11: clear stale doc wording and unused import.
-4. Run `npm run smoke:all` and `npm run release:verify`.
+- Fixed the unused parameter in `confirmRemoveSavedLoadout`.
+- Added:
+  ```json
+  "check:hygiene": "tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false"
+  ```
+- Keep it separate from `npm run check` for now, while feature code is still moving.
 
-### Pass 2 — Data safety and identity hardening
+### A7 — `readJson` conflates I/O errors with invalid JSON
 
-1. Implement atomic JSON writes (F3).
-2. Move final reads after idle waits where practical (F4).
-3. Use composite picker ids for duplicate-friendly TUI rows (F6).
-4. Add focused regression coverage for each.
+Severity: low-medium correctness / diagnostics
+File: `extensions/construct/json.ts`
 
-### Pass 3 — UX/product decisions
+`readJson()` returns `state: "invalid"` for parse failures and read failures alike. A permissions error, directory path, or transient filesystem error can be reported as “invalid JSON,” and some parse helpers treat invalid state as “empty plus warning.”
 
-1. Decide whether package filter restoration matters now (F7).
-2. Decide whether saved-loadout run/apply needs more dashboard-style progress/result polish (F8).
-3. Finish manual real-TUI review: spacing, cursor movement, filter clarity, footer wrapping, remove confirmation, result reload.
+Options:
 
-### Pass 4 — Maintenance polish
+1. Add `state: "error"` to distinguish I/O failure from JSON parse failure.
+2. Keep the type as-is but improve error copy: “could not read or parse JSON”.
+3. Leave it; the practical user files are normal JSON files.
 
-1. Refactor `ui.ts` only after behavior settles (F10).
-2. Add static hygiene checks if we want them in CI/release gates (F11).
-3. Squash/rebase `tui-cleanup` before merge (F13).
+Recommendation: option 2 now, option 1 only if we touch JSON plumbing for another reason. Adding a union state is invasive.
 
-## Open discussion questions
+### A8 — Autoload watcher may not be worth its code weight
 
-- Should metadata-only failures still trigger reload by default, or should the result panel offer “reload recommended” without auto-Enter reload?
-- Do we want Construct to preserve partial Pi package filters, or is whole-package enable/disable the correct product boundary for now?
-- How much effort should go into automated TUI testing versus keeping a manual checklist?
-- Should saved loadouts stay compact in the dashboard, or gain richer management UI later?
+Severity: product/maintenance decision
+File: `extensions/construct/commands/autoload.ts`
+
+Autoload is safe: off by default, trusted TUI only, confirmation-gated, and metadata-only. But the session watcher adds timing complexity, parent-path watch gaps, prompt annoyance risk, and around 250 lines of code around a non-core behavior.
+
+Options:
+
+1. **Polish the watcher**
+   - Rebind to `.pi/settings.json` when `.pi/` appears.
+   - Batch new declarations into one selectable prompt.
+   - Add “ask on exit / ignore this session / turn off” choices.
+
+2. **Downgrade autoload to exit-time only**
+   - Delete watcher/debounce/seen-source state.
+   - Keep the explicit `/construct autoload` toggle and quit-time prompt.
+   - Simpler, less surprising, fewer modal interruptions.
+
+3. **Keep as-is and document caveats**
+   - No immediate work, but complexity remains.
+
+Recommendation: seriously consider option 2. If Construct is feeling bloated, this is one of the few user-visible cuts that simplifies both code and mental model while preserving the core promise: “ask before adopting unloaded packages.”
+
+### A9 — Package filter restoration remains an explicit product trade-off
+
+Severity: medium product semantics
+Files: `project-settings.ts`, `docs/architecture.md`, `docs/commands-and-ux.md`
+
+Disabling a package overwrites package resource filters with `[]`; enabling removes those filter keys. This intentionally treats Construct as package-level on/off, but users who had partial filters lose that partial filter shape.
+
+Options:
+
+1. Keep whole-package enable/disable and make copy explicit.
+2. Snapshot prior package filters into `.pi/construct.json` before disabling and restore on enable.
+3. Add package-contained resource browsing/toggling.
+
+Recommendation: option 1 for now. Option 2 is defensible later. Avoid option 3 unless Construct deliberately becomes a resource browser, which conflicts with the product lane.
+
+### A10 — Known-project index is package-only while Construct now shows direct resources
+
+Severity: low-medium product consistency
+Files: `projects.ts`, `docs/product-model.md`, `docs/architecture.md`
+
+Known-project assignment counts currently track package declarations only. That is okay because counts are informational and used mostly around unload/library cleanup. But direct resources are now first-class dashboard/status rows, so future “known projects” language can become misleading if reused around direct resources.
+
+Recommendation:
+
+- Keep package-only counts for now.
+- Avoid showing known-project counts on direct-resource rows until the index stores resource refs.
+- If `/construct scan` lands, design its report as read-only findings rather than expanding the known-project index implicitly.
+
+### A11 — Project scan can easily become the next bloat source
+
+Severity: product scope risk
+Roadmap: `MAP.md` project scan section
+
+`/construct scan [path]` is useful, but it must not become a second dashboard, a package manager, or a hidden broad resolver.
+
+Options:
+
+1. Conservative file scan:
+   - parse `.pi/settings.json`, `.pi/construct.json`, and known `.pi/*` resource directories;
+   - skip `node_modules`, `.git`, `.pi/npm`, `.pi/git`, build dirs;
+   - no Pi package resolution, no trust writes, no installs.
+
+2. Pi resolver per project:
+   - more accurate, but risks trust/package side effects and slower scans.
+
+3. No scan yet; rely on current project only.
+
+Recommendation: option 1 only. Keep output summary-oriented and explicitly end with `No files were changed.` Do not integrate scan results into the dashboard in the first slice.
+
+## Documentation audit
+
+The active docs should now be small enough for agents and humans to load without wading through completed plans.
+
+### Active source of truth after consolidation
+
+- `AGENTS.md` — operating rules and product guardrails.
+- `MAP.md` — current roadmap/action list; completed release history is summarized and points to `CHANGELOG.md`.
+- `TODO.md` — scratchpad for undecided ideas only.
+- `README.md` — user guide.
+- `CHANGELOG.md` — shipped and unreleased history.
+- `HANDOFF.md` — local session/release notes.
+- `docs/product-model.md` — compact product model.
+- `docs/commands-and-ux.md` — current command/UX reference.
+- `docs/architecture.md` — architecture, data model, and Pi filter semantics.
+- `docs/autoload-transparency.md` — current autoload behavior and watcher caveats.
+- `docs/safety-and-maintenance.md` — safety rules and maintenance risks.
+- `docs/preflight-checklist.md` — release/manual checklist.
+- `docs/technical-audit-plan.md` — current audit discussion doc.
+
+### Deleted as stale completed plans
+
+The important current facts from these files were folded into the active docs above; shipped history remains in `CHANGELOG.md`.
+
+- `docs/autoload-removal-plan.md`
+- `docs/dashboard-action-model-plan.md`
+- `docs/pi-model.md`
+- `docs/profiles-and-sharing-plan.md`
+- `docs/project-resource-loadout-plan.md`
+- `docs/package-disable-design.md`
+- `docs/pi-config-and-construct.md`
+
+## Opinionated next work order
+
+### Pass 1 — Stabilize before new features
+
+1. Split saved-loadout pure helpers from `commands/profiles.ts`.
+2. Extract shared operation/progress/result logic from dashboard and saved-loadout run.
+3. Run `npm run check`, `npm run check:hygiene`, and `npm run smoke:all`.
+
+### Pass 2 — Trim code
+
+1. Extract saved-loadout pure helpers from `commands/profiles.ts`.
+2. Extract shared operation runner/progress result logic from dashboard and saved-loadout run.
+3. Split generic picker selection from apply/result panels.
+
+### Pass 3 — Only then add `/construct scan`
+
+Implement scan as a read-only file parser with conservative skips and no runtime adoption. Keep it out of the dashboard until the command proves useful.
+
+## Decisions to discuss
+
+1. Do we keep the autoload session watcher, or simplify autoload to exit-time only?
+2. Should `profile` remain internal type/file language, or do we rename code modules to `saved-loadouts` while preserving JSON schema?
+3. Is package-level filter loss acceptable long-term, or do we want a filter snapshot before disable?

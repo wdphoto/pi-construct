@@ -84,7 +84,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"Construct is intentionally small now:",
 					"- /construct",
 					"- /construct status",
-					"- /construct load [id-or-source ...]",
+					"- /construct load [id-or-source-or-path ...]",
 					"- /construct unload [id-or-source ...]",
 					"- /construct autoload [on|off|status]",
 					"- /construct save <name>",

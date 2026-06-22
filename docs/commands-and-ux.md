@@ -7,8 +7,8 @@ Construct is centered on one primary command: `/construct`.
 ```text
 /construct                         # one loadout menu / dashboard
 /construct status                  # read-only diagnostics
-/construct load [id-or-source ...] # add current project resources to the Construct
-/construct unload [id-or-source ...] # remove resources from the Construct
+/construct load [id-or-source-or-path ...] # add current project resources to the Construct
+/construct unload [id-or-source ...]         # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
 /construct save <name>             # save active Construct package sources as a named loadout
 /construct list                    # list saved loadouts

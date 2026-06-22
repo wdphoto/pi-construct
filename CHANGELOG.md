@@ -6,7 +6,17 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
-- None yet.
+### Changed
+- Consolidated active documentation around the current product model, command UX, architecture, safety, preflight, autoload, and audit notes.
+- Clarified `/construct load` help text to include direct-resource path arguments.
+- Clarified verbose autoload status wording around watcher and quit-time prompts.
+- Added a `check:hygiene` script for unused local/parameter checks.
+
+### Fixed
+- Made dashboard and unload TUI selection identities distinct from visible package ids, so remembered sources with the same derived id do not collapse into one checkbox.
+
+### Removed
+- Removed stale completed planning docs now covered by current docs and the changelog.
 
 ## 0.0.13 - 2026-06-22
 

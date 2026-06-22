@@ -115,7 +115,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 		const pickerItems: CheckboxPickerItem[] = catalog.items.map((item) => {
 			const count = knownCounts.counts.get(catalogItemKey(item)) ?? 0;
 			return {
-				id: item.id,
+				id: catalogItemKey(item),
 				label: item.id,
 				value: item.source,
 				description: `Known projects: ${count}`,
@@ -128,7 +128,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 			return;
 		}
 		const ids = new Set(result.selectedIds);
-		selected = catalog.items.filter((item) => ids.has(item.id));
+		selected = catalog.items.filter((item) => ids.has(catalogItemKey(item)));
 	} else {
 		showText(ctx, [unloadUsage(), "", "Available:", ...catalog.items.map((item) => `- ${item.id}: ${item.source}`)].join("\n"));
 		return;

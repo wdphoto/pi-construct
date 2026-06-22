@@ -31,6 +31,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "check:hygiene": "tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false",
     "pack:dry-run": "npm pack --dry-run",
     "release:verify": "npm run check && npm run pack:dry-run",
     "smoke:all": "npm run smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke",

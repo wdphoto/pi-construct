@@ -17,6 +17,7 @@ type DashboardStep = { action: DashboardAction; item: DashboardOperationItem; st
 
 interface DashboardPackage extends DashboardOperationItem {
 	type: "package";
+	rowId: string;
 	section: PackageDashboardSection;
 	checked: boolean;
 	disabled?: boolean;
@@ -27,6 +28,7 @@ interface DashboardPackage extends DashboardOperationItem {
 
 interface DashboardSavedLoadout {
 	type: "saved";
+	rowId: string;
 	id: string;
 	label: string;
 	value: string;
@@ -40,6 +42,7 @@ interface DashboardSavedLoadout {
 
 interface DashboardDirectResource {
 	type: "direct";
+	rowId: string;
 	id: string;
 	label: string;
 	value: string;
@@ -79,6 +82,10 @@ function sortDashboardPackages(packages: DashboardItem[]): DashboardItem[] {
 	return packages.sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.label.localeCompare(b.label) || itemSortValue(a).localeCompare(itemSortValue(b)));
 }
 
+function rowId(prefix: string, ...parts: string[]): string {
+	return `${prefix}:${parts.join("\u0000")}`;
+}
+
 function uniqueSorted(sources: string[]): string[] {
 	return [...new Set(sources.filter((source) => source.trim().length > 0))].sort();
 }
@@ -104,9 +111,9 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 		const row = findPackageForSavedSource(packageItems, source);
 		const section = row?.section ?? "Available";
 		counts[section] += 1;
-		if (row && !seenRows.has(row.id)) {
-			seenRows.add(row.id);
-			relatedIds.push(row.id);
+		if (row && !seenRows.has(row.rowId)) {
+			seenRows.add(row.rowId);
+			relatedIds.push(row.rowId);
 		}
 	}
 	return {
@@ -178,7 +185,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const sources = savedLoadoutSources(catalog, profile);
 		packages.push({
 			type: "saved",
-			id: `saved:${profile.id}`,
+			rowId: rowId("saved", profile.id),
+			id: profile.id,
 			label: profile.id,
 			value: `${sources.length} package source${sources.length === 1 ? "" : "s"}`,
 			section: "Saved",
@@ -198,6 +206,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const disabledByFilters = [...item.matchSources].some((source) => project.disabledSources.has(source));
 		packages.push({
 			type: "package",
+			rowId: rowId("managed", item.id, item.source),
 			id: item.id,
 			label: item.id,
 			source: item.source,
@@ -219,6 +228,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		if (managedSources.has(item.source) || project.declaredSources.has(item.source)) continue;
 		packages.push({
 			type: "package",
+			rowId: rowId("catalog", item.id, item.source),
 			id: item.id,
 			label: item.id,
 			source: item.source,
@@ -235,6 +245,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		if (managedSources.has(pkg.source) || managedSources.has(normalized)) continue;
 		packages.push({
 			type: "package",
+			rowId: rowId("unloaded", normalized),
 			id: `unloaded:${normalized}`,
 			label: deriveId(normalized),
 			source: normalized,
@@ -257,6 +268,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const section: PackageDashboardSection = resource.managed ? (resource.enabled ? "Active" : "Disabled") : "Unloaded";
 		packages.push({
 			type: "direct",
+			rowId: rowId("direct", resource.id),
 			id: `direct:${resource.id}`,
 			label: `${resource.kind}:${resource.name}`,
 			value: resource.displayPath,
@@ -395,7 +407,7 @@ function resultError(result: { error?: string; stderr?: string; exitCode?: numbe
 
 function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
 	const selected = new Set(ids);
-	const removable = packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.id) && (item.section === "Active" || item.section === "Disabled"));
+	const removable = packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
 	if (removable.length === 0) return undefined;
 	const preview = removable.slice(0, 8).map((item) => `- ${item.label}: ${item.source}`);
 	const extra = removable.length > preview.length ? [`…and ${removable.length - preview.length} more`] : [];
@@ -456,7 +468,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	}
 
 	const pickerItems: CheckboxPickerItem[] = packages.map((item) => ({
-		id: item.id,
+		id: item.rowId,
 		label: item.label,
 		value: item.type === "package" ? item.displaySource : item.value,
 		description: item.description,
@@ -494,7 +506,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			const selected = new Set(ids);
 			const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
 			const directItems = packages.filter((item): item is DashboardDirectResource => item.type === "direct");
-			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.id)) : [];
+			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.rowId)) : [];
 			const steps: DashboardStep[] = [];
 			const scheduled = new Set<string>();
 			function addStep(action: DashboardAction, item: DashboardOperationItem): void {
@@ -504,12 +516,12 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				steps.push({ action, item, state: "pending" });
 			}
 			for (const item of packageItems) {
-				if (item.disabled || !selected.has(item.id)) continue;
+				if (item.disabled || !selected.has(item.rowId)) continue;
 				const action = actionForSubmit(submitAction, item);
 				if (action) addStep(action, operationFromPackage(item));
 			}
 			for (const item of directItems) {
-				if (item.disabled || !selected.has(item.id)) continue;
+				if (item.disabled || !selected.has(item.rowId)) continue;
 				const action = actionForSubmit(submitAction, item);
 				if (action) addStep(action, operationFromDirect(item));
 			}

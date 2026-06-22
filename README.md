@@ -104,8 +104,8 @@ Or run `/construct`, focus a saved loadout and press Enter to run it, or select 
 ```text
 /construct                           # open the loadout menu
 /construct status                    # read-only diagnostics
-/construct load [id-or-source ...]   # adopt project package declarations into Construct
-/construct unload [id-or-source ...] # forget resources from Construct
+/construct load [id-or-source-or-path ...] # adopt project resources into Construct
+/construct unload [id-or-source ...]       # forget resources from Construct
 /construct save <name>               # save active Construct package sources as a named loadout
 /construct list                      # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project

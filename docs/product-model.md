@@ -18,9 +18,9 @@ Construct is a project-level Pi resource manager. Package loadouts are the curre
 - prompt templates
 - themes
 
-System prompt files are also native Pi project resources, but should be handled as a later explicit file-resource slice. See `docs/project-resource-loadout-plan.md`.
+System prompt files are also native Pi project resources, but should be handled as a later explicit file-resource slice.
 
-Current direct-resource support includes inventory in `/construct status full`, rows in `/construct`, `/construct load` adoption into project-local Construct metadata, and dashboard toggles for adopted direct resources using Pi-native `+path` / `-path` filters.
+Current direct-resource support includes inventory in `/construct status full`, rows in `/construct`, `/construct load` adoption into project-local Construct metadata, and dashboard toggles for adopted direct resources using Pi-native `+path` / `-path` filters. Direct resources remain project-local unless a future portable path/export/package model is deliberately designed.
 
 ## Current package workflow
 
