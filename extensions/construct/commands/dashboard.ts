@@ -148,12 +148,23 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	return { paths, packages, warnings };
 }
 
+function dashboardCounts(packages: DashboardPackage[]): { installed: number; disabled: number; available: number; unloaded: number } {
+	return {
+		installed: packages.filter((item) => item.section === "Installed").length,
+		disabled: packages.filter((item) => item.section === "Disabled").length,
+		available: packages.filter((item) => item.section === "Available").length,
+		unloaded: packages.filter((item) => item.section === "Unloaded").length,
+	};
+}
+
 function dashboardSummary(packages: DashboardPackage[]): string {
-	const installed = packages.filter((item) => item.section === "Installed").length;
-	const disabled = packages.filter((item) => item.section === "Disabled").length;
-	const available = packages.filter((item) => item.section === "Available").length;
-	const unloaded = packages.filter((item) => item.section === "Unloaded").length;
-	return `${installed} installed · ${disabled} disabled · ${available} available · ${unloaded} unloaded`;
+	const counts = dashboardCounts(packages);
+	return `${counts.installed} installed · ${counts.disabled} disabled · ${counts.available} available · ${counts.unloaded} unloaded`;
+}
+
+function dashboardPickerTitle(packages: DashboardPackage[]): string {
+	const counts = dashboardCounts(packages);
+	return `Loadout: ${counts.installed} installed | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
 }
 
 function sectionTone(section: DashboardSection): CheckboxPickerTone {
@@ -272,8 +283,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
 	}));
-	const pickerResult = await pickCheckboxes(ctx, `Construct Loadout — ${dashboardSummary(packages)}`, pickerItems, {
+	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
+		titleBold: false,
 		confirmHint: "Enter applies",
 		filterLabel: "Filter packages",
 		filterHint: "Type to narrow by package, source, or state · Backspace edits",

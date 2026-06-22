@@ -20,6 +20,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Kept `Unloaded` as the user-facing term for project declarations that are not in Construct; `/construct load` remains the adoption path.
 - Dashboard/profile package operations now distinguish metadata-only failures from no-op failures, so runtime-affecting partial changes still get reload guidance.
 - Re-read project/library/profile state after idle waits in load, unload, profile, and package install flows to reduce stale-snapshot overwrites.
+- Simplified the dashboard TUI title to a quiet `Loadout:` count line with pipe separators.
 
 ## 0.0.11 - 2026-06-21
 
