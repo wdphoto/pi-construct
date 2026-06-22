@@ -7,8 +7,9 @@ Status: command language, save semantics, run UX parity, saved rows in `/constru
 ## Decisions
 
 - Public save command: `/construct save <name>`.
+- Public list command: `/construct list`.
 - Public run command: `/construct run <saved-name>`.
-- Existing `/construct profile ...` commands may stay as compatibility aliases while docs move to the shorter language.
+- Existing `/construct saved` and `/construct profile ...` commands may stay as compatibility aliases while docs move to the shorter language.
 - A saved loadout is a named grouping of **active Construct package sources** for now.
 - Disabled package declarations are skipped.
 - Active package declarations that are not loaded into Construct are offered during save; selected packages are loaded into Construct and included, unselected packages are skipped.
@@ -159,8 +160,8 @@ Loadout: 2 active | 1 disabled | 3 available | 0 unloaded
 
 Saved
 -----
-[ ] ◆  web-stack       4 package sources
-[ ] ◆  pi-projects     3 package sources
+[ ] ◆  web-stack       2 active · 1 available
+[ ] ◆  pi-projects     3 active
 
 Active
 ------
@@ -169,16 +170,18 @@ Active
 
 - Keep the quiet package-count title.
 - Put saved loadouts above package sections when present.
-- Saved-loadout row grammar: `[ ] ◆  web-stack  4 package sources`.
-- Enter runs selected saved loadouts through the same in-panel progress/result flow as package rows.
-- No new dashboard key is needed for the first slice.
+- Saved-loadout row grammar: `[ ] ◆  web-stack  2 active · 1 available`.
+- Saved rows are recipe/spotlight rows. Focusing or selecting one marks member package rows with `[·]` but does not select those rows for disable/remove.
+- Enter runs selected saved loadouts through the same in-panel progress/result flow as package rows, installing/enabling only package sources that are not already active.
+- Disable/remove remains a package-row action, not a saved-loadout group action.
+- No new dashboard key is needed for this slice.
 
 ## Implementation slices
 
 ### Slice 1 — command language and save semantics — implemented
 
-- Add `/construct save <name>` and `/construct run <name>` as canonical commands.
-- Keep `/construct profile save/list/apply` as compatibility aliases.
+- Add `/construct save <name>`, `/construct list`, and `/construct run <name>` as canonical commands.
+- Keep `/construct saved` and `/construct profile save/list/apply` as compatibility aliases.
 - Update save behavior to include active Construct-managed package sources and offer active unloaded package declarations for inclusion in TUI.
 - Skip disabled package declarations.
 - Confirm before replacing an existing saved loadout in TUI.
@@ -194,6 +197,7 @@ Active
 
 - Add compact saved-loadout rows to `/construct`.
 - Running a saved loadout from the dashboard should expand to package operations with no duplicate installs.
+- Saved rows show active/disabled/available/unloaded member counts and mark member package rows with `[·]` while focused or selected.
 
 ### Slice 4 — sharing — implemented
 

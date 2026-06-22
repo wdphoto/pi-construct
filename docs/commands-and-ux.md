@@ -11,7 +11,7 @@ Construct is centered on one primary command: `/construct`.
 /construct unload [id-or-source ...] # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
 /construct save <name>             # save active Construct package sources as a named loadout
-/construct saved                   # list saved loadouts
+/construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
 /construct copy [saved-name]       # print a shareable saved-loadout JSON snippet
 /construct import <json>           # preview/import a saved-loadout JSON snippet
@@ -20,6 +20,7 @@ Construct is centered on one primary command: `/construct`.
 Compatibility aliases remain available for now:
 
 ```text
+/construct saved
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>
@@ -88,7 +89,7 @@ Saved loadouts are named groups of active Construct package sources. `profile` r
 
 ```text
 /construct save www
-/construct saved
+/construct list
 /construct run www
 /construct copy www
 /construct import '{"kind":"construct-loadout","version":1,"name":"www","sources":["npm:pkg"]}'
@@ -116,7 +117,7 @@ Copy/import rules:
 - Copy/import warns for local path sources because they are usually not portable across machines.
 - Copy/import refuses generated Pi package cache paths and source strings that look like secrets.
 
-Saved loadouts also appear as compact first-class rows in `/construct`; selecting one and pressing Enter runs it in the current project.
+Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing or selecting one marks its member package rows with `[·]`, and pressing Enter installs/enables only the package sources that are not already active. Disable/remove remains a package-row action, not a saved-loadout action.
 
 ## `/construct`
 
@@ -136,7 +137,7 @@ Controls:
 
 - type to search/filter;
 - Space selects rows;
-- row grammar separates selection from state: `[x]` means selected, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
+- row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused/selected saved loadout, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a label such as `Filter loadouts/resources:` and a hint that typing narrows by saved loadout/package/resource/source/state;
 - in TUI, use a quiet title line like `Loadout: 1 active | 0 disabled | 3 available | 0 unloaded`;
@@ -144,8 +145,9 @@ Controls:
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
 - Enter applies/runs the obvious action for selected rows: run `Saved`, install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
+- Enter on a saved loadout is additive/activating only: it installs available package sources and enables disabled package sources, but does not disable or remove active member packages;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
-- `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project;
+- `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
 - after apply, Esc cancels reload and returns to the session.

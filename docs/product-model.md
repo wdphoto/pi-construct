@@ -73,7 +73,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 /construct unload
 /construct autoload
 /construct save <name>
-/construct saved
+/construct list
 /construct run <saved-name>
 /construct copy [saved-name]
 /construct import <json>
@@ -82,6 +82,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 Compatibility aliases remain for now:
 
 ```text
+/construct saved
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>

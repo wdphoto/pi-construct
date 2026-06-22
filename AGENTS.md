@@ -71,13 +71,14 @@ Support commands:
 - `/construct unload`
 - `/construct autoload`
 - `/construct save <name>`
-- `/construct saved`
+- `/construct list`
 - `/construct run <saved-name>`
 - `/construct copy [saved-name]`
 - `/construct import <json>`
 
 Compatibility aliases:
 
+- `/construct saved`
 - `/construct profile list`
 - `/construct profile save <name>`
 - `/construct profile apply <name>`
@@ -106,7 +107,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.
 - Saving over an existing loadout never appends or merges; TUI asks before replacing.
 - `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.
-- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it through the dashboard progress/result/reload flow.
+- Saved loadouts appear as compact `◆` rows in `/construct`; focusing/selecting one marks member package rows with `[·]`, and pressing Enter runs it through the dashboard progress/result/reload flow. Saved rows are recipe/spotlight rows only; disable/remove stays on package rows.
 - Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
 - `/construct copy [saved-name]` prints a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers.
 - `/construct import <json>` validates and previews pasted snippets; TUI asks before writing, non-TUI previews only.

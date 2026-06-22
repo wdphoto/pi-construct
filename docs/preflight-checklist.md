@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `saved`, `run`, `copy`, and `import`.
+- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `copy`, and `import`; `/construct saved` remains an alias.
 - No startup prompt/write/adoption behavior; opt-in autoload remains confirmation-only and checks on quit.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -22,7 +22,7 @@ Protect the manual product model:
 /construct unload [id-or-source ...]
 /construct autoload
 /construct save <name>
-/construct saved
+/construct list
 /construct run <saved-name>
 /construct copy [saved-name]
 /construct import <json>
@@ -31,6 +31,7 @@ Protect the manual product model:
 Compatibility aliases:
 
 ```text
+/construct saved
 /construct profile list
 /construct profile save <name>
 /construct profile apply <name>
@@ -84,9 +85,9 @@ Expected:
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
-- `/construct saved` lists saved loadouts.
+- `/construct list` lists saved loadouts; `/construct saved` remains an alias.
 - `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
-- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it in the current project.
+- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one marks member package rows with `[·]`, and pressing Enter installs/enables only package sources that are not already active.
 - `/construct copy [saved-name]` prints a package-source JSON snippet and warns for local paths.
 - `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
 - Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
@@ -119,9 +120,11 @@ Check in real TUI usage:
 
 - fuzzy search works;
 - Space selects saved-loadout and package rows;
+- focusing or selecting Saved rows marks member package rows with `[·]` without directly selecting them;
 - Enter runs Saved rows, installs Available, disables Active, and enables Disabled rows;
+- Enter on Saved rows is additive/activating only and does not disable/remove active member packages;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
-- `r` shows a warning, then removes selected Active or Disabled package declarations;
+- `r` shows a warning, then removes selected Active or Disabled package declarations; selected Saved rows do not remove member packages;
 - Esc cancels;
 - package rows stay primary;
 - live TUI title uses the quiet `Loadout:` count format;

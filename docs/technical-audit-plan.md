@@ -38,7 +38,7 @@ Result: failed only on one unused import in `extensions/construct/commands/profi
 
 ## What looks healthy
 
-- The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and saved loadouts (`save`, `saved`, `run`, `copy`, `import`; profile aliases remain compatibility-only).
+- The public command surface is still small: `/construct`, `status`, `load`, `unload`, `autoload`, and saved loadouts (`save`, `list`, `run`, `copy`, `import`; `/construct saved` and profile commands remain compatibility-only).
 - `/construct status` remains read-only and does not create `.pi/construct.json`.
 - `/construct load` and `/construct unload` preserve the intended source-of-truth boundary: `.pi/settings.json` wins, `.pi/construct.json` is advisory.
 - Project settings edits create backups before direct writes.
@@ -160,7 +160,7 @@ Plan:
 - Keep `profile` aliases secondary and user-facing docs centered on saved loadouts.
 - Upgrade saved-loadout run/apply to the same progress/result/reload model as dashboard apply if needed.
 - Reuse shared operation result handling from F1.
-- Keep saved loadouts visible in the dashboard only as compact run rows unless deliberately expanded.
+- Keep saved loadouts visible in the dashboard only as compact recipe/spotlight rows unless deliberately expanded.
 
 ### F9 — Active docs still contain ambiguous autoload/startup wording
 

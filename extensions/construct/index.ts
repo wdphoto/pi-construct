@@ -14,7 +14,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "save", "saved", "run", "copy", "import", "profile", "profiles", "autoload"];
+			const commands = ["status", "load", "unload", "save", "list", "saved", "run", "copy", "import", "profile", "profiles", "autoload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -51,7 +51,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			if (command === "saved") {
+			if (command === "list" || command === "saved") {
 				await handleProfile(pi, "list", ctx);
 				return;
 			}
@@ -88,7 +88,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct unload [id-or-source ...]",
 					"- /construct autoload [on|off|status]",
 					"- /construct save <name>",
-					"- /construct saved",
+					"- /construct list",
 					"- /construct run <saved-name>",
 					"- /construct copy [saved-name]",
 					"- /construct import <json>",

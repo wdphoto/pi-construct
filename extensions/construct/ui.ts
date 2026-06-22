@@ -130,6 +130,7 @@ export interface CheckboxPickerItem {
 	stateLabel?: string;
 	stateText?: string;
 	stateTone?: CheckboxPickerTone;
+	relatedIds?: string[];
 }
 
 export interface CheckboxPickerApplyResult {
@@ -248,6 +249,16 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return `${styleTone(item.tone, item.icon)} ${theme.fg("muted", item.label)}`;
 		}
 
+		function relatedIdsFor(focused: CheckboxPickerItem | undefined): Set<string> {
+			const related = new Set<string>();
+			for (const id of focused?.relatedIds ?? []) related.add(id);
+			for (const item of items) {
+				if (!checked.has(item.id)) continue;
+				for (const id of item.relatedIds ?? []) related.add(id);
+			}
+			return related;
+		}
+
 		function selectedItem(): CheckboxPickerItem | undefined {
 			return filteredItems()[selected];
 		}
@@ -324,6 +335,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const maxVisible = 12;
 			const start = Math.max(0, Math.min(selected - Math.floor(maxVisible / 2), visibleItems.length - maxVisible));
 			const end = Math.min(start + maxVisible, visibleItems.length);
+			const focusedItem = visibleItems[selected];
+			const relatedIds = relatedIdsFor(focusedItem);
 			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
 			const stateTexts = visibleItems.map((item) => item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? ""));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
@@ -341,16 +354,17 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 
 				const stateText = item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? "");
+				const isRelated = relatedIds.has(item.id) && !checked.has(item.id) && !item.relatedIds?.includes(item.id);
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
-					const selectMarker = item.disabled ? "   " : checked.has(item.id) ? "[x]" : "[ ]";
+					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "   " : "[ ]";
 					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone, paddedState)}  ${paddedLabel}  ${item.value}`;
 					if (!item.disabled && isSelected) line = theme.bold(line);
 					lines.push(truncateToWidth(line, width));
 					continue;
 				}
 
-				const marker = item.marker ?? (item.disabled ? "[!]" : checked.has(item.id) ? "[x]" : "[ ]");
+				const marker = item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
 				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
 				else if (isSelected) line = theme.bold(line);

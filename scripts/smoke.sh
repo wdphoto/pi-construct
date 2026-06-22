@@ -167,11 +167,16 @@ AUTOLOAD_OUTPUT="$(run_pi '/construct autoload off')"
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Autoload: off"* ]]
 
+printf '== saved loadout list alias ==\n'
+LIST_OUTPUT="$(run_pi '/construct list')"
+[[ "$LIST_OUTPUT" == *"Saved Construct loadouts"* ]]
+
 printf '== removed command surface ==\n'
 UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
 [[ "$UNKNOWN_OUTPUT" == *"Unknown /construct subcommand: sync"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct load"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct unload"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct list"* ]]
 RELOAD_OUTPUT="$(run_pi '/construct reload')"
 [[ "$RELOAD_OUTPUT" == *"Unknown /construct subcommand: reload"* ]]
 RUN_OUTPUT="$(run_pi '/construct run')"

@@ -35,6 +35,7 @@ interface DashboardSavedLoadout {
 	disabled?: boolean;
 	description?: string;
 	sources: string[];
+	relatedIds: string[];
 }
 
 interface DashboardDirectResource {
@@ -88,6 +89,37 @@ function savedLoadoutSources(catalog: CatalogData, profile: CatalogProfile): str
 			? profile.sources
 			: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string"),
 	);
+}
+
+function countLabel(count: number, label: string): string {
+	return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPackage[]): { value: string; relatedIds: string[] } {
+	if (sources.length === 0) return { value: "0 package sources", relatedIds: [] };
+	const counts: Record<PackageDashboardSection, number> = { Active: 0, Disabled: 0, Available: 0, Unloaded: 0 };
+	const relatedIds: string[] = [];
+	const seenRows = new Set<string>();
+	for (const source of sources) {
+		const row = findPackageForSavedSource(packageItems, source);
+		const section = row?.section ?? "Available";
+		counts[section] += 1;
+		if (row && !seenRows.has(row.id)) {
+			seenRows.add(row.id);
+			relatedIds.push(row.id);
+		}
+	}
+	return {
+		value: [
+			counts.Active > 0 ? countLabel(counts.Active, "active") : undefined,
+			counts.Disabled > 0 ? countLabel(counts.Disabled, "disabled") : undefined,
+			counts.Available > 0 ? countLabel(counts.Available, "available") : undefined,
+			counts.Unloaded > 0 ? countLabel(counts.Unloaded, "unloaded") : undefined,
+		]
+			.filter((part): part is string => part !== undefined)
+			.join(" · "),
+		relatedIds,
+	};
 }
 
 async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
@@ -148,6 +180,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: false,
 			disabled: sources.length === 0,
 			sources,
+			relatedIds: [],
 			description:
 				sources.length === 0
 					? "Saved loadout has no package sources."
@@ -234,6 +267,21 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 					? `Read-only here. Project ${resource.kind} is active but not loaded into Construct yet. Run /construct load to adopt it.`
 					: `Read-only here. Project ${resource.kind} is disabled by Pi resource filters and not loaded into Construct yet. Run /construct load to adopt it.`,
 		});
+	}
+
+	const packageRows = packages.filter((item): item is DashboardPackage => item.type === "package");
+	for (const saved of packages.filter((item): item is DashboardSavedLoadout => item.type === "saved")) {
+		const summary = savedLoadoutMemberSummary(saved.sources, packageRows);
+		saved.value = summary.value;
+		saved.relatedIds = summary.relatedIds;
+		if (saved.sources.length > 0) {
+			saved.description = [
+				`Saved package-source loadout${saved.label ? `: ${saved.label}` : ""}.`,
+				`Members: ${summary.value}. Rows marked [·] belong to the selected saved loadout.`,
+				"Press Enter to install/enable package sources that are not active.",
+				"Disable or remove by selecting package rows directly.",
+			].join("\n");
+		}
 	}
 
 	sortDashboardPackages(packages);
@@ -415,6 +463,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateLabel: stateLabel(item.section),
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
+		relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 	}));
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
@@ -424,6 +473,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "Type to narrow by saved loadout, package, resource, source, or state · Backspace edits",
 		stateLegend: [
 			{ icon: "[x]", label: "selected", tone: "muted" },
+			{ icon: "[·]", label: "saved member", tone: "muted" },
 			{ icon: "◆", label: "saved", tone: "accent" },
 			{ icon: "✓", label: "active", tone: "green" },
 			{ icon: "–", label: "disabled", tone: "mutedGreen" },

@@ -28,14 +28,14 @@ See `docs/profiles-and-sharing-plan.md`. Public copy should say saved loadout / 
 
 - [x] Add `/construct save <name>` as the canonical command for saving the current active Construct package-source grouping.
 - [x] Add `/construct run <saved-name>` as the canonical command for applying/running a saved loadout in the current project.
-- [x] Keep `/construct profile save/list/apply` as compatibility aliases while docs move to the shorter language.
+- [x] Add `/construct list` as the canonical command for listing saved loadouts; keep `/construct saved` and `/construct profile save/list/apply` as compatibility aliases.
 - [x] Save only active Construct package sources. Disabled package declarations are skipped.
 - [x] During TUI save, offer active package declarations not loaded into Construct; selected rows are loaded into Construct and included, unselected rows are skipped.
 - [x] Never append or merge on save. If the saved name exists, TUI asks before replacing it; non-TUI replacement refuses for now.
 - [x] Make save summaries show included, newly loaded/included, skipped active-unloaded, and skipped disabled counts.
-- [x] Add smoke coverage for `/construct save`, `/construct saved`, and `/construct run`.
+- [x] Add smoke coverage for `/construct save`, `/construct list`, `/construct saved`, and `/construct run`.
 - [x] Bring run/apply into the newer in-panel progress/result/reload flow used by the dashboard.
-- [x] Fold saved loadouts into the main `/construct` TUI as compact first-class rows/groups if it stays simple.
+- [x] Fold saved loadouts into the main `/construct` TUI as compact recipe/spotlight rows that mark member package rows without turning disable/remove into saved-loadout group actions.
 
 ## v0.0.x — saved loadout sharing
 
