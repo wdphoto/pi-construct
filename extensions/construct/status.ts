@@ -1,9 +1,9 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatCatalogItem, normalizeSourceForLibrary, parseCatalog } from "./catalog.js";
+import { formatCatalogItem, parseCatalog } from "./catalog.js";
 import { describeRead, isObject, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
-import { formatList, getManagedItems, getPackages } from "./project-settings.js";
+import { collectPackageSourceSets, formatList, getManagedItems, getPackages } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources, directResourceKinds, resourcePlural } from "./resources.js";
 
@@ -51,19 +51,8 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 	const catalog = parseCatalog(userCatalog);
 	const knownProjects = parseKnownProjects(userProjects);
 	const packages = getPackages(projectSettings);
-	const packageSources = new Set<string>();
-	const disabledPackageSources = new Set<string>();
-	const settingsDir = dirname(paths.projectSettingsPath);
-	for (const pkg of packages) {
-		packageSources.add(pkg.source);
-		if (pkg.disabledByFilters) disabledPackageSources.add(pkg.source);
-		if (pkg.form !== "invalid") {
-			const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
-			packageSources.add(normalized);
-			if (pkg.disabledByFilters) disabledPackageSources.add(normalized);
-		}
-	}
-	const managed = await getManagedItems(projectConstruct, packageSources, paths, disabledPackageSources);
+	const packageSources = await collectPackageSourceSets(packages, dirname(paths.projectSettingsPath));
+	const managed = await getManagedItems(projectConstruct, packageSources.declaredSources, paths, packageSources.disabledSources);
 	const directResources = await collectDirectProjectResources(ctx, paths, projectConstruct);
 	return {
 		paths,

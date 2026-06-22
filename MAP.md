@@ -24,6 +24,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Add a cheap TypeScript hygiene check for unused locals/parameters.
 - [x] Split saved-loadout pure helpers out of the large command module.
 - [x] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
+- [x] Extract shared package source-set collection for raw/normalized declared, active, and disabled package declarations.
 - [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only. Deferred until after review.
 
 ## v0.0.x — autoload polish

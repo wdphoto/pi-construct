@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js"
 import { isObject, readJson } from "../json.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { managedPackageSourceIdentity } from "../sources.js";
-import { getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, getPackages } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -147,20 +147,9 @@ async function projectPackageSourceSets(paths: ConstructPaths): Promise<{
 	disabledSources: Set<string>;
 }> {
 	const settings = await readJson(paths.projectSettingsPath);
-	const settingsDir = dirname(paths.projectSettingsPath);
 	const packages = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim());
-	const declaredSources = new Set<string>();
-	const disabledSources = new Set<string>();
-	for (const pkg of packages) {
-		declaredSources.add(pkg.source);
-		const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
-		declaredSources.add(normalized);
-		if (pkg.disabledByFilters) {
-			disabledSources.add(pkg.source);
-			disabledSources.add(normalized);
-		}
-	}
-	return { packages, declaredSources, disabledSources };
+	const sources = await collectPackageSourceSets(packages, dirname(paths.projectSettingsPath));
+	return { packages, declaredSources: sources.declaredSources, disabledSources: sources.disabledSources };
 }
 
 async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[] }> {

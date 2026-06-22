@@ -6,7 +6,7 @@ import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
 import { getPaths } from "../paths.js";
-import { getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, getPackages } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
 import {
 	findSavedLoadout,
@@ -21,7 +21,7 @@ import {
 	uniqueSorted,
 	type ParsedLoadoutSnippet,
 } from "../saved-loadouts.js";
-import { isLocalPathSource, managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
+import { isLocalPathSource, managedPackageSourceIdentity } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 import { loadSourcesIntoConstruct, projectLoadCandidates } from "./load.js";
 
@@ -45,13 +45,7 @@ async function activeManagedPackageSources(paths: ConstructPaths): Promise<strin
 	if (constructRead.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", constructRead)}`);
 	if (constructRead.state !== "ok" || !isObject(constructRead.data) || !isObject(constructRead.data.items)) return [];
 
-	const projectSources = new Set<string>();
-	const settingsDir = dirname(paths.projectSettingsPath);
-	for (const pkg of getPackages(settingsRead)) {
-		if (pkg.form === "invalid" || !pkg.enabled || pkg.disabledByFilters || !pkg.source.trim()) continue;
-		projectSources.add(pkg.source);
-		projectSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
-	}
+	const packageSources = await collectPackageSourceSets(getPackages(settingsRead), dirname(paths.projectSettingsPath));
 
 	const sources: string[] = [];
 	const seen = new Set<string>();
@@ -59,7 +53,7 @@ async function activeManagedPackageSources(paths: ConstructPaths): Promise<strin
 		if (!isObject(value) || value.kind !== "package") continue;
 		const identity = await managedPackageSourceIdentity(value, paths);
 		if (!identity.displaySource) continue;
-		const active = [...identity.matchSources].some((source) => projectSources.has(source));
+		const active = [...identity.matchSources].some((source) => packageSources.activeSources.has(source));
 		if (!active) continue;
 		const source = identity.normalizedInstallSource ?? identity.displaySource;
 		if (seen.has(source)) continue;

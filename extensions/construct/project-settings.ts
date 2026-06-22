@@ -49,6 +49,28 @@ export function getPackages(settings: JsonReadResult): PackageDeclarationSummary
 	});
 }
 
+export interface PackageSourceSets {
+	declaredSources: Set<string>;
+	activeSources: Set<string>;
+	disabledSources: Set<string>;
+}
+
+export async function collectPackageSourceSets(packages: PackageDeclarationSummary[], settingsDir: string): Promise<PackageSourceSets> {
+	const declaredSources = new Set<string>();
+	const activeSources = new Set<string>();
+	const disabledSources = new Set<string>();
+	for (const pkg of packages) {
+		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
+		const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
+		for (const source of [pkg.source, normalized]) {
+			declaredSources.add(source);
+			if (pkg.disabledByFilters) disabledSources.add(source);
+			else activeSources.add(source);
+		}
+	}
+	return { declaredSources, activeSources, disabledSources };
+}
+
 export async function getManagedItems(
 	construct: JsonReadResult,
 	packageSources: Set<string>,

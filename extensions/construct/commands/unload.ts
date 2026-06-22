@@ -4,7 +4,7 @@ import type { CatalogItem, ConstructPaths, JsonObject } from "../types.js";
 import { loadCatalog } from "../catalog.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, getPackages } from "../project-settings.js";
 import { knownProjectCountForSources, knownProjectCounts, readKnownProjects, rememberKnownProject } from "../projects.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
@@ -47,17 +47,12 @@ async function currentProjectActiveCount(paths: ConstructPaths, selected: Catalo
 	if (settingsRead.state === "invalid") return { active: 0, warning: `Could not check current project package state because ${describeJsonReadIssue(".pi/settings.json", settingsRead)}` };
 
 	const settingsDir = dirname(paths.projectSettingsPath);
-	const activeSources = new Set<string>();
-	for (const pkg of getPackages(settingsRead)) {
-		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
-		activeSources.add(pkg.source);
-		activeSources.add(await normalizeSourceForLibrary(pkg.source, settingsDir));
-	}
+	const packageSources = await collectPackageSourceSets(getPackages(settingsRead), settingsDir);
 
 	let active = 0;
 	for (const item of selected) {
 		const normalized = await normalizeSourceForLibrary(item.source, settingsDir);
-		if (activeSources.has(item.source) || activeSources.has(normalized)) active += 1;
+		if (packageSources.declaredSources.has(item.source) || packageSources.declaredSources.has(normalized)) active += 1;
 	}
 	return { active };
 }

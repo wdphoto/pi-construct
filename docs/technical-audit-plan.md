@@ -164,26 +164,20 @@ Resolution:
 - Saved-loadout source expansion remains in saved-loadout command code and shared helpers.
 - Public command behavior and command surface are unchanged.
 
-### A5 — State collection is repeated across modules
+### A5 — State collection is repeated across modules — source-set helper extracted on review branch
 
 Severity: medium maintainability / drift risk
 Files: `dashboard.ts`, `load.ts`, `status.ts`, `profiles.ts`, `project-settings.ts`
 
 Several modules independently collect package declarations, normalize local paths, match Construct metadata, detect disabled filters, and classify package state. The logic is readable in each place, but subtle differences are accumulating.
 
-Options:
+Resolution so far:
 
-1. **Central snapshot module**
-   - `state.ts` or `inventory.ts` returns a normalized `ConstructSnapshot` with packages, direct resources, catalog, metadata, warnings.
-   - Dashboard/status/load/save consume the same classification helpers.
+- Added `collectPackageSourceSets()` in `project-settings.ts` for raw+normalized declared/active/disabled package source sets.
+- Wired it into dashboard, status, saved-loadout save, and unload checks where the existing semantics matched.
+- Avoided a full central snapshot module; callers still own their command-specific classification and UI behavior.
 
-2. **Only extract source identity helpers**
-   - Lower churn; keep callers separate.
-
-3. **Leave until a bug appears**
-   - The current smoke suite catches many drift cases.
-
-Recommendation: start with option 2. A full snapshot module could become a second framework. Extract only the repeated identity/classification helpers that make duplicate/drift bugs likely.
+Deferred option: extract more identity helpers only when duplication causes a real bug or a future feature needs it. Avoid turning this into a broad inventory framework.
 
 ### A6 — Static hygiene is close; add a cheap gate — fixed on review branch
 
