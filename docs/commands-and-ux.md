@@ -111,7 +111,7 @@ Share/import/remove rules:
 - Share/import refuses generated Pi package cache paths and source strings that look like secrets.
 - `/construct remove <saved-name>` deletes only the saved loadout recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
 
-Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing or selecting one marks its member package rows with `[·]`, and pressing Enter installs/enables only the package sources that are not already active. Disable/remove remains a package-row action, not a saved-loadout action.
+Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing one marks its member package rows with `[·]`, pressing Enter runs the saved loadout additively, and pressing Space quick-selects its member package rows for normal package actions. Disable/remove remains a package-row action, not a saved-loadout action.
 
 ## `/construct`
 
@@ -130,16 +130,16 @@ Runtime skills/commands are not shown in the default dashboard. Use `/construct 
 Controls:
 
 - type to search/filter;
-- Space selects rows;
-- row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused/selected saved loadout, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
+- Space selects rows; on a saved loadout row, Space selects that recipe's selectable member package rows instead of selecting the saved row itself;
+- row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused saved loadout, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a label such as `Filter loadouts/resources:` and a hint that typing narrows by saved loadout/package/resource/source/state;
 - in TUI, use a quiet title line like `Loadout: 1 active | 0 disabled | 3 available | 0 unloaded`;
 - keep row text plain for readability; color only the compact state icon column: Saved accent, Active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
-- Enter applies/runs the obvious action for selected rows: run `Saved`, install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
-- Enter on a saved loadout is additive/activating only: it installs available package sources and enables disabled package sources, but does not disable or remove active member packages;
+- Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
+- Enter on a focused saved loadout with no selected rows is additive/activating only: it installs available package sources and enables disabled package sources, but does not disable or remove active member packages;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;
 - Esc cancels without writing before apply;

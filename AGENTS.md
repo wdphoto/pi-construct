@@ -81,7 +81,7 @@ Use Pi's normal `/reload` after loadout changes. Do not advertise or re-add `/co
 
 `/construct run <saved-name>` is the explicit product-approved command for applying a saved loadout. Do not use `/construct run` as a dashboard alias.
 
-Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `remove`, `on`, `off`, `wipe`, or `reload` command paths without an explicit product decision.
+Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `on`, `off`, `wipe`, or `reload` command paths without an explicit product decision. `/construct remove <saved-name>` is approved only for deleting saved loadout recipes, not project resources.
 
 ## Behavior rules
 
@@ -101,7 +101,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.
 - Saving over an existing loadout never appends or merges; TUI asks before replacing.
 - `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.
-- Saved loadouts appear as compact `◆` rows in `/construct`; focusing/selecting one marks member package rows with `[·]`, and pressing Enter runs it through the dashboard progress/result/reload flow. Saved rows are recipe/spotlight rows only; disable/remove stays on package rows.
+- Saved loadouts appear as compact `◆` rows in `/construct`; focusing one marks member package rows with `[·]`, Enter on a focused saved row runs it through the dashboard progress/result/reload flow, and Space on a saved row quick-selects its member package rows for normal package actions. Saved rows are recipe/spotlight rows only; disable/remove stays on package rows.
 - Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
 - `/construct share <saved-name>` prints a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers.
 - `/construct remove <saved-name>` removes only the saved loadout recipe; it never edits project files, disables/uninstalls packages, removes package sources from the Construct library, or reloads Pi.

@@ -45,8 +45,8 @@ Unloaded
 --------
     ◇  local-tooling   ../local-tooling
 
-Legend: [ ] selectable · [x] selected · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.
-Controls: Space selects · Enter applies/runs · r removes active/disabled · Esc cancels.
+Legend: [ ] selectable · [x] selected · [·] saved member · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.
+Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels.
 ```
 
 In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: active is green, disabled is muted green, available is yellow, and unloaded is gray. Plain output stays uncolored for readability.
@@ -97,7 +97,7 @@ In another project, run that saved loadout:
 /construct run web-stack
 ```
 
-Or run `/construct`, select a saved loadout or an `Available` package with Space, then press Enter to run/install it into that project. Saved loadout rows are recipe/spotlight rows: selecting one marks its package rows, but disabling/removing still happens from the package rows themselves.
+Or run `/construct`, focus a saved loadout and press Enter to run it, or select an `Available` package with Space and press Enter to install it. Saved loadout rows are recipe/spotlight rows: focusing one marks member package rows with `[·]`; pressing Space on the saved row quick-selects those member package rows for bulk package actions.
 
 ## Commands
 
@@ -131,6 +131,7 @@ Notes:
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
 - `/construct remove <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
+- In `/construct`, Enter on a focused saved loadout runs it additively. Space on a saved loadout selects its member package rows instead, so normal Enter/`r` package-row actions apply to those members.
 - Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
 
 ## How it works

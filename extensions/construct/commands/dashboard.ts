@@ -184,7 +184,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			description:
 				sources.length === 0
 					? "Saved loadout has no package sources."
-					: `Saved package-source loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to run it in this project.`,
+					: `Saved package-source loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to run it in this project, or Space to select member package rows.`,
 		});
 	}
 
@@ -277,9 +277,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		if (saved.sources.length > 0) {
 			saved.description = [
 				`Saved package-source loadout${saved.label ? `: ${saved.label}` : ""}.`,
-				`Members: ${summary.value}. Rows marked [·] belong to the selected saved loadout.`,
-				"Press Enter to install/enable package sources that are not active.",
-				"Disable or remove by selecting package rows directly.",
+				`Members: ${summary.value}. Rows marked [·] belong to the focused saved loadout.`,
+				"Press Enter to run it: install/enable package sources that are not active.",
+				"Press Space to select its member package rows for bulk package actions.",
 			].join("\n");
 		}
 	}
@@ -354,8 +354,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
-		"Legend: [ ] selectable · [x] selected · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Controls: Space selects · Enter applies/runs · r removes active/disabled · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected · [·] saved member · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
@@ -464,6 +464,8 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
 		relatedIds: item.type === "saved" ? item.relatedIds : undefined,
+		quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
+		confirmOnFocus: item.type === "saved",
 	}));
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
@@ -480,7 +482,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			{ icon: "+", label: "available", tone: "warning" },
 			{ icon: "◇", label: "unloaded", tone: "muted" },
 		],
-		footerHint: "  Space selects · Enter applies/runs · r removes active/disabled · Esc cancels",
+		footerHint: "  Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {

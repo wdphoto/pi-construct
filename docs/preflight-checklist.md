@@ -79,7 +79,7 @@ Expected:
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
-- Saved loadouts appear as compact `◆` rows in `/construct`; selecting one marks member package rows with `[·]`, and pressing Enter installs/enables only package sources that are not already active.
+- Saved loadouts appear as compact `◆` rows in `/construct`; focusing one marks member package rows with `[·]`, pressing Enter runs it additively, and pressing Space quick-selects its selectable member package rows.
 - `/construct share <saved-name>` prints a package-source JSON snippet and warns for local paths.
 - `/construct remove <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.
 - `/construct import` opens a TUI paste box; `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
@@ -112,12 +112,12 @@ Expected:
 Check in real TUI usage:
 
 - fuzzy search works;
-- Space selects saved-loadout and package rows;
-- focusing or selecting Saved rows marks member package rows with `[·]` without directly selecting them;
-- Enter runs Saved rows, installs Available, disables Active, and enables Disabled rows;
-- Enter on Saved rows is additive/activating only and does not disable/remove active member packages;
+- Space selects package/direct rows, and on a Saved row quick-selects its selectable member package rows;
+- focusing Saved rows marks member package rows with `[·]` without directly selecting them;
+- Enter on a focused Saved row runs it additively; Enter on selected package/direct rows installs Available, disables Active, and enables Disabled rows;
+- running Saved rows is additive/activating only and does not disable/remove active member packages;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
-- `r` shows a warning, then removes selected Active or Disabled package declarations; selected Saved rows do not remove member packages;
+- `r` shows a warning, then removes selected Active or Disabled package declarations; Saved rows themselves do not remove member packages;
 - Esc cancels;
 - package rows stay primary;
 - live TUI title uses the quiet `Loadout:` count format;

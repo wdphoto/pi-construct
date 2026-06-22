@@ -36,6 +36,7 @@ See `docs/profiles-and-sharing-plan.md`. Public copy should say saved loadout / 
 - [x] Add smoke coverage for `/construct save`, `/construct list`, and `/construct run`.
 - [x] Bring run/apply into the newer in-panel progress/result/reload flow used by the dashboard.
 - [x] Fold saved loadouts into the main `/construct` TUI as compact recipe/spotlight rows that mark member package rows without turning disable/remove into saved-loadout group actions.
+- [x] Let Space on a saved-loadout row quick-select its selectable member package rows while keeping Enter-on-saved additive.
 
 ## v0.0.x — saved loadout sharing
 

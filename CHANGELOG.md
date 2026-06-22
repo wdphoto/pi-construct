@@ -23,7 +23,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - User-facing docs now prefer saved loadout/saved wording and keep unreleased profile/saved aliases out of the public command surface.
 - `/construct run <saved-name>` now uses the dashboard-style TUI progress/result/reload panel.
 - Selecting saved loadouts in `/construct` runs them through the same package operation flow as package rows, while avoiding duplicate package operations for repeated sources.
-- Saved loadout dashboard rows now act as recipe/spotlight rows: they show member status counts and mark member package rows with `[·]` without turning disable/remove into saved-loadout group actions.
+- Saved loadout dashboard rows now act as recipe/spotlight rows: they show member status counts, mark member package rows with `[·]`, and let Space quick-select member package rows without turning disable/remove into saved-loadout group actions.
 - Share/import output warns for local path sources and refuses generated Pi package cache paths or source strings that look like secrets.
 - Status/dashboard diagnostics now use Pi's native `DefaultPackageManager.resolve()` / `SettingsManager` resource discovery path for direct project resources instead of custom filesystem rules.
 - Dashboard state language now uses resource-neutral `Active` instead of package-centric `Installed`.

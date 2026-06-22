@@ -19,7 +19,7 @@ The current implementation now inventories and toggles packages plus direct proj
    - `r` asks for confirmation, then removes selected Active or Disabled project package declarations.
    - Keeps Unloaded rows clearly labeled as project declarations/resources not yet loaded into Construct; `/construct load` is the adoption path.
    - In TUI mode, keeps the title quiet (`Loadout: ...`), row text plain, and color limited to the state icon column: saved accent, active green, disabled muted green, available yellow, unloaded gray.
-   - Treats saved loadout rows as recipe/spotlight rows: focusing or selecting one marks member package rows with `[·]`; disable/remove remains a package-row action.
+   - Treats saved loadout rows as recipe/spotlight rows: focusing one marks member package rows with `[·]`, Enter runs the recipe additively, and Space quick-selects member package rows for normal package actions; disable/remove remains a package-row action.
 
 3. **Package operation layer**
    - Loads available sources with Pi's native project-local install path:

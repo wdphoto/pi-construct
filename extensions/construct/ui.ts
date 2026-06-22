@@ -131,6 +131,8 @@ export interface CheckboxPickerItem {
 	stateText?: string;
 	stateTone?: CheckboxPickerTone;
 	relatedIds?: string[];
+	quickSelectIds?: string[];
+	confirmOnFocus?: boolean;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -261,6 +263,12 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function selectedItem(): CheckboxPickerItem | undefined {
 			return filteredItems()[selected];
+		}
+
+		function quickSelectTargets(item: CheckboxPickerItem): string[] {
+			if (!item.quickSelectIds) return [];
+			const targetIds = new Set(item.quickSelectIds);
+			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled).map((candidate) => candidate.id);
 		}
 
 		function setApplyState(nextTitle: string, nextLines: string[]): void {
@@ -411,8 +419,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			tui.requestRender();
 		}
 
-		function startSubmit(action: CheckboxPickerSubmitAction): void {
-			submittedIds = selectedIds();
+		function startSubmit(action: CheckboxPickerSubmitAction, idsOverride?: string[]): void {
+			submittedIds = idsOverride ?? selectedIds();
 			if (!options.onSubmit) {
 				close({ selectedIds: submittedIds, submitAction: action });
 				return;
@@ -517,15 +525,25 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (data === " ") {
 				const item = selectedItem();
 				if (item && !item.disabled) {
-					if (checked.has(item.id)) checked.delete(item.id);
-					else checked.add(item.id);
+					const targetIds = quickSelectTargets(item);
+					if (targetIds.length > 0) {
+						const allTargetsChecked = targetIds.every((id) => checked.has(id));
+						for (const id of targetIds) {
+							if (allTargetsChecked) checked.delete(id);
+							else checked.add(id);
+						}
+					} else if (!item.quickSelectIds) {
+						if (checked.has(item.id)) checked.delete(item.id);
+						else checked.add(item.id);
+					}
 				}
 				invalidate();
 				tui.requestRender();
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.confirm")) {
-				startSubmit("confirm");
+				const item = selectedItem();
+				startSubmit("confirm", checked.size === 0 && item?.confirmOnFocus && !item.disabled ? [item.id] : undefined);
 				return;
 			}
 			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~") && checked.size > 0) {

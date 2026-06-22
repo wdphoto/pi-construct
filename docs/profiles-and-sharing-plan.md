@@ -177,10 +177,10 @@ Active
 - Keep the quiet package-count title.
 - Put saved loadouts above package sections when present.
 - Saved-loadout row grammar: `[ ] ◆  web-stack  2 active · 1 available`.
-- Saved rows are recipe/spotlight rows. Focusing or selecting one marks member package rows with `[·]` but does not select those rows for disable/remove.
-- Enter runs selected saved loadouts through the same in-panel progress/result flow as package rows, installing/enabling only package sources that are not already active.
+- Saved rows are recipe/spotlight rows. Focusing one marks member package rows with `[·]` without selecting those rows.
+- Enter on a focused saved row runs it through the same in-panel progress/result flow as package rows, installing/enabling only package sources that are not already active.
+- Space on a saved row quick-selects its selectable member package rows, so normal package-row Enter/`r` actions can be used on the recipe members.
 - Disable/remove remains a package-row action, not a saved-loadout group action.
-- No new dashboard key is needed for this slice.
 
 ## Implementation slices
 
@@ -203,7 +203,7 @@ Active
 
 - Add compact saved-loadout rows to `/construct`.
 - Running a saved loadout from the dashboard should expand to package operations with no duplicate installs.
-- Saved rows show active/disabled/available/unloaded member counts and mark member package rows with `[·]` while focused or selected.
+- Saved rows show active/disabled/available/unloaded member counts, mark member package rows with `[·]` while focused, and quick-select member package rows with Space.
 
 ### Slice 4 — sharing and saved-loadout removal — implemented
 
