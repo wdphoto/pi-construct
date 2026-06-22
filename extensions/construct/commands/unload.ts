@@ -140,20 +140,39 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	}
 
 	await waitForIdleBeforeConstructWrite(ctx, "Construct unload");
+
+	const selectedKeysBeforeWait = new Set(selected.map(catalogItemKey));
+	const freshCatalog = await loadCatalog(ctx);
+	if (freshCatalog.read.state === "invalid") {
+		showText(ctx, `Construct unload failed.\nConstruct library catalog is invalid JSON after waiting.\n${freshCatalog.read.error}`);
+		return;
+	}
+	if (freshCatalog.read.state === "ok" && freshCatalog.warnings.length > 0) {
+		showText(ctx, ["Construct unload failed.", `Fix ${paths.userCatalogPath} first.`, ...freshCatalog.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		return;
+	}
+	const selectedAfterWait = freshCatalog.catalog.items.filter((item) => selectedKeysBeforeWait.has(catalogItemKey(item)));
+	missing.push(...selected.filter((item) => !selectedAfterWait.some((fresh) => catalogItemKey(fresh) === catalogItemKey(item))).map((item) => `${item.id}: ${item.source} disappeared before unload`));
+	selected = selectedAfterWait;
+	if (selected.length === 0) {
+		showText(ctx, ["Construct unload complete.", "No selected resources are still present in the Construct library.", ...missing.map((query) => `! ${query}`), "No files were changed."].join("\n"));
+		return;
+	}
+
 	const remembered = await rememberKnownProject(ctx);
 	const selectedKnownCounts = await knownProjectCountsByItem(ctx, selected);
 
 	const removedIds = new Set(selected.map((item) => item.id));
 	const removedSources = new Set(selected.map((item) => item.source));
 	const removedKeys = new Set(selected.map(catalogItemKey));
-	const nextItems = catalog.items.filter((item) => !removedKeys.has(catalogItemKey(item)));
-	const nextProfiles = catalog.profiles.map((profile) => ({
+	const nextItems = freshCatalog.catalog.items.filter((item) => !removedKeys.has(catalogItemKey(item)));
+	const nextProfiles = freshCatalog.catalog.profiles.map((profile) => ({
 		...profile,
 		items: profile.items.filter((id) => !removedIds.has(id)),
 		sources: profile.sources.filter((source) => !removedSources.has(source)),
 		updatedAt: new Date().toISOString(),
 	}));
-	await writeJson(paths.userCatalogPath, { ...catalog, version: 1, items: nextItems, profiles: nextProfiles });
+	await writeJson(paths.userCatalogPath, { ...freshCatalog.catalog, version: 1, items: nextItems, profiles: nextProfiles });
 
 	const [metadata, currentProject] = await Promise.all([removeCurrentProjectMetadata(paths, selected), currentProjectActiveCount(paths, selected)]);
 	const knownProjectLines = selected.map((item) => `Known projects for ${item.id}: ${selectedKnownCounts.counts.get(catalogItemKey(item)) ?? 0}`);

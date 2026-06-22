@@ -32,6 +32,7 @@ Result: failed only on one unused import in `extensions/construct/commands/profi
 - F1 fixed: package operations now report runtime-affecting settings changes separately from metadata-only failures, and dashboard/profile summaries keep reload guidance for those partial changes.
 - F9/F11 fixed: high-level autoload docs now avoid misleading “no startup behavior” wording, and the unused profile import was removed.
 - F3 fixed: shared JSON writes now use temp-file-and-rename atomic writes; `.pi/settings.json` direct edits still keep timestamped backups.
+- F4 fixed: load/unload/profile/package install flows now re-read relevant state after idle waits or long-running package operations before writing merged JSON.
 
 ## What looks healthy
 

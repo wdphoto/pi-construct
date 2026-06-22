@@ -117,7 +117,7 @@ async function promptForNewAutoloadCandidates(ctx: ExtensionContext, state: Auto
 				continue;
 			}
 			const enabledBySource = new Map([[candidate.source, !candidate.disabledByFilters]]);
-			const result = await loadSourcesIntoConstruct(ctx, paths, constructRead, [candidate.source], { enabledBySource });
+			const result = await loadSourcesIntoConstruct(ctx, paths, [candidate.source], { enabledBySource });
 			ctx.ui.notify(`Construct loaded ${candidate.id} into the library.`, result.warnings.length > 0 ? "warning" : "info");
 			if (result.warnings.length > 0) ctx.ui.notify(formatLoadResult(result), "warning");
 		}
@@ -243,7 +243,7 @@ export async function maybePromptAutoloadOnShutdown(event: SessionShutdownEvent,
 	const sources = candidates.adoptable.map((candidate) => candidate.source);
 	const enabledBySource = new Map(candidates.adoptable.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
 	try {
-		const result = await loadSourcesIntoConstruct(ctx, paths, constructRead, sources, { enabledBySource });
+		const result = await loadSourcesIntoConstruct(ctx, paths, sources, { enabledBySource });
 		ctx.ui.notify(`Construct autoload loaded ${result.added.length} resource${result.added.length === 1 ? "" : "s"}.`, result.warnings.length > 0 ? "warning" : "info");
 		if (result.warnings.length > 0) ctx.ui.notify(formatLoadResult(result), "warning");
 	} catch (error) {
