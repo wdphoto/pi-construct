@@ -125,6 +125,10 @@ Rules:
 - Do not store secrets, env values, auth material, or generated package cache paths.
 - Read-only commands must not create this file.
 
+## Write behavior
+
+Construct writes JSON through a shared helper that writes a complete temporary file in the same directory, flushes it, then renames it over the target. Direct `.pi/settings.json` edits still create a timestamped backup first.
+
 ## Related design notes
 
 - `docs/pi-config-and-construct.md` explains how Construct differs from Pi's native `pi config` resource toggles and records the filter-based disarm direction.

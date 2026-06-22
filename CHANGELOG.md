@@ -11,6 +11,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Added `docs/autoload-transparency.md` to document watcher mechanics, expected cost, security posture, caveats, and UX improvements.
 
 ### Changed
+- Construct JSON writes now use temp-file-and-rename atomic writes to reduce the chance of truncated JSON after interrupted writes.
 - Kept autoload explicit and confirmation-only; it still never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
 - Quit-time autoload now labels disabled package declarations in its confirmation prompt and preserves their disabled metadata when loading them into Construct.
 - Updated the `/construct` dashboard row grammar to separate selection from state: `[x]` marks selected rows, while compact color-coded `✓`, `–`, `+`, and `◇` icons show current state.
