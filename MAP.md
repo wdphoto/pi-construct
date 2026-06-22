@@ -76,6 +76,16 @@ See `docs/project-resource-loadout-plan.md`. This follows saved loadouts so the 
 - [ ] Rebind the watcher directly to `.pi/settings.json` when the file appears after session start.
 - [ ] Prefer a future public Pi package-install/settings-change event over filesystem watching if Pi exposes one.
 
+## v0.0.x — project scan
+
+- [ ] Add `/construct scan [path]` as an explicit read-only report for unloaded project-level Pi resources under a folder, defaulting to `~/Code`.
+- [ ] Detect Pi projects by `.pi/settings.json`, `.pi/construct.json`, and project-local `.pi/extensions`, `.pi/skills`, `.pi/prompts`, or `.pi/themes` resources.
+- [ ] Report package declarations not in the Construct library/current project metadata and direct project-local resources not adopted into that project's `.pi/construct.json`.
+- [ ] Keep scan strictly read-only: no install, load, trust change, package execution, reload, or writes.
+- [ ] Avoid expensive/noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
+- [ ] Prefer conservative file parsing for scan over Pi runtime resolution unless a safe public resolver mode is confirmed.
+- [ ] Keep output summary-oriented: projects scanned, projects with unloaded resources, unloaded packages, unadopted direct resources, and `No files were changed.`
+
 ## v0.0.x — dashboard polish
 
 - [x] Prototype Pi-native filter-based disarm mode: keep package declarations but set package resource filters to `[]`. See `docs/package-disable-design.md`.
