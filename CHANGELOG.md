@@ -6,6 +6,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.14 - 2026-06-22
+
 ### Changed
 - Consolidated active documentation around the current product model, command UX, architecture, safety, preflight, autoload, and audit notes.
 - Clarified `/construct load` help text to include direct-resource path arguments.
