@@ -4,12 +4,13 @@ import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { deriveId, parseCatalog } from "../catalog.js";
+import { loadProjectResourcesIntoConstruct } from "./load.js";
 import { describeJsonReadIssue, isObject, readJson } from "../json.js";
 import { getPackages } from "../project-settings.js";
 import { directResourceKey, directResourceKinds, directResourceName } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import type { ConstructPaths, DirectResourceKind, JsonReadResult, PackageDeclarationSummary } from "../types.js";
-import { pickCheckboxes, setConstructStatus, showSummary, showText, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, setConstructStatus, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 const ignoredDirectoryNames = new Set(["node_modules", ".git", "dist", "build"]);
 const ignoredPiDirectoryNames = new Set(["npm", "git"]);
@@ -536,7 +537,7 @@ function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 				id: `package:${project.path}:${index}`,
 				label: deriveId(pkg.source),
 				value: pkg.source,
-				description: `${pkg.missing.join(", ")}. Selected scan rows are not written from scan; Enter shows load guidance.`,
+				description: `${pkg.missing.join(", ")}. Press Enter to load selected scan rows into Construct.`,
 				checked: false,
 				section,
 				sectionTone: "accent",
@@ -550,7 +551,7 @@ function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 				id: `${resource.kind}:${project.path}:${index}`,
 				label: `${resource.kind}:${resource.name}`,
 				value: resource.relativePath,
-				description: `Unadopted project ${resource.kind}. Selected scan rows are not written from scan; Enter shows load guidance.`,
+				description: `Unadopted project ${resource.kind}. Press Enter to load selected scan rows into Construct.`,
 				checked: false,
 				section,
 				sectionTone: "accent",
@@ -562,26 +563,21 @@ function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 	return items;
 }
 
-function selectedScanCommands(result: ScanResult, selectedIds: string[]): string[] {
+function selectedScanRequests(result: ScanResult, selectedIds: string[]): Array<{ project: ScanProject; queries: string[] }> {
 	const selected = new Set(selectedIds);
-	const lines: string[] = [];
+	const requests: Array<{ project: ScanProject; queries: string[] }> = [];
 	for (const project of result.projects) {
-		const args: string[] = [];
+		const queries: string[] = [];
 		for (let index = 0; index < project.unloadedPackages.length; index += 1) {
-			if (selected.has(`package:${project.path}:${index}`)) args.push(project.unloadedPackages[index]!.source);
+			if (selected.has(`package:${project.path}:${index}`)) queries.push(project.unloadedPackages[index]!.source);
 		}
 		for (let index = 0; index < project.unloadedResources.length; index += 1) {
 			const resource = project.unloadedResources[index]!;
-			if (selected.has(`${resource.kind}:${project.path}:${index}`)) args.push(resource.relativePath);
+			if (selected.has(`${resource.kind}:${project.path}:${index}`)) queries.push(resource.relativePath);
 		}
-		if (args.length === 0) continue;
-		lines.push(formatProjectPath(result.display, project));
-		lines.push(`  cd ${project.path}`);
-		lines.push(`  /construct load ${args.join(" ")}`);
-		lines.push("");
+		if (queries.length > 0) requests.push({ project, queries });
 	}
-	while (lines.at(-1) === "") lines.pop();
-	return lines;
+	return requests;
 }
 
 async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResult): Promise<void> {
@@ -594,25 +590,50 @@ async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResul
 		initialSelection: "empty",
 		filterLabel: "Filter findings",
 		filterHint: "Type to narrow by project/source/resource · Space selects",
-		confirmHint: "Enter shows load guidance",
-		footerHint: "  Type to search/filter · Space toggles · Enter shows load guidance · Esc closes\n  Scan is read-only; no files are changed from this screen.",
-		onSubmit: async (selectedIds) => {
+		confirmHint: "Enter loads selected",
+		footerHint: "  Type to search/filter · Space toggles · Enter loads selected into Construct · Esc closes\n  Scan loads package declarations plus project metadata; it never edits .pi/settings.json.",
+		onSubmit: async (selectedIds, update, signal) => {
 			if (selectedIds.length === 0) {
 				return {
 					title: "No scan findings selected",
-					lines: ["Select findings with Space, then press Enter to see per-project load commands.", "", "No files were changed."],
+					lines: ["Select findings with Space, then press Enter to load them into Construct.", "", "No files were changed."],
 				};
 			}
-			const commands = selectedScanCommands(result, selectedIds);
+			const requests = selectedScanRequests(result, selectedIds);
+			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct scan load", update, signal);
+			if (!ready || signal.aborted) return { title: "Construct scan load cancelled", lines: ["No files were changed."] };
+			const lines: string[] = [`Selected findings: ${selectedIds.length}`, `Projects: ${requests.length}`, ""];
+			let loadedPackages = 0;
+			let adoptedDirect = 0;
+			let warningCount = 0;
+			for (let index = 0; index < requests.length; index += 1) {
+				if (signal.aborted) return { title: "Construct scan load cancelled", lines: [...lines, "", "Cancelled before finishing selected projects."] };
+				const request = requests[index]!;
+				const projectLabel = formatProjectPath(result.display, request.project);
+				update("Loading scan findings", [`Project ${index + 1}/${requests.length}: ${projectLabel}`, `Selected resources: ${request.queries.length}`]);
+				try {
+					const loadResult = await loadProjectResourcesIntoConstruct(request.project.path, request.queries);
+					loadedPackages += loadResult.metadataChanged;
+					adoptedDirect += loadResult.directMetadataChanged ?? 0;
+					warningCount += loadResult.warnings.length;
+					lines.push(projectLabel, `+ Packages armed: ${loadResult.metadataChanged}`, `+ Direct resources adopted: ${loadResult.directMetadataChanged ?? 0}`);
+					for (const warning of loadResult.warnings) lines.push(`! ${warning}`);
+				} catch (error) {
+					warningCount += 1;
+					lines.push(projectLabel, `! ${error instanceof Error ? error.message : String(error)}`);
+				}
+				lines.push("");
+			}
+			while (lines.at(-1) === "") lines.pop();
 			return {
-				title: "Load guidance",
+				title: "Construct scan load complete",
 				lines: [
-					`Selected findings: ${selectedIds.length}`,
-					"Run these from the listed project directories to load/adopt selected resources into Construct:",
+					`Packages armed: ${loadedPackages}`,
+					`Direct resources adopted: ${adoptedDirect}`,
+					`Warnings: ${warningCount}`,
+					"No /reload needed; scan load only updates the Construct library and project metadata.",
 					"",
-					...commands,
-					"",
-					"No files were changed by scan.",
+					...lines,
 				],
 				confirmHint: "Press Enter/Esc to close",
 			};

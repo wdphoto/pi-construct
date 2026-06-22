@@ -73,7 +73,7 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 	};
 }
 
-async function projectDirectLoadCandidates(ctx: ExtensionCommandContext, paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] }> {
+async function projectDirectLoadCandidates(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] }> {
 	const constructRead = await readJson(paths.projectConstructPath);
 	const direct = await collectDirectProjectResources(ctx, paths, constructRead);
 	const adoptable: DirectLoadCandidate[] = [];
@@ -293,6 +293,51 @@ async function loadDirectResourcesIntoConstruct(
 	const remembered = await rememberKnownProject(ctx);
 	if (remembered.warning) warnings.push(remembered.warning);
 	return { metadataChanged, warnings };
+}
+
+export async function loadProjectResourcesIntoConstruct(projectDir: string, queries: string[]): Promise<ConstructLoadResult> {
+	const paths = await getPaths({ cwd: projectDir });
+	const projectCtx = { cwd: projectDir, isProjectTrusted: () => true };
+
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "invalid") throw new Error(`Cannot load because ${describeJsonReadIssue(".pi/settings.json", settingsRead)}`);
+	if (settingsRead.state === "ok" && !isObject(settingsRead.data)) throw new Error("Cannot load because .pi/settings.json is not a JSON object.");
+
+	const constructRead = await readJson(paths.projectConstructPath);
+	if (constructRead.state === "invalid") throw new Error(`Cannot load because ${describeJsonReadIssue(".pi/construct.json", constructRead)}`);
+	if (constructRead.state === "ok" && !isObject(constructRead.data)) throw new Error("Cannot load because .pi/construct.json is not a JSON object.");
+
+	const catalogRead = await readJson(paths.userCatalogPath);
+	if (catalogRead.state === "invalid") throw new Error(`Cannot load because ${describeJsonReadIssue("Construct library catalog", catalogRead)}`);
+	const catalogCheck = parseCatalog(catalogRead);
+	if (catalogRead.state === "ok" && catalogCheck.warnings.length > 0) {
+		throw new Error([`Cannot load because Construct library catalog has structural warnings. Fix ${paths.userCatalogPath} first.`, ...catalogCheck.warnings].join("\n"));
+	}
+
+	const packageCandidates = await projectLoadCandidates(paths);
+	const directCandidates = await projectDirectLoadCandidates(projectCtx, paths);
+	const candidates = {
+		adoptable: [...packageCandidates.adoptable, ...directCandidates.adoptable],
+		alreadyManaged: [...packageCandidates.alreadyManaged, ...directCandidates.alreadyManaged],
+	};
+	const found = await findLoadCandidates(paths, candidates, queries);
+	const selectionWarnings = [
+		...directCandidates.warnings,
+		...found.alreadyManaged.map((query) => `Already Construct-managed here: ${query}`),
+		...found.missing.map((query) => `Not an unloaded project resource: ${query}`),
+	];
+	const selectedPackageCandidates = found.selected.filter((candidate): candidate is LoadCandidate => candidate.kind === "package");
+	const selectedDirectCandidates = found.selected.filter((candidate): candidate is DirectLoadCandidate => candidate.kind !== "package");
+	const selectedSources = selectedPackageCandidates.map((candidate) => candidate.source);
+	const enabledBySource = new Map(selectedPackageCandidates.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
+	const result: ConstructLoadResult =
+		selectedSources.length > 0
+			? await loadSourcesIntoConstruct({ cwd: projectDir }, paths, selectedSources, { enabledBySource })
+			: { added: [], alreadyKnown: 0, warnings: [], metadataChanged: 0, selectedSources: 0 };
+	const directResult = await loadDirectResourcesIntoConstruct({ cwd: projectDir }, paths, selectedDirectCandidates.map((candidate) => candidate.resource));
+	result.directMetadataChanged = directResult.metadataChanged;
+	result.warnings.push(...directResult.warnings, ...selectionWarnings);
+	return result;
 }
 
 export function formatLoadResult(result: ConstructLoadResult): string {

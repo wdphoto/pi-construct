@@ -36,14 +36,14 @@ See `CHANGELOG.md` for version-by-version detail.
 
 ## v0.0.x — project scan
 
-- [x] Add `/construct scan [path]` as a read-only report for unloaded project-level Pi resources under trusted Pi paths or an explicit folder.
+- [x] Add `/construct scan [path]` as a report for unloaded project-level Pi resources under trusted Pi paths or an explicit folder.
 - [x] Detect Pi projects by `.pi/settings.json`, `.pi/construct.json`, and project-local `.pi/extensions`, `.pi/skills`, `.pi/prompts`, or `.pi/themes` resources.
 - [x] Report package declarations not in the Construct library/current project metadata and direct project-local resources not adopted into that project's `.pi/construct.json`.
 - [x] Scan only Pi-trusted projects; list and skip untrusted projects and overly broad/private trusted roots.
-- [x] Keep scan strictly read-only: no install, load, trust change, package execution, reload, or writes.
+- [x] Keep print-mode scan strictly read-only; in TUI mode, selected findings can be loaded into Construct with the same write boundaries as `/construct load`.
 - [x] Avoid expensive/noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
 - [x] Prefer conservative file parsing for scan over Pi runtime resolution unless a safe public resolver mode is confirmed.
-- [x] Keep output summary-oriented and end with `No files were changed.`
+- [x] Keep print-mode output summary-oriented and end with `No files were changed.`
 
 ## v0.0.x — dashboard/status polish
 

@@ -7,7 +7,7 @@ Construct is centered on one primary command: `/construct`.
 ```text
 /construct                         # one loadout menu / dashboard
 /construct status                  # read-only diagnostics
-/construct scan [path]             # read-only report of unloaded trusted local project resources
+/construct scan [path]             # find unloaded trusted local project resources
 /construct load [id-or-source-or-path ...] # add current project resources to the Construct
 /construct unload [id-or-source ...]         # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
@@ -25,7 +25,7 @@ User-facing copy should prefer **library** over **catalog** except when naming t
 
 ## `/construct scan`
 
-Scan is an explicit read-only report for local project folders.
+Scan finds unloaded resources in local project folders. Print mode is read-only; TUI mode can load selected findings into Construct.
 
 - `/construct scan` reads Pi's trust store and scans trusted local paths that are not obviously broad/private roots.
 - `/construct scan <path>` scans a specific local tree, useful for monorepos or project parent folders.
@@ -35,10 +35,11 @@ Scan is an explicit read-only report for local project folders.
 - It reports direct project-local resources not adopted into that project's `.pi/construct.json` metadata.
 - It uses conservative file parsing instead of executing packages or running Pi resource resolution across projects.
 - In the TUI, it shows lightweight progress while scanning and presents findings as a selectable checklist.
-- Pressing Enter on selected scan findings shows per-project `/construct load` guidance only; scan itself does not write.
+- Pressing Enter on selected scan findings loads them into Construct using the same write boundaries as `/construct load`.
 - It skips noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
-- It never installs, loads, unloads, changes trust, reloads Pi, or writes files.
-- It ends with `No files were changed.`
+- It never installs packages, unloads, changes trust, reloads Pi, or edits `.pi/settings.json`.
+- TUI loading writes only the user Construct library for packages and selected projects' `.pi/construct.json` metadata.
+- Print-mode output ends with `No files were changed.`
 
 Scan is intentionally project-local. It does not scan user/global skill locations such as `~/.pi/agent/skills`, `~/.agents/skills`, or generated Pi package caches.
 

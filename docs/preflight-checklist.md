@@ -46,8 +46,9 @@ Expected:
 - `/construct scan <path>` reports the same findings under an explicit local folder.
 - `/construct scan [path]` lists and skips untrusted projects and overly broad/private trusted roots.
 - `/construct scan [path]` skips noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
-- `/construct scan [path]` does not install, load, unload, change trust, reload Pi, or write files.
-- Output ends with `No files were changed.`
+- `/construct scan [path]` does not install packages, unload, change trust, reload Pi, or edit `.pi/settings.json`.
+- In TUI mode, selected scan findings can be loaded into Construct, writing only the user Construct library for packages and selected projects' `.pi/construct.json` metadata.
+- Print-mode output ends with `No files were changed.`
 
 ## Manual load
 

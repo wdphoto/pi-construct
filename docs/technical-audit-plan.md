@@ -14,7 +14,7 @@ Construct is functionally healthy, but the bloat is real. The npm package is sma
 - the generic TUI picker has become a mini framework;
 - dashboard and saved-loadout run flows now share operation/progress/result execution code;
 - old design-plan docs now outnumber current source-of-truth docs;
-- the next roadmap item (`/construct scan`) can stay lean only if it remains read-only and separate from the dashboard.
+- the next roadmap item (`/construct scan`) can stay lean only if broad discovery remains conservative and selected TUI loading keeps `/construct load` write boundaries.
 
 No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
 
@@ -229,7 +229,7 @@ Recommendation:
 
 - Keep package-only counts for now.
 - Avoid showing known-project counts on direct-resource rows until the index stores resource refs.
-- `/construct scan` now reports read-only findings and does not expand the known-project index implicitly.
+- `/construct scan` now reports conservative findings and does not expand the known-project index implicitly.
 
 ### A11 — Project scan can easily become the next bloat source
 
@@ -250,7 +250,7 @@ Options:
 
 3. No scan yet; rely on current project only.
 
-Decision: option 1 only. With no path, scan trusted Pi paths from the trust store while refusing broad/private roots; with a path, scan that explicit root. In both modes, scan only Pi-trusted projects, keep output summary-oriented, and explicitly end with `No files were changed.` Do not integrate scan results into the dashboard in the first slice.
+Decision: option 1 only. With no path, scan trusted Pi paths from the trust store while refusing broad/private roots; with a path, scan that explicit root. In both modes, scan only Pi-trusted projects and keep print output summary-oriented. TUI scan may load selected findings using `/construct load` write boundaries.
 
 ## Documentation audit
 
