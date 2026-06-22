@@ -6,6 +6,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.16 - 2026-06-22
+
 ### Changed
 - Changed the `/construct scan` TUI checklist so Enter loads selected findings into Construct instead of only showing load guidance.
 
