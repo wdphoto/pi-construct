@@ -59,6 +59,10 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Unloaded"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
+STATUS_FULL_OUTPUT="$(run_pi '/construct status full')"
+[[ "$STATUS_FULL_OUTPUT" == *"Runtime inventory"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"Tool sources:"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"Active tool sources:"* ]]
 python3 - "$PROJECT_DIR" <<'PY'
 import pathlib
 import sys

@@ -15,6 +15,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Renamed the saved-loadout command module from stale profile language to `commands/saved-loadouts.ts`; JSON schema compatibility is unchanged.
 - Added small shared UI scroll/truncation helpers for Construct summary, confirmation, and progress panels.
 - Added normalized local source details to verbose status package declaration lines.
+- Added effective runtime command/tool source summaries and duplicate-name notes to verbose status.
 - Added a shared package source-set helper for raw/normalized declared, active, and disabled package declarations.
 - Clarified saved-loadout runtime copy and docs around activate-only behavior: saved recipes install/enable their package sources and do not disable, remove, or exact-match other project packages.
 

@@ -166,14 +166,46 @@ async function packageDeclarationLine(pkg: StatusData["packages"][number], setti
 	return `- ${pkg.source} (${details.join(", ")})`;
 }
 
+function countBy<T>(items: T[], keyFor: (item: T) => string): Record<string, number> {
+	return items.reduce<Record<string, number>>((acc, item) => {
+		const key = keyFor(item);
+		acc[key] = (acc[key] ?? 0) + 1;
+		return acc;
+	}, {});
+}
+
+function formatCounts(counts: Record<string, number>): string {
+	const entries = Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
+	return entries.length > 0 ? entries.map(([key, count]) => `${key} ${count}`).join(" · ") : "none";
+}
+
+function duplicateNameLines<T>(label: string, items: T[], nameFor: (item: T) => string, sourceFor: (item: T) => string): string[] {
+	const byName = new Map<string, string[]>();
+	for (const item of items) {
+		const name = nameFor(item);
+		const sources = byName.get(name) ?? [];
+		sources.push(sourceFor(item));
+		byName.set(name, sources);
+	}
+	return [...byName.entries()]
+		.filter(([, sources]) => sources.length > 1)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, sources]) => `! Duplicate ${label} ${name}: ${sources.join("; ")}`);
+}
+
 async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): Promise<string> {
 	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
 	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
-	const commandCounts = data.commands.reduce<Record<string, number>>((acc, command) => {
-		acc[command.source] = (acc[command.source] ?? 0) + 1;
-		return acc;
-	}, {});
+	const commandCounts = countBy(data.commands, (command) => command.source);
+	const activeToolNames = new Set(data.activeTools);
+	const activeTools = data.tools.filter((tool) => activeToolNames.has(tool.name));
+	const toolSourceCounts = countBy(data.tools, (tool) => tool.sourceInfo.source);
+	const activeToolSourceCounts = countBy(activeTools, (tool) => tool.sourceInfo.source);
+	const runtimeNotes = [
+		...duplicateNameLines("slash command", data.commands, (command) => `/${command.name}`, (command) => `${command.source}:${command.sourceInfo.path}`),
+		...duplicateNameLines("tool", data.tools, (tool) => tool.name, (tool) => `${tool.sourceInfo.source}:${tool.sourceInfo.path}`),
+	];
 	const packageLines = await Promise.all(data.packages.map((pkg) => packageDeclarationLine(pkg, dirname(data.paths.projectSettingsPath))));
 	const managedLines = data.managed.map((item) => {
 		const enabled = item.enabled === undefined ? "unknown" : item.enabled ? "enabled" : "disabled";
@@ -226,8 +258,11 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		"",
 		"Runtime inventory",
 		"-----------------",
-		`Slash commands: ${data.commands.length} (extension ${commandCounts.extension ?? 0}, prompt ${commandCounts.prompt ?? 0}, skill ${commandCounts.skill ?? 0})`,
+		`Slash commands: ${data.commands.length} (${formatCounts(commandCounts)})`,
 		`Tools: ${data.activeTools.length}/${data.tools.length} active`,
+		`Tool sources: ${formatCounts(toolSourceCounts)}`,
+		`Active tool sources: ${formatCounts(activeToolSourceCounts)}`,
+		...runtimeNotes,
 	]
 		.filter((line): line is string => line !== undefined)
 		.join("\n");

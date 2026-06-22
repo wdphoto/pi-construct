@@ -48,7 +48,7 @@ See `CHANGELOG.md` for version-by-version detail.
 
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
-- [ ] Add conflict/doctor visibility for overlapping runtime tool names and duplicate package/resource provenance.
+- [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.
 
 ## Later
 
