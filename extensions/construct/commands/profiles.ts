@@ -1,34 +1,29 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
+import type { CatalogProfile, ConstructPaths } from "../types.js";
 import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
+import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
 import { getPaths } from "../paths.js";
-import { loadPackageIntoProject } from "../package-ops.js";
 import { getPackages } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
+import {
+	findSavedLoadout,
+	generatedCacheSources,
+	importPreviewLines,
+	loadoutShareSnippetText,
+	parseLoadoutSnippet,
+	replacementLines,
+	savedLoadoutId,
+	savedLoadoutSources,
+	secretLikeSources,
+	uniqueSorted,
+	type ParsedLoadoutSnippet,
+} from "../saved-loadouts.js";
 import { isLocalPathSource, managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
-import { pickCheckboxes, progressStatus, setConstructStatus, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 import { loadSourcesIntoConstruct, projectLoadCandidates } from "./load.js";
-
-function profileId(name: string): string {
-	return deriveId(name);
-}
-
-function findProfile(catalog: CatalogData, query: string): CatalogProfile | undefined {
-	return catalog.profiles.find((profile) => profile.id === query || profile.name === query);
-}
-
-function profileSources(catalog: CatalogData, profile: CatalogProfile): string[] {
-	return profile.sources.length > 0
-		? profile.sources
-		: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string");
-}
-
-function uniqueSorted(sources: string[]): string[] {
-	return [...new Set(sources.filter((source) => source.trim().length > 0))].sort();
-}
 
 function usage(): string {
 	return [
@@ -108,26 +103,6 @@ async function promptForUnloadedSources(ctx: ExtensionCommandContext, name: stri
 	return selected.selectedIds.filter((source) => candidateSources.has(source));
 }
 
-function replacementLines(existingSources: string[], nextSources: string[]): string[] {
-	const existing = new Set(existingSources);
-	const next = new Set(nextSources);
-	const added = nextSources.filter((source) => !existing.has(source));
-	const removed = existingSources.filter((source) => !next.has(source));
-	const unchanged = nextSources.filter((source) => existing.has(source));
-	const lines = [`Existing package sources: ${existingSources.length}`, `New package sources:      ${nextSources.length}`, ""];
-	function section(title: string, marker: string, sources: string[]): void {
-		lines.push(`${title}:`);
-		if (sources.length === 0) lines.push("- none");
-		else lines.push(...sources.slice(0, 8).map((source) => `${marker} ${source}`));
-		if (sources.length > 8) lines.push(`…and ${sources.length - 8} more`);
-		lines.push("");
-	}
-	section("Added", "+", added);
-	section("Removed", "-", removed);
-	section("Unchanged", " ", unchanged);
-	return lines;
-}
-
 async function confirmReplaceSavedLoadout(ctx: ExtensionCommandContext, id: string, existingSources: string[], nextSources: string[]): Promise<boolean> {
 	if (ctx.mode !== "tui") return false;
 	return ctx.ui.custom<boolean>((tui, theme, keybindings, done) => {
@@ -177,40 +152,6 @@ async function confirmReplaceSavedLoadout(ctx: ExtensionCommandContext, id: stri
 	});
 }
 
-type SavedLoadoutRunStep = {
-	label: string;
-	source: string;
-	item?: CatalogItem;
-	state: "pending" | "running" | "done" | "failed";
-	error?: string;
-};
-
-type SavedLoadoutRunResult = {
-	title: string;
-	lines: string[];
-	confirmHint?: string;
-	confirmAction?: "reload";
-};
-
-type ProgressUpdate = (title: string, lines: string[]) => void;
-
-function operationError(result: { error?: string; stderr?: string; exitCode?: number }): string {
-	return result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
-}
-
-function runProgressLines(steps: SavedLoadoutRunStep[]): string[] {
-	const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
-	return [
-		`${complete}/${steps.length} package sources complete`,
-		"",
-		...steps.map((step) => {
-			const marker = step.state === "done" ? "✓" : step.state === "failed" ? "!" : step.state === "running" ? "→" : " ";
-			const suffix = step.error ? ` — ${step.error}` : "";
-			return `${marker} Install ${step.label}  ${step.source}${suffix}`;
-		}),
-	];
-}
-
 async function runSavedLoadoutOperations(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
@@ -219,7 +160,7 @@ async function runSavedLoadoutOperations(
 	query: string,
 	update?: ProgressUpdate,
 	signal?: AbortSignal,
-): Promise<SavedLoadoutRunResult> {
+): Promise<ConstructOperationRunResult> {
 	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct run", update, signal);
 	if (!ready) return { title: "Saved loadout run cancelled", lines: ["No files were changed."] };
 	if (signal?.aborted) return { title: "Saved loadout run cancelled", lines: ["No files were changed."] };
@@ -228,185 +169,63 @@ async function runSavedLoadoutOperations(
 	if (fresh.warnings.length > 0) {
 		return { title: "Saved loadout run failed", lines: fresh.warnings.map((warning) => `! ${warning}`) };
 	}
-	const currentProfile = findProfile(fresh.catalog, profileId) ?? findProfile(fresh.catalog, query);
+	const currentProfile = findSavedLoadout(fresh.catalog, profileId) ?? findSavedLoadout(fresh.catalog, query);
 	if (!currentProfile) {
 		return { title: "Saved loadout run failed", lines: [`Saved loadout not found after waiting for Pi to become idle: ${profileId}`] };
 	}
-	const sources = profileSources(fresh.catalog, currentProfile);
+	const sources = savedLoadoutSources(fresh.catalog, currentProfile);
 	if (sources.length === 0) {
 		return { title: "Saved loadout run failed", lines: [`Saved loadout has no package sources: ${currentProfile.id}`] };
 	}
 
-	const steps: SavedLoadoutRunStep[] = sources.map((source) => {
+	const steps: ConstructOperationStep[] = sources.map((source) => {
 		const item = findCatalogItem(fresh.catalog.items, source);
-		return { source, item, label: item?.id ?? deriveId(source), state: "pending" };
+		const label = item?.id ?? deriveId(source);
+		return {
+			action: "Install",
+			item: { id: label, label, source, displaySource: source, catalogItem: item },
+			state: "pending",
+		};
 	});
-	update?.(`Running saved loadout: ${currentProfile.id}`, runProgressLines(steps));
+	const outcome = await runConstructOperationSteps({
+		pi,
+		ctx,
+		paths,
+		steps,
+		update,
+		signal,
+		progressTitle: `Running saved loadout: ${currentProfile.id}`,
+		completeLabel: "package sources",
+		statusKind: "loading",
+	});
 
-	const loaded: SavedLoadoutRunStep[] = [];
-	const partialRuntimeChanges: Array<{ step: SavedLoadoutRunStep; error: string }> = [];
-	const failures: string[] = [];
-	let needsReload = false;
-	try {
-		for (const step of steps) {
-			if (signal?.aborted) break;
-			step.state = "running";
-			update?.(`Running saved loadout: ${currentProfile.id}`, runProgressLines(steps));
-			setConstructStatus(ctx, progressStatus("loading", loaded.length + partialRuntimeChanges.length + failures.length + 1, steps.length, step.label));
-			const result = await loadPackageIntoProject(pi, paths, { source: step.source, item: step.item });
-			if (result.needsReload) needsReload = true;
-			if (result.ok) {
-				loaded.push(step);
-				step.state = "done";
-			} else {
-				const error = operationError(result);
-				step.state = "failed";
-				step.error = error;
-				if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ step, error });
-				else failures.push(`${step.label}: ${error}`);
-			}
-			update?.(`Running saved loadout: ${currentProfile.id}`, runProgressLines(steps));
-		}
-	} finally {
-		setConstructStatus(ctx, undefined);
-	}
-
-	const appliedChanges = loaded.length + partialRuntimeChanges.length;
-	const cancelled = signal?.aborted ?? false;
-	const hasErrors = failures.length > 0 || partialRuntimeChanges.length > 0;
+	const loaded = outcome.completed.filter((step) => step.action === "Install");
+	const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
 	return {
-		title: cancelled
-			? appliedChanges > 0
+		title: outcome.cancelled
+			? outcome.appliedChanges > 0
 				? `Saved loadout run cancelled after partial changes: ${currentProfile.id}`
 				: `Saved loadout run cancelled: ${currentProfile.id}`
 			: hasErrors
 				? `Saved loadout ran with errors: ${currentProfile.id}`
 				: `Ran saved loadout: ${currentProfile.id}`,
-		confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
-		confirmAction: needsReload ? "reload" : undefined,
+		confirmHint: outcome.needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+		confirmAction: outcome.needsReload ? "reload" : undefined,
 		lines: [
-			cancelled ? "Cancelled before remaining resources." : undefined,
-			`Turned on: ${appliedChanges}/${steps.length}`,
-			...loaded.map((step) => `+ ${step.label}: ${step.source}`),
-			partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
-			...partialRuntimeChanges.map(({ step, error }) => `! ${step.label}: ${error}`),
-			partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
-			failures.length > 0 ? `Failures: ${failures.length}` : undefined,
-			...failures.map((failure) => `! ${failure}`),
+			outcome.cancelled ? "Cancelled before remaining resources." : undefined,
+			"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
+			`Turned on: ${outcome.appliedChanges}/${steps.length}`,
+			...loaded.map((step) => `+ ${step.item.label}: ${step.item.source}`),
+			outcome.partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${outcome.partialRuntimeChanges.length}` : undefined,
+			...outcome.partialRuntimeChanges.map((change) => `! ${change.item.label}: ${change.error}`),
+			outcome.partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
+			outcome.failures.length > 0 ? `Failures: ${outcome.failures.length}` : undefined,
+			...outcome.failures.map((failure) => `! ${failure}`),
 		].filter((line): line is string => line !== undefined),
 	};
 }
 
-async function showSavedLoadoutRunPanel(
-	ctx: ExtensionCommandContext,
-	initialTitle: string,
-	run: (update: ProgressUpdate, signal: AbortSignal) => Promise<SavedLoadoutRunResult>,
-): Promise<{ closeAction: "confirm" | "cancel"; confirmAction?: "reload" }> {
-	return ctx.ui.custom((tui, theme, keybindings, done) => {
-		let phase: "applying" | "done" = "applying";
-		let title = initialTitle;
-		let lines = ["Preparing saved loadout run…"];
-		let confirmHint = "Press Enter/Esc to return to session";
-		let confirmAction: "reload" | undefined;
-		let scroll = 0;
-		let startedAt = Date.now();
-		let spinnerTick = 0;
-		let cachedWidth: number | undefined;
-		let cachedLines: string[] | undefined;
-		const abort = new AbortController();
-		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-		const animationTimer = setInterval(() => {
-			if (phase !== "applying") return;
-			spinnerTick += 1;
-			invalidate();
-			tui.requestRender();
-		}, 120);
-
-		function invalidate(): void {
-			cachedWidth = undefined;
-			cachedLines = undefined;
-		}
-
-		function update(nextTitle: string, nextLines: string[]): void {
-			title = nextTitle;
-			lines = nextLines;
-			scroll = 0;
-			invalidate();
-			tui.requestRender();
-		}
-
-		function close(closeAction: "confirm" | "cancel"): void {
-			abort.abort();
-			clearInterval(animationTimer);
-			done({ closeAction, confirmAction });
-		}
-
-		void (async () => {
-			try {
-				const result = await run(update, abort.signal);
-				phase = "done";
-				confirmHint = result.confirmHint ?? confirmHint;
-				confirmAction = result.confirmAction;
-				update(result.title, result.lines);
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				phase = "done";
-				confirmAction = undefined;
-				update("Saved loadout run failed", [`! ${message}`]);
-			}
-		})();
-
-		function render(width: number): string[] {
-			if (cachedLines && cachedWidth === width) return cachedLines;
-			const maxVisible = 16;
-			const maxScroll = Math.max(0, lines.length - maxVisible);
-			scroll = Math.min(scroll, maxScroll);
-			const visible = lines.slice(scroll, scroll + maxVisible);
-			const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-			const heading = phase === "applying" ? `${spinnerFrames[spinnerTick % spinnerFrames.length]} ${title} · ${elapsedSeconds}s` : title;
-			const rendered = [theme.fg("accent", theme.bold(heading)), ""];
-			for (const line of visible) {
-				if (line.startsWith("!")) rendered.push(theme.fg("warning", line));
-				else if (line.startsWith("+")) rendered.push(theme.fg("success", line));
-				else if (line.startsWith("-")) rendered.push(theme.fg("muted", line));
-				else if (line.startsWith("Reload")) rendered.push(theme.fg("warning", line));
-				else if (line.trimStart().startsWith("/")) rendered.push(theme.fg("accent", theme.bold(line)));
-				else rendered.push(line);
-			}
-			if (lines.length > maxVisible) rendered.push("", theme.fg("muted", `  (${scroll + 1}-${Math.min(scroll + maxVisible, lines.length)}/${lines.length})`));
-			rendered.push("", phase === "applying" ? theme.fg("muted", "  Applying package changes…") : theme.fg("accent", `  ${confirmHint}`));
-			cachedWidth = width;
-			cachedLines = rendered.map((line) => truncateToWidth(line, width));
-			return cachedLines;
-		}
-
-		function handleInput(data: string): void {
-			if (keybindings.matches(data, "tui.select.up")) {
-				scroll = Math.max(0, scroll - 1);
-				invalidate();
-				tui.requestRender();
-				return;
-			}
-			if (keybindings.matches(data, "tui.select.down")) {
-				scroll = Math.min(Math.max(0, lines.length - 16), scroll + 1);
-				invalidate();
-				tui.requestRender();
-				return;
-			}
-			if (phase === "applying" && keybindings.matches(data, "tui.select.cancel")) {
-				abort.abort();
-				update("Cancelling saved loadout run", ["Cancel requested.", "Construct will stop before the next file-changing step."]);
-				return;
-			}
-			if (phase === "done" && keybindings.matches(data, "tui.select.confirm")) close("confirm");
-			if (phase === "done" && keybindings.matches(data, "tui.select.cancel")) close("cancel");
-		}
-
-		return { render, handleInput, invalidate, dispose: () => clearInterval(animationTimer) };
-	});
-}
-
-function runResultText(result: SavedLoadoutRunResult): string {
+function runResultText(result: ConstructOperationRunResult): string {
 	return [
 		result.title,
 		...result.lines,
@@ -421,7 +240,7 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		return;
 	}
 	const paths = await getPaths(ctx);
-	const id = profileId(requestedName);
+	const id = savedLoadoutId(requestedName);
 
 	let initialManaged: string[];
 	let initialUnloaded: Array<{ id: string; source: string }>;
@@ -499,13 +318,13 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		showText(ctx, ["Saved loadout not created.", `Fix ${beforeCatalog.paths.userCatalogPath} first.`, ...beforeCatalog.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const existingBefore = findProfile(beforeCatalog.catalog, id);
+	const existingBefore = findSavedLoadout(beforeCatalog.catalog, id);
 	if (existingBefore) {
 		if (ctx.mode !== "tui") {
 			showText(ctx, [`Saved loadout already exists: ${id}`, "Run /construct save in TUI to replace it with confirmation."].join("\n"));
 			return;
 		}
-		const replace = await confirmReplaceSavedLoadout(ctx, id, profileSources(beforeCatalog.catalog, existingBefore), currentSources);
+		const replace = await confirmReplaceSavedLoadout(ctx, id, savedLoadoutSources(beforeCatalog.catalog, existingBefore), currentSources);
 		if (!replace) {
 			showText(ctx, "Saved loadout replacement cancelled. No files were changed.");
 			return;
@@ -543,7 +362,7 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 
 	const items = currentSources.map((source) => findCatalogItem(catalog.items, source)?.id ?? deriveId(source));
 	const now = new Date().toISOString();
-	const existing = findProfile(catalog, id);
+	const existing = findSavedLoadout(catalog, id);
 	const nextProfile: CatalogProfile = {
 		...(existing ?? {}),
 		id,
@@ -583,19 +402,25 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 		showText(ctx, ["Saved loadout run failed.", ...warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const profile = findProfile(catalog, requested);
+	const profile = findSavedLoadout(catalog, requested);
 	if (!profile) {
 		showText(ctx, `Saved loadout not found: ${requested}`);
 		return;
 	}
-	const sources = profileSources(catalog, profile);
+	const sources = savedLoadoutSources(catalog, profile);
 	if (sources.length === 0) {
 		showText(ctx, `Saved loadout has no package sources: ${profile.id}`);
 		return;
 	}
 
 	if (ctx.mode === "tui") {
-		const result = await showSavedLoadoutRunPanel(ctx, `Running saved loadout: ${profile.id}`, (update, signal) => runSavedLoadoutOperations(pi, ctx, paths, profile.id, requested, update, signal));
+		const result = await showOperationRunPanel(ctx, {
+			initialTitle: `Running saved loadout: ${profile.id}`,
+			preparingLine: "Preparing saved loadout run…",
+			applyingHint: "Applying package changes…",
+			failureTitle: "Saved loadout run failed",
+			run: (update, signal) => runSavedLoadoutOperations(pi, ctx, paths, profile.id, requested, update, signal),
+		});
 		if (result.closeAction === "confirm" && result.confirmAction === "reload") {
 			await ctx.reload();
 		}
@@ -648,12 +473,12 @@ async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): 
 		showText(ctx, ["Saved loadout not removed.", `Fix ${before.paths.userCatalogPath} first.`, ...before.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const profile = findProfile(before.catalog, requested);
+	const profile = findSavedLoadout(before.catalog, requested);
 	if (!profile) {
 		showText(ctx, `Saved loadout not found: ${requested}`);
 		return;
 	}
-	const sources = profileSources(before.catalog, profile);
+	const sources = savedLoadoutSources(before.catalog, profile);
 	const confirmed = await confirmRemoveSavedLoadout(ctx, profile, sources);
 	if (!confirmed) {
 		showText(ctx, "Saved loadout removal cancelled. No files were changed.");
@@ -669,7 +494,7 @@ async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): 
 		showText(ctx, ["Saved loadout not removed.", `Fix ${fresh.paths.userCatalogPath} first.`, ...fresh.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const current = findProfile(fresh.catalog, profile.id) ?? findProfile(fresh.catalog, requested);
+	const current = findSavedLoadout(fresh.catalog, profile.id) ?? findSavedLoadout(fresh.catalog, requested);
 	if (!current) {
 		showText(ctx, `Saved loadout not found: ${requested}`);
 		return;
@@ -677,26 +502,6 @@ async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): 
 	const profiles = fresh.catalog.profiles.filter((entry) => entry.id !== current.id);
 	await writeJson(fresh.paths.userCatalogPath, { ...fresh.catalog, version: 1, profiles });
 	await showSummary(ctx, [`Removed saved loadout: ${current.id}`, "No project files were changed."].join("\n"));
-}
-
-function generatedCacheSources(sources: string[]): string[] {
-	return sources.filter((source) => source.includes("/.pi/agent/npm/") || source.includes("/.pi/agent/git/"));
-}
-
-function secretLikeSources(sources: string[]): string[] {
-	return sources.filter((source) => /\/\/[^/\s:@]+:[^/\s@]+@/.test(source) || /[?&#](?:token|api[_-]?key|password|secret)=/i.test(source));
-}
-
-function loadoutShareSnippetText(input: { name: string; sources: string[]; warnings?: string[] }): string {
-	const snippet = {
-		kind: "construct-loadout",
-		version: 1,
-		name: input.name,
-		sources: input.sources,
-	};
-	const lines = ["Construct loadout share snippet", "===============================", "Copy this JSON:", "", JSON.stringify(snippet, null, 2)];
-	if (input.warnings && input.warnings.length > 0) lines.push("", "Warnings", "--------", ...input.warnings.map((warning) => `! ${warning}`));
-	return lines.join("\n");
 }
 
 async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
@@ -711,13 +516,13 @@ async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promis
 		showText(ctx, ["Construct loadout share snippet not created.", ...catalogWarnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const profile = findProfile(catalog, requested);
+	const profile = findSavedLoadout(catalog, requested);
 	if (!profile) {
 		showText(ctx, `Saved loadout not found: ${requested}`);
 		return;
 	}
 	const name = profile.name ?? profile.id;
-	const sources = uniqueSorted(profileSources(catalog, profile));
+	const sources = uniqueSorted(savedLoadoutSources(catalog, profile));
 
 	if (sources.length === 0) {
 		showText(ctx, `Saved loadout has no package sources: ${requested}`);
@@ -740,56 +545,6 @@ async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promis
 	if (localPaths.length > 0) warnings.push(`Local path sources may not work on another machine: ${localPaths.join(", ")}`);
 
 	await showSummary(ctx, loadoutShareSnippetText({ name, sources, warnings }));
-}
-
-type ParsedLoadoutSnippet = { name: string; sources: string[] };
-
-function parseLoadoutSnippet(raw: string): { snippet?: ParsedLoadoutSnippet; errors: string[]; warnings: string[] } {
-	const text = raw.trim();
-	if (!text) return { errors: ["Usage: /construct import <construct-loadout-json>"], warnings: [] };
-	const start = text.indexOf("{");
-	const end = text.lastIndexOf("}");
-	if (start === -1 || end === -1 || end <= start) return { errors: ["No JSON object found in import text."], warnings: [] };
-
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text.slice(start, end + 1));
-	} catch (error) {
-		return { errors: [`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`], warnings: [] };
-	}
-	if (!isObject(parsed)) return { errors: ["Snippet JSON must be an object."], warnings: [] };
-	const errors: string[] = [];
-	const warnings: string[] = [];
-	if (parsed.kind !== "construct-loadout") errors.push('Snippet kind must be "construct-loadout".');
-	if (parsed.version !== 1) errors.push("Snippet version must be 1.");
-	const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
-	if (!name) errors.push("Snippet name must be a non-empty string.");
-	const rawSources = Array.isArray(parsed.sources) ? parsed.sources : undefined;
-	if (!rawSources) errors.push("Snippet sources must be an array.");
-	const sourceStrings = (rawSources ?? []).filter((source): source is string => typeof source === "string" && source.trim().length > 0).map((source) => source.trim());
-	const sources = uniqueSorted(sourceStrings);
-	if (rawSources && sourceStrings.length !== rawSources.length) errors.push("Snippet sources must be non-empty strings.");
-	if (sources.length === 0) errors.push("Snippet must include at least one source.");
-	const secretLike = secretLikeSources(sources);
-	if (secretLike.length > 0) errors.push("Snippet contains source strings that look like secrets.");
-	const generatedCache = generatedCacheSources(sources);
-	if (generatedCache.length > 0) errors.push("Snippet contains generated Pi package cache paths.");
-	const localPaths = sources.filter(isLocalPathSource);
-	if (localPaths.length > 0) warnings.push(`Local path sources may not work on another machine: ${localPaths.join(", ")}`);
-	return errors.length > 0 ? { errors, warnings } : { snippet: { name, sources }, errors: [], warnings };
-}
-
-function importPreviewLines(snippet: ParsedLoadoutSnippet, warnings: string[], existingSources?: string[]): string[] {
-	const id = profileId(snippet.name);
-	const lines = [`Name: ${snippet.name}`, `Saved id: ${id}`, `Package sources: ${snippet.sources.length}`, ""];
-	if (existingSources) {
-		lines.push(...replacementLines(existingSources, snippet.sources));
-	} else {
-		lines.push("Sources:", ...snippet.sources.slice(0, 12).map((source) => `+ ${source}`));
-		if (snippet.sources.length > 12) lines.push(`…and ${snippet.sources.length - 12} more`);
-	}
-	if (warnings.length > 0) lines.push("", "Warnings", "--------", ...warnings.map((warning) => `! ${warning}`));
-	return lines;
 }
 
 async function confirmImportLoadout(ctx: ExtensionCommandContext, snippet: ParsedLoadoutSnippet, warnings: string[], existingSources?: string[]): Promise<boolean> {
@@ -913,9 +668,9 @@ async function importLoadout(ctx: ExtensionCommandContext, raw: string): Promise
 		showText(ctx, ["Construct loadout import failed.", `Fix ${before.paths.userCatalogPath} first.`, ...before.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const id = profileId(parsed.snippet.name);
-	const existing = findProfile(before.catalog, id);
-	const existingSources = existing ? profileSources(before.catalog, existing) : undefined;
+	const id = savedLoadoutId(parsed.snippet.name);
+	const existing = findSavedLoadout(before.catalog, id);
+	const existingSources = existing ? savedLoadoutSources(before.catalog, existing) : undefined;
 
 	if (ctx.mode !== "tui") {
 		showText(ctx, ["Construct loadout import preview", "===============================", ...importPreviewLines(parsed.snippet, parsed.warnings, existingSources), "", "No files were changed. Run /construct import in TUI to confirm."].join("\n"));
@@ -945,7 +700,7 @@ async function importLoadout(ctx: ExtensionCommandContext, raw: string): Promise
 		showText(ctx, ["Construct loadout import failed.", `Fix ${catalogPaths.userCatalogPath} first.`, ...warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
-	const freshExisting = findProfile(catalog, id);
+	const freshExisting = findSavedLoadout(catalog, id);
 	const items = parsed.snippet.sources.map((source) => findCatalogItem(catalog.items, source)?.id ?? deriveId(source));
 	const now = new Date().toISOString();
 	const nextProfile: CatalogProfile = {

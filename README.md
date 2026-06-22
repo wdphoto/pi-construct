@@ -97,7 +97,7 @@ In another project, run that saved loadout:
 /construct run web-stack
 ```
 
-Or run `/construct`, focus a saved loadout and press Enter to run it, or select an `Available` package with Space and press Enter to install it. Saved loadout rows are recipe/spotlight rows: focusing one marks member package rows with `[·]`; pressing Space on the saved row quick-selects those member package rows for bulk package actions.
+Or run `/construct`, focus a saved loadout and press Enter to activate it, or select an `Available` package with Space and press Enter to install it. Saved loadout rows are recipe/spotlight rows: focusing one marks member package rows with `[·]`; pressing Space on the saved row quick-selects those member package rows for bulk package actions.
 
 ## Commands
 
@@ -127,11 +127,11 @@ Notes:
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
 - `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
 - `/construct list` lists saved loadouts.
-- `/construct run <saved-name>` applies the saved loadout once; projects are not live-linked to saved loadouts.
+- `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
 - `/construct remove <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
-- In `/construct`, Enter on a focused saved loadout runs it additively. Space on a saved loadout selects its member package rows instead, so normal Enter/`r` package-row actions apply to those members.
+- In `/construct`, Enter on a focused saved loadout activates it additively. Space on a saved loadout selects its member package rows instead, so normal Enter/`r` package-row actions apply to those members.
 - Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
 
 ## How it works

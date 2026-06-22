@@ -98,6 +98,7 @@ Save rules:
 Run rules:
 
 - `/construct run <saved-name>` applies the saved loadout once to the current project through the same conservative package-loading path used by the dashboard.
+- Running a saved loadout is activate-only: it installs available recipe package sources and enables disabled recipe package sources. It does not disable/remove active packages, remove packages outside the recipe, or exact-match the project to the recipe.
 - Running a saved loadout is not a live binding; replacing the saved loadout later does not change projects that already ran it.
 - `run` does not execute arbitrary scripts.
 
@@ -111,7 +112,7 @@ Share/import/remove rules:
 - Share/import refuses generated Pi package cache paths and source strings that look like secrets.
 - `/construct remove <saved-name>` deletes only the saved loadout recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
 
-Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing one marks its member package rows with `[·]`, pressing Enter runs the saved loadout additively, and pressing Space quick-selects its member package rows for normal package actions. Disable/remove remains a package-row action, not a saved-loadout action.
+Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing one marks its member package rows with `[·]`, pressing Enter activates the saved loadout additively, and pressing Space quick-selects its member package rows for normal package actions. Disable/remove remains a package-row action, not a saved-loadout action.
 
 ## `/construct`
 
@@ -139,7 +140,7 @@ Controls:
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
 - Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
-- Enter on a focused saved loadout with no selected rows is additive/activating only: it installs available package sources and enables disabled package sources, but does not disable or remove active member packages;
+- Enter on a focused saved loadout with no selected rows is activate-only: it installs available package sources and enables disabled package sources, but does not disable/remove active member packages, remove packages outside the recipe, or exact-match the project to the recipe;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;
 - Esc cancels without writing before apply;

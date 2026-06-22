@@ -22,9 +22,9 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Consolidate stale planning docs into current source-of-truth docs.
 - [x] Fix duplicate TUI row identity for remembered sources with the same derived id.
 - [x] Add a cheap TypeScript hygiene check for unused locals/parameters.
-- [ ] Split saved-loadout pure helpers out of the large command module.
-- [ ] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
-- [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only.
+- [x] Split saved-loadout pure helpers out of the large command module.
+- [x] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
+- [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only. Deferred until after review.
 
 ## v0.0.x — autoload polish
 

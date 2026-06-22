@@ -1,19 +1,20 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { CatalogData, CatalogProfile, ConstructPaths, DirectResourceSummary } from "../types.js";
+import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js";
 import { isObject, readJson } from "../json.js";
+import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { managedPackageSourceIdentity } from "../sources.js";
 import { getPackages } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
+import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
-import { disableDirectResourceInProject, disablePackageResourcesInProject, enableDirectResourceInProject, enablePackageResourcesInProject, loadPackageIntoProject, removePackageFromProject } from "../package-ops.js";
 
 type DashboardSection = "Saved" | "Active" | "Disabled" | "Available" | "Unloaded";
 type PackageDashboardSection = Exclude<DashboardSection, "Saved">;
-type DashboardAction = "Install" | "Enable" | "Disable" | "Remove";
-type DashboardOperationItem = { id: string; label: string; source: string; displaySource: string; managed?: boolean; direct?: DirectResourceSummary };
-type DashboardStep = { action: DashboardAction; item: DashboardOperationItem; state: "pending" | "running" | "done" | "failed"; error?: string };
+type DashboardAction = ConstructOperationAction;
+type DashboardOperationItem = ConstructOperationItem;
+type DashboardStep = ConstructOperationStep;
 
 interface DashboardPackage extends DashboardOperationItem {
 	type: "package";
@@ -84,18 +85,6 @@ function sortDashboardPackages(packages: DashboardItem[]): DashboardItem[] {
 
 function rowId(prefix: string, ...parts: string[]): string {
 	return `${prefix}:${parts.join("\u0000")}`;
-}
-
-function uniqueSorted(sources: string[]): string[] {
-	return [...new Set(sources.filter((source) => source.trim().length > 0))].sort();
-}
-
-function savedLoadoutSources(catalog: CatalogData, profile: CatalogProfile): string[] {
-	return uniqueSorted(
-		profile.sources.length > 0
-			? profile.sources
-			: profile.items.map((id) => catalog.items.find((item) => item.id === id)?.source).filter((source): source is string => typeof source === "string"),
-	);
 }
 
 function countLabel(count: number, label: string): string {
@@ -182,7 +171,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	const packages: DashboardItem[] = [];
 
 	for (const profile of catalog.profiles) {
-		const sources = savedLoadoutSources(catalog, profile);
+		const sources = uniqueSorted(savedLoadoutSources(catalog, profile));
 		packages.push({
 			type: "saved",
 			rowId: rowId("saved", profile.id),
@@ -197,7 +186,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			description:
 				sources.length === 0
 					? "Saved loadout has no package sources."
-					: `Saved package-source loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to run it in this project, or Space to select member package rows.`,
+					: `Saved package-source loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to activate it in this project, or Space to select member package rows for manual actions.`,
 		});
 	}
 
@@ -295,8 +284,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			saved.description = [
 				`Saved package-source loadout${saved.label ? `: ${saved.label}` : ""}.`,
 				`Members: ${summary.value}. Rows marked [·] belong to the focused saved loadout.`,
-				"Press Enter to run it: install/enable package sources that are not active.",
-				"Press Space to select its member package rows for bulk package actions.",
+				"Press Enter to activate it: install/enable package sources that are not active.",
+				"Activate-only: Enter does not disable, remove, or exact-match anything outside the recipe.",
+				"Press Space to select member package rows for manual package actions.",
 			].join("\n");
 		}
 	}
@@ -401,10 +391,6 @@ function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
 	];
 }
 
-function resultError(result: { error?: string; stderr?: string; exitCode?: number }): string {
-	return result.error ?? result.stderr ?? `exit ${result.exitCode ?? "unknown"}`;
-}
-
 function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
 	const selected = new Set(ids);
 	const removable = packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
@@ -453,6 +439,7 @@ function findPackageForSavedSource(packages: DashboardPackage[], source: string)
 }
 
 function actionForSavedSource(item: DashboardPackage | undefined): DashboardAction | undefined {
+	// Saved loadout rows are activate-only: install missing sources, enable disabled sources, and never disable/remove anything.
 	if (!item) return "Install";
 	if (item.section === "Active") return undefined;
 	if (item.section === "Disabled") return "Enable";
@@ -536,7 +523,11 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				if (selectedSaved.length > 0) {
 					return {
 						title: "Saved loadout already active",
-						lines: [`Selected saved loadouts: ${selectedSaved.length}`, "No package changes were needed in this project."],
+						lines: [
+							`Selected saved loadouts: ${selectedSaved.length}`,
+							"No package changes were needed in this project.",
+							"Saved loadouts are activate-only; nothing was disabled, removed, or exact-matched.",
+						],
 					};
 				}
 				return { title: "No Construct changes selected", lines: noChangeLines(submitAction) };
@@ -547,76 +538,36 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				return { title: "Construct Loadout cancelled", lines: ["No files were changed."] };
 			}
 
-			const completed: Array<{ action: DashboardAction; item: DashboardOperationItem }> = [];
-			const partialRuntimeChanges: Array<{ action: DashboardAction; item: DashboardOperationItem; error: string }> = [];
-			const failures: string[] = [];
-			let needsReload = false;
+			const outcome = await runConstructOperationSteps({
+				pi,
+				paths,
+				steps,
+				update,
+				signal,
+				progressTitle: "Applying Construct Loadout",
+				completeLabel: "changes",
+			});
 
-			function progressLines(): string[] {
-				const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
-				return [
-					`${complete}/${steps.length} changes complete`,
-					"",
-					...steps.map((step) => {
-						const marker = step.state === "done" ? "✓" : step.state === "failed" ? "!" : step.state === "running" ? "→" : " ";
-						const suffix = step.error ? ` — ${step.error}` : "";
-						return `${marker} ${step.action} ${step.item.label}  ${step.item.displaySource}${suffix}`;
-					}),
-				];
-			}
-
-			update("Applying Construct Loadout", progressLines());
-			for (const step of steps) {
-				if (signal.aborted) break;
-				step.state = "running";
-				update("Applying Construct Loadout", progressLines());
-				const result = step.item.direct
-					? step.action === "Enable"
-						? await enableDirectResourceInProject(paths, step.item.direct)
-						: step.action === "Disable"
-							? await disableDirectResourceInProject(paths, step.item.direct)
-							: { ok: false, error: `${step.action} is not supported for direct project resources.` }
-					: step.action === "Install"
-						? await loadPackageIntoProject(pi, paths, { source: step.item.source, item: { id: step.item.id, kind: "package", source: step.item.source } })
-						: step.action === "Enable"
-							? await enablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
-							: step.action === "Disable"
-								? await disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined })
-								: await removePackageFromProject(pi, paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
-				if (result.needsReload) needsReload = true;
-				if (result.ok) {
-					completed.push({ action: step.action, item: step.item });
-					step.state = "done";
-				} else {
-					step.state = "failed";
-					step.error = resultError(result);
-					if (result.metadataOnlyFailure && result.needsReload) partialRuntimeChanges.push({ action: step.action, item: step.item, error: step.error });
-					else failures.push(`${step.item.id}: ${step.error}`);
-				}
-				update("Applying Construct Loadout", progressLines());
-			}
-
-			const appliedChanges = completed.length + partialRuntimeChanges.length;
-			const cancelled = signal.aborted;
-			const byAction = (action: DashboardAction) => completed.filter((step) => step.action === action).map((step) => step.item);
+			const byAction = (action: DashboardAction) => outcome.completed.filter((step) => step.action === action).map((step) => step.item);
 			const installed = byAction("Install");
 			const enabled = byAction("Enable");
 			const disabled = byAction("Disable");
 			const removed = byAction("Remove");
-			const hasErrors = failures.length > 0 || partialRuntimeChanges.length > 0;
+			const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
 			return {
-				title: cancelled
-					? appliedChanges > 0
+				title: outcome.cancelled
+					? outcome.appliedChanges > 0
 						? "Construct Loadout cancelled after partial changes"
 						: "Construct Loadout cancelled"
 					: hasErrors
 						? "Construct Loadout applied with errors"
 						: "Construct Loadout changes applied",
-				confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
-				confirmAction: needsReload ? "reload" : undefined,
+				confirmHint: outcome.needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+				confirmAction: outcome.needsReload ? "reload" : undefined,
 				lines: [
-					cancelled ? "Cancelled before remaining changes." : undefined,
+					outcome.cancelled ? "Cancelled before remaining changes." : undefined,
 					selectedSaved.length > 0 ? `Saved loadouts selected: ${selectedSaved.map((item) => item.label).join(", ")}` : undefined,
+					selectedSaved.length > 0 ? "Recipe mode: activate-only; non-recipe and already-active resources were left untouched." : undefined,
 					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
 					...installed.map((item) => `+ ${item.label}: ${item.source}`),
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
@@ -625,11 +576,11 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 					...disabled.map((item) => `- ${item.label}: ${item.source}`),
 					removed.length > 0 ? `Removed from project: ${removed.length}` : undefined,
 					...removed.map((item) => `- ${item.label}: ${item.source}`),
-					partialRuntimeChanges.length > 0 ? `Resource settings changed, but Construct metadata failed: ${partialRuntimeChanges.length}` : undefined,
-					...partialRuntimeChanges.map((change) => `! ${change.action} ${change.item.label}: ${change.error}`),
-					partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
-					failures.length > 0 ? `Failures: ${failures.length}` : undefined,
-					...failures.map((failure) => `! ${failure}`),
+					outcome.partialRuntimeChanges.length > 0 ? `Resource settings changed, but Construct metadata failed: ${outcome.partialRuntimeChanges.length}` : undefined,
+					...outcome.partialRuntimeChanges.map((change) => `! ${change.action} ${change.item.label}: ${change.error}`),
+					outcome.partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
+					outcome.failures.length > 0 ? `Failures: ${outcome.failures.length}` : undefined,
+					...outcome.failures.map((failure) => `! ${failure}`),
 				].filter((line): line is string => line !== undefined),
 			};
 		},

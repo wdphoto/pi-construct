@@ -11,6 +11,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Clarified `/construct load` help text to include direct-resource path arguments.
 - Clarified verbose autoload status wording around watcher and quit-time prompts.
 - Added a `check:hygiene` script for unused local/parameter checks.
+- Split saved-loadout helper logic and shared dashboard/run operation handling into smaller internal modules without changing the public command surface.
+- Clarified saved-loadout runtime copy and docs around activate-only behavior: saved recipes install/enable their package sources and do not disable, remove, or exact-match other project packages.
 
 ### Fixed
 - Made dashboard and unload TUI selection identities distinct from visible package ids, so remembered sources with the same derived id do not collapse into one checkbox.

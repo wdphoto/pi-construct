@@ -10,15 +10,15 @@ This is a review/discussion document. It is not the committed roadmap. Move acce
 
 Construct is functionally healthy, but the bloat is real. The npm package is small; the weight is cognitive:
 
-- saved-loadout code is concentrated in one 1,017-line command file;
+- saved-loadout command code is still large, but pure helpers and shared operation plumbing are now split out;
 - the generic TUI picker has become a mini framework;
-- dashboard and saved-loadout run flows duplicate operation/progress/result logic;
+- dashboard and saved-loadout run flows now share operation/progress/result execution code;
 - old design-plan docs now outnumber current source-of-truth docs;
 - the next roadmap item (`/construct scan`) can stay lean only if it remains read-only and separate from the dashboard.
 
 No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
 
-My opinionated recommendation: finish this stabilization/trim pass before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, and a hygiene check exists; next, split saved-loadout and TUI operation code along the seams already visible in the implementation.
+My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, and dashboard/run operation plumbing is shared. Autoload watcher simplification remains deliberately deferred.
 
 ## Validation run
 
@@ -40,11 +40,10 @@ mkdir -p "$TMP/home" "$TMP/project"
 (cd "$TMP/project" && HOME="$TMP/home" pi --no-extensions -e "$REPO" -p '/construct status' --approve)
 ```
 
-Static hygiene probe found one issue:
+Static hygiene now passes:
 
 ```bash
-npx tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false
-# extensions/construct/commands/profiles.ts(611,33): error TS6133: 'tui' is declared but its value is never read.
+npm run check:hygiene
 ```
 
 Package size from dry-run:
@@ -58,10 +57,10 @@ files: 21
 Code/documentation size snapshot:
 
 ```text
-extensions/construct/*.ts total: 4,700 lines
+extensions/construct/*.ts total: 4,769 lines
 largest source files:
-- commands/profiles.ts      1,017
-- commands/dashboard.ts       632
+- commands/profiles.ts        771
+- commands/dashboard.ts       588
 - ui.ts                       567
 - commands/load.ts            462
 - project-settings.ts         316
@@ -149,25 +148,21 @@ Options:
    - Picker supports only generic `relatedIds` and `quickSelectIds`.
    - Dashboard owns all labels and action language.
 
-Recommendation: option 2. It would also let saved-loadout run reuse the same progress/result panel instead of carrying a second custom implementation.
+Recommendation: option 2 remains the direction if picker weight becomes painful. Saved-loadout run no longer carries a bespoke progress/result panel; it now uses shared operation panel plumbing.
 
-### A4 — Dashboard apply and saved-loadout run duplicate operation orchestration
+### A4 — Dashboard apply and saved-loadout run duplicate operation orchestration — fixed on review branch
 
 Severity: medium maintainability / consistency
 Files: `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/profiles.ts`, `extensions/construct/package-ops.ts`
 
-Both flows build steps, wait for idle, apply package operations one at a time, track partial metadata failures, compute reload guidance, and render progress lines. They are close but not identical.
+Both flows used to build steps, wait for idle, apply package operations one at a time, track partial metadata failures, compute reload guidance, and render progress lines independently.
 
-Recommendation:
+Resolution:
 
-- Extract a small operation runner, not a giant abstraction:
-  - input: steps `{ action, label, source, direct? }`;
-  - callback: progress lines;
-  - output: completed, partial runtime changes, failures, needsReload, cancelled.
-- Keep dashboard-specific step construction in `dashboard.ts`.
-- Keep saved-loadout source expansion in saved-loadout code.
-
-This is likely the best code-fat reduction per line changed.
+- Added `extensions/construct/operation-runner.ts` with a small operation runner and shared progress/result panel plumbing.
+- Dashboard-specific step construction remains in `dashboard.ts`.
+- Saved-loadout source expansion remains in saved-loadout command code and shared helpers.
+- Public command behavior and command surface are unchanged.
 
 ### A5 — State collection is repeated across modules
 
@@ -328,17 +323,16 @@ The important current facts from these files were folded into the active docs ab
 
 ## Opinionated next work order
 
-### Pass 1 — Stabilize before new features
+### Pass 1 — Stabilize before new features — done on review branch
 
 1. Split saved-loadout pure helpers from `commands/profiles.ts`.
 2. Extract shared operation/progress/result logic from dashboard and saved-loadout run.
 3. Run `npm run check`, `npm run check:hygiene`, and `npm run smoke:all`.
 
-### Pass 2 — Trim code
+### Pass 2 — Optional trim after review
 
-1. Extract saved-loadout pure helpers from `commands/profiles.ts`.
-2. Extract shared operation runner/progress result logic from dashboard and saved-loadout run.
-3. Split generic picker selection from apply/result panels.
+1. Split generic picker selection from apply/result panels if the picker keeps growing.
+2. Decide whether the autoload watcher should remain or simplify to exit-time only.
 
 ### Pass 3 — Only then add `/construct scan`
 
@@ -346,6 +340,6 @@ Implement scan as a read-only file parser with conservative skips and no runtime
 
 ## Decisions to discuss
 
-1. Do we keep the autoload session watcher, or simplify autoload to exit-time only?
-2. Should `profile` remain internal type/file language, or do we rename code modules to `saved-loadouts` while preserving JSON schema?
+1. Do we keep the autoload session watcher, or simplify autoload to exit-time only? Deferred.
+2. Should remaining `profile` internal type/file language be renamed to `saved-loadouts` while preserving JSON schema?
 3. Is package-level filter loss acceptable long-term, or do we want a filter snapshot before disable?

@@ -46,7 +46,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 - `/construct load` adds existing project package declarations to the Construct and adopts direct project resources into project metadata.
 - `/construct unload` makes Construct forget resources without changing project package declarations.
 - `/construct save` names the current active Construct package-source grouping.
-- `/construct run` applies a saved loadout once; saved loadouts are not live project bindings.
+- `/construct run` applies a saved loadout once in activate-only mode: it installs/enables recipe package sources and does not disable, remove, or exact-match anything outside the recipe. Saved loadouts are not live project bindings.
 - `/reload` is Pi's public reload command; dashboard Enter uses `ctx.reload()` internally.
 
 ## Hard rules
