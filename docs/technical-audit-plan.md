@@ -57,13 +57,13 @@ files: 21
 Code/documentation size snapshot:
 
 ```text
-extensions/construct/*.ts total: 4,769 lines
+extensions/construct/*.ts total: 4,770 lines
 largest source files:
-- commands/profiles.ts        771
-- commands/dashboard.ts       588
+- commands/saved-loadouts.ts  766
+- commands/dashboard.ts       584
 - ui.ts                       567
 - commands/load.ts            462
-- project-settings.ts         316
+- project-settings.ts         338
 
 docs/*.md total before consolidation: 2,169 lines
 active docs after consolidation: 1,093 lines
@@ -101,28 +101,20 @@ Resolution:
 - Visible labels still use the friendly package/saved-loadout ids.
 - Existing smoke coverage passes; full interactive duplicate-id selection still belongs in manual TUI verification until a TUI harness exists.
 
-### A2 — `commands/profiles.ts` is doing too much
+### A2 — saved-loadout command code is still large — partially fixed on review branch
 
 Severity: medium-high maintainability
-File: `extensions/construct/commands/profiles.ts`
+File: `extensions/construct/commands/saved-loadouts.ts`
 
-This one file owns save, list, run, share, remove, import parsing, paste UI, confirmation UIs, progress panels, snippet validation, source safety checks, and storage writes. The name is also stale in user-facing product language: `profile` is internal storage, but the feature is saved loadouts.
+This command module still owns save, list, run, share, remove, import parsing, paste UI, confirmation UIs, snippet validation, source safety checks, and storage writes. It is smaller after extracting pure helpers and shared operation plumbing, and the stale command filename has been renamed from `profiles.ts` to `saved-loadouts.ts`. Internal `CatalogProfile` and `profiles` JSON fields remain storage compatibility terms.
 
-Options:
+Resolution so far:
 
-1. **Minimal rename/split**
-   - `commands/saved-loadouts.ts` for command dispatcher.
-   - Keep internal `CatalogProfile` type for storage compatibility.
-   - Split helpers into `saved-loadouts/share.ts`, `saved-loadouts/import.ts`, `saved-loadouts/run.ts`, `saved-loadouts/save.ts`.
+- Added `extensions/construct/saved-loadouts.ts` for pure saved-loadout/share/import helpers.
+- Added `extensions/construct/operation-runner.ts` for shared progress/result execution.
+- Renamed the command module to `commands/saved-loadouts.ts` and exported `handleSavedLoadoutCommand()`.
 
-2. **Domain layer first**
-   - Add `saved-loadouts.ts` domain module with pure helpers: id, lookup, sources, snippet validation, replacement diff.
-   - Leave command UI functions in place temporarily.
-
-3. **Do nothing until next saved-loadout feature**
-   - Lowest churn, but it makes every future change harder.
-
-Recommendation: option 2 first, then option 1 if the diff is clean. Do not add more saved-loadout behavior while this file stays at 1k lines.
+Deferred option: split the command module further by action (`save`, `run`, `share`, `import`) only when another saved-loadout feature needs those seams. Do not add more saved-loadout behavior while this module remains broad.
 
 ### A3 — The generic checkbox picker is becoming a framework
 
@@ -153,7 +145,7 @@ Recommendation: option 2 remains the direction if picker weight becomes painful.
 ### A4 — Dashboard apply and saved-loadout run duplicate operation orchestration — fixed on review branch
 
 Severity: medium maintainability / consistency
-Files: `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/profiles.ts`, `extensions/construct/package-ops.ts`
+Files: `extensions/construct/commands/dashboard.ts`, `extensions/construct/commands/saved-loadouts.ts`, `extensions/construct/package-ops.ts`
 
 Both flows used to build steps, wait for idle, apply package operations one at a time, track partial metadata failures, compute reload guidance, and render progress lines independently.
 
@@ -167,7 +159,7 @@ Resolution:
 ### A5 — State collection is repeated across modules — source-set helper extracted on review branch
 
 Severity: medium maintainability / drift risk
-Files: `dashboard.ts`, `load.ts`, `status.ts`, `profiles.ts`, `project-settings.ts`
+Files: `dashboard.ts`, `load.ts`, `status.ts`, `saved-loadouts.ts`, `project-settings.ts`
 
 Several modules independently collect package declarations, normalize local paths, match Construct metadata, detect disabled filters, and classify package state. The logic is readable in each place, but subtle differences are accumulating.
 
@@ -182,7 +174,7 @@ Deferred option: extract more identity helpers only when duplication causes a re
 ### A6 — Static hygiene is close; add a cheap gate — fixed on review branch
 
 Severity: low-medium
-Files: `tsconfig.json`, `package.json`, `profiles.ts`
+Files: `tsconfig.json`, `package.json`, `saved-loadouts.ts`
 
 Strict TypeScript passes, but `noUnusedLocals/noUnusedParameters` is intentionally separate from the normal check.
 
@@ -313,7 +305,7 @@ The important current facts from these files were folded into the active docs ab
 
 ### Pass 1 — Stabilize before new features — done on review branch
 
-1. Split saved-loadout pure helpers from `commands/profiles.ts`.
+1. Split saved-loadout pure helpers from the saved-loadout command module.
 2. Extract shared operation/progress/result logic from dashboard and saved-loadout run.
 3. Run `npm run check`, `npm run check:hygiene`, and `npm run smoke:all`.
 
@@ -329,5 +321,5 @@ Implement scan as a read-only file parser with conservative skips and no runtime
 ## Decisions to discuss
 
 1. Do we keep the autoload session watcher, or simplify autoload to exit-time only? Deferred.
-2. Should remaining `profile` internal type/file language be renamed to `saved-loadouts` while preserving JSON schema?
+2. Should remaining `profile` storage type/field language ever be renamed, or should it remain compatibility-only internals?
 3. Is package-level filter loss acceptable long-term, or do we want a filter snapshot before disable?

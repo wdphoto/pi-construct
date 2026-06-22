@@ -150,7 +150,7 @@ async function runSavedLoadoutOperations(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	paths: ConstructPaths,
-	profileId: string,
+	loadoutId: string,
 	query: string,
 	update?: ProgressUpdate,
 	signal?: AbortSignal,
@@ -163,9 +163,9 @@ async function runSavedLoadoutOperations(
 	if (fresh.warnings.length > 0) {
 		return { title: "Saved loadout run failed", lines: fresh.warnings.map((warning) => `! ${warning}`) };
 	}
-	const currentProfile = findSavedLoadout(fresh.catalog, profileId) ?? findSavedLoadout(fresh.catalog, query);
+	const currentProfile = findSavedLoadout(fresh.catalog, loadoutId) ?? findSavedLoadout(fresh.catalog, query);
 	if (!currentProfile) {
-		return { title: "Saved loadout run failed", lines: [`Saved loadout not found after waiting for Pi to become idle: ${profileId}`] };
+		return { title: "Saved loadout run failed", lines: [`Saved loadout not found after waiting for Pi to become idle: ${loadoutId}`] };
 	}
 	const sources = savedLoadoutSources(fresh.catalog, currentProfile);
 	if (sources.length === 0) {
@@ -227,7 +227,7 @@ function runResultText(result: ConstructOperationRunResult): string {
 	].join("\n");
 }
 
-async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<void> {
+async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<void> {
 	const requestedName = name.trim();
 	if (!requestedName) {
 		showText(ctx, "Usage: /construct save <name>");
@@ -384,7 +384,7 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	);
 }
 
-async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
+async function runSavedLoadout(pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
 	const requested = query.trim();
 	if (!requested) {
 		showText(ctx, "Usage: /construct run <saved-name>");
@@ -723,7 +723,7 @@ async function importLoadout(ctx: ExtensionCommandContext, raw: string): Promise
 	);
 }
 
-async function listProfiles(ctx: ExtensionCommandContext): Promise<void> {
+async function listSavedLoadouts(ctx: ExtensionCommandContext): Promise<void> {
 	const { catalog, warnings } = await loadCatalog(ctx);
 	const lines = ["Saved Construct loadouts", "========================"];
 	if (catalog.profiles.length === 0) lines.push("- none");
@@ -736,18 +736,18 @@ async function listProfiles(ctx: ExtensionCommandContext): Promise<void> {
 	showText(ctx, lines.join("\n"));
 }
 
-export async function handleProfile(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+export async function handleSavedLoadoutCommand(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { command, rest } = splitArgs(args);
 	if (command === "list") {
-		await listProfiles(ctx);
+		await listSavedLoadouts(ctx);
 		return;
 	}
 	if (command === "save") {
-		await saveProfile(ctx, rest);
+		await saveLoadout(ctx, rest);
 		return;
 	}
 	if (command === "run") {
-		await applyProfile(pi, ctx, rest);
+		await runSavedLoadout(pi, ctx, rest);
 		return;
 	}
 	if (command === "share") {

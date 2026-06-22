@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { handleAutoload, maybePromptAutoloadOnShutdown, maybeStartAutoloadWatcher } from "./commands/autoload.js";
 import { handleDashboard } from "./commands/dashboard.js";
 import { handleLoad } from "./commands/load.js";
-import { handleProfile } from "./commands/profiles.js";
+import { handleSavedLoadoutCommand } from "./commands/saved-loadouts.js";
 import { handleUnload } from "./commands/unload.js";
 import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
@@ -47,32 +47,32 @@ export default function constructExtension(pi: ExtensionAPI) {
 			}
 
 			if (command === "save") {
-				await handleProfile(pi, `save ${rest}`.trim(), ctx);
+				await handleSavedLoadoutCommand(pi, `save ${rest}`.trim(), ctx);
 				return;
 			}
 
 			if (command === "list") {
-				await handleProfile(pi, "list", ctx);
+				await handleSavedLoadoutCommand(pi, "list", ctx);
 				return;
 			}
 
 			if (command === "run") {
-				await handleProfile(pi, `run ${rest}`.trim(), ctx);
+				await handleSavedLoadoutCommand(pi, `run ${rest}`.trim(), ctx);
 				return;
 			}
 
 			if (command === "share") {
-				await handleProfile(pi, `share ${rest}`.trim(), ctx);
+				await handleSavedLoadoutCommand(pi, `share ${rest}`.trim(), ctx);
 				return;
 			}
 
 			if (command === "remove") {
-				await handleProfile(pi, `remove ${rest}`.trim(), ctx);
+				await handleSavedLoadoutCommand(pi, `remove ${rest}`.trim(), ctx);
 				return;
 			}
 
 			if (command === "import") {
-				await handleProfile(pi, `import ${rest}`.trim(), ctx);
+				await handleSavedLoadoutCommand(pi, `import ${rest}`.trim(), ctx);
 				return;
 			}
 

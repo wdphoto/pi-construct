@@ -23,6 +23,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Fix duplicate TUI row identity for remembered sources with the same derived id.
 - [x] Add a cheap TypeScript hygiene check for unused locals/parameters.
 - [x] Split saved-loadout pure helpers out of the large command module.
+- [x] Rename the saved-loadout command module away from stale profile terminology while preserving JSON schema compatibility.
 - [x] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
 - [x] Extract shared package source-set collection for raw/normalized declared, active, and disabled package declarations.
 - [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only. Deferred until after review.
