@@ -237,7 +237,7 @@ project = pathlib.Path(sys.argv[1])
 }, indent=2) + "\n")
 PY
 OUTPUT="$(construct_pi "$HOME_G" "$PROJECT_G" '/construct load' 2>&1)"
-grep -Fq 'No project package declarations are waiting to be loaded.' <<<"$OUTPUT"
+grep -Fq 'No project resources are waiting to be loaded.' <<<"$OUTPUT"
 test ! -e "$HOME_G/.pi/agent/construct/catalog.json"
 
 printf '== local-only package declaration ==\n'

@@ -11,6 +11,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Added saved-loadout rows to the main `/construct` dashboard.
 - Added `/construct copy [saved-name]` to print a shareable saved-loadout JSON snippet.
 - Added `/construct import <json>` to validate and preview saved-loadout snippets, with TUI confirmation before writing.
+- Added direct project resource inventory to `/construct status full` and `/construct` for trusted project extensions, skills, prompt templates, and themes.
+- Added `/construct load` adoption for direct project resources into `.pi/construct.json` metadata without adding project-local files to the portable Construct library.
+- Added dashboard enable/disable actions for adopted direct project resources using Pi-native top-level `+path` / `-path` filters.
 - Added `docs/profiles-and-sharing-plan.md` to capture saved-loadout and sharing decisions.
 
 ### Changed
@@ -20,6 +23,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - `/construct run <saved-name>` now uses the dashboard-style TUI progress/result/reload panel.
 - Selecting saved loadouts in `/construct` runs them through the same package operation flow as package rows, while avoiding duplicate package operations for repeated sources.
 - Copy/import output warns for local path sources and refuses generated Pi package cache paths or source strings that look like secrets.
+- Status/dashboard diagnostics now use Pi's native `DefaultPackageManager.resolve()` / `SettingsManager` resource discovery path for direct project resources instead of custom filesystem rules.
+- Dashboard state language now uses resource-neutral `Active` instead of package-centric `Installed`.
+- Documented and enforced the current split: saved loadouts/share snippets remain package-source-only while direct project-local resources stay project-local metadata/toggle state.
 
 ## 0.0.12 - 2026-06-21
 

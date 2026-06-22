@@ -2,7 +2,7 @@
 
 Construct is a global Pi extension / Pi package with one primary command: `/construct`.
 
-The current implementation is package-centric. The next architecture target is a project resource loadout model covering packages plus direct Pi extensions, skills, prompt templates, and themes. See `docs/project-resource-loadout-plan.md`.
+The current implementation now inventories and toggles packages plus direct project Pi extensions, skills, prompt templates, and themes. The portable library/saved-loadout model remains package-source-only until a direct-resource portability/export model is designed. See `docs/project-resource-loadout-plan.md`.
 
 ## Layers
 
@@ -13,11 +13,12 @@ The current implementation is package-centric. The next architecture target is a
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
-   - Merges Construct library entries, saved loadouts, current project package declarations, package filter state, and Construct metadata.
+   - Merges Construct library entries, saved loadouts, current project package declarations, direct project resource inventory, package filter state, and Construct metadata.
+   - Direct project resource rows are read-only until adopted; after `/construct load` adopts them into metadata, Enter toggles them with Pi-native top-level resource filters.
    - Uses selected rows plus one fast normal action and one destructive action rather than treating checkboxes as current package state.
-   - Enter applies/runs the obvious action for actionable rows: run Saved, install Available, disable Installed, or enable Disabled.
-   - `r` asks for confirmation, then removes selected Installed or Disabled project package declarations.
-   - Keeps Unloaded rows clearly labeled as project declarations not yet loaded into Construct; `/construct load` is the adoption path.
+   - Enter applies/runs the obvious action for actionable rows: run Saved, install Available, disable Active, or enable Disabled.
+   - `r` asks for confirmation, then removes selected Active or Disabled project package declarations.
+   - Keeps Unloaded rows clearly labeled as project declarations/resources not yet loaded into Construct; `/construct load` is the adoption path.
    - In TUI mode, keeps the title quiet (`Loadout: ...`), row text plain, and color limited to the state icon column: saved accent, active green, disabled muted green, available yellow, unloaded gray.
 
 3. **Package operation layer**
@@ -27,6 +28,7 @@ The current implementation is package-centric. The next architecture target is a
      ```
    - Disables installed/active sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
    - Enables disabled sources by clearing those all-empty package resource filters.
+   - Toggles Construct-managed direct resources by writing Pi-native top-level `+path` / `-path` filters in `.pi/settings.json`.
    - Removes package declarations only through the explicit dashboard remove action, using Pi's native project-local remove path first:
      ```bash
      pi remove <source> -l --approve
@@ -37,7 +39,7 @@ The current implementation is package-centric. The next architecture target is a
 
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
-   - Contains remembered package source strings and saved loadouts (`profiles` internally).
+   - Contains remembered package source strings and saved loadouts (`profiles` internally); direct project-local resources are not stored in the portable library yet.
    - Updated only by explicit `/construct load`, `/construct unload`, and `/construct save` commands.
 
 5. **Known-project index layer**
@@ -53,7 +55,8 @@ The current implementation is package-centric. The next architecture target is a
 7. **Inventory layer**
    - Reads `.pi/settings.json` for project package declarations.
    - Reads `.pi/construct.json` for advisory state.
-   - Planned: use Pi's exported `DefaultPackageManager.resolve()` and `SettingsManager` to inventory direct project resources with Pi's own discovery and filter semantics.
+   - Uses Pi's exported `DefaultPackageManager.resolve()` and `SettingsManager` to inventory direct project extensions, skills, prompt templates, and themes with Pi's own discovery/trust/filter semantics.
+   - Reports direct resources in `/construct status full` and as dashboard rows; `/construct load` can adopt direct project resources into `.pi/construct.json` metadata.
    - Uses `pi.getCommands()`, `pi.getAllTools()`, and `pi.getActiveTools()` for runtime diagnostics only.
 
 ## Data model
@@ -97,7 +100,7 @@ Rules:
 
 - `source` is replayed by dashboard operations through Pi's normal project-local package install.
 - Preserve source strings exactly except local path normalization during load.
-- Planned direct-resource catalog items use `kind: "extension" | "skill" | "prompt" | "theme"` plus a path/ref and portability marker; existing package items remain valid.
+- Future direct-resource catalog items may use `kind: "extension" | "skill" | "prompt" | "theme"` plus a path/ref and portability marker; existing package items remain valid. Current saved loadouts/share snippets remain package-source-only.
 - Unknown item fields should be preserved where possible for forward compatibility.
 
 ### Project metadata: `.pi/construct.json`

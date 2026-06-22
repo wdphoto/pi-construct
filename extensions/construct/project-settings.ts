@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ConstructPaths, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
+import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "./sources.js";
 
@@ -20,6 +20,13 @@ export function looksLikePackageSource(value: string): boolean {
 }
 
 const packageResourceFilterKeys = ["extensions", "skills", "prompts", "themes"] as const;
+
+const directResourceSettingsKeys = {
+	extension: "extensions",
+	skill: "skills",
+	prompt: "prompts",
+	theme: "themes",
+} as const;
 
 export function packageResourcesDisabled(entry: unknown): boolean {
 	if (!isObject(entry) || typeof entry.source !== "string") return false;
@@ -56,16 +63,21 @@ export async function getManagedItems(
 			continue;
 		}
 		const kind = typeof value.kind === "string" ? value.kind : "unknown";
-		const identity = await managedPackageSourceIdentity(value, paths);
-		const source = identity.displaySource;
 		const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
+		let source: string | undefined;
 		let drift: string | undefined;
-		if (source) {
-			const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
-			const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
-			if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
-			if (enabled === true && disabledByFilters) drift = "enabled in Construct metadata, disabled by package filters";
-			if (enabled === false && declared && !disabledByFilters) drift = "disabled in Construct metadata, still active in .pi/settings.json";
+		if (kind === "package") {
+			const identity = await managedPackageSourceIdentity(value, paths);
+			source = identity.displaySource;
+			if (source) {
+				const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
+				const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
+				if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
+				if (enabled === true && disabledByFilters) drift = "enabled in Construct metadata, disabled by package filters";
+				if (enabled === false && declared && !disabledByFilters) drift = "disabled in Construct metadata, still active in .pi/settings.json";
+			}
+		} else if (typeof value.path === "string") {
+			source = value.path;
 		}
 		summaries.push({ id, kind, source, enabled, drift });
 	}
@@ -226,6 +238,36 @@ export async function setMatchingPackageResourcesDisabled(
 	settings.packages = nextPackages;
 	await writeJson(paths.projectSettingsPath, settings);
 	return { updated: true, backupPath, settingsMissing: false };
+}
+
+function directResourceSettingsPath(resource: DirectResourceSummary): string | undefined {
+	if (resource.settingsPath) return resource.settingsPath;
+	if (resource.displayPath.startsWith(".pi/")) return resource.displayPath.slice(4);
+	return undefined;
+}
+
+function withoutExactResourceOverrides(entries: unknown[], relativePath: string): unknown[] {
+	return entries.filter((entry) => entry !== `+${relativePath}` && entry !== `-${relativePath}`);
+}
+
+export async function setDirectResourceEnabled(
+	paths: ConstructPaths,
+	resource: DirectResourceSummary,
+	enabled: boolean,
+	options: { backupPath?: string } = {},
+): Promise<{ updated: boolean; backupPath?: string; reason?: string }> {
+	const relativePath = directResourceSettingsPath(resource);
+	if (!relativePath) return { updated: false, reason: `No safe project-relative settings path for ${resource.displayPath}.` };
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	const settings = readSettingsObject(settingsRead);
+	const key = directResourceSettingsKeys[resource.kind];
+	const current = Array.isArray(settings[key]) ? settings[key] : [];
+	const next = withoutExactResourceOverrides(current, relativePath);
+	next.push(`${enabled ? "+" : "-"}${relativePath}`);
+	settings[key] = next;
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
+	await writeJson(paths.projectSettingsPath, settings);
+	return { updated: true, backupPath };
 }
 
 export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: { backupPath?: string } = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { CatalogItem, ConstructPaths } from "./types.js";
+import type { CatalogItem, ConstructPaths, DirectResourceSummary } from "./types.js";
 import { deriveId } from "./catalog.js";
 import { readJson, writeJson } from "./json.js";
 import {
@@ -10,6 +10,7 @@ import {
 	uniqueManagedId,
 	upsertConstructItem,
 	removeMatchingPackageDeclaration,
+	setDirectResourceEnabled,
 	setMatchingPackageResourcesDisabled,
 } from "./project-settings.js";
 import { rememberKnownProject } from "./projects.js";
@@ -32,6 +33,21 @@ function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof rea
 			},
 		},
 	};
+}
+
+function updateConstructDirectResourceEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, resource: DirectResourceSummary, enabled: boolean) {
+	if (resource.managedId) return updateConstructItemEnabled(constructRead, resource.managedId, enabled);
+	const root = parseProjectConstruct(constructRead);
+	const items = isObject(root.items) ? root.items : {};
+	let matchedId: string | undefined;
+	for (const [id, value] of Object.entries(items)) {
+		if (isObject(value) && value.kind === resource.kind && (value.path === resource.displayPath || value.path === resource.path)) {
+			matchedId = id;
+			break;
+		}
+	}
+	if (!matchedId) return root;
+	return updateConstructItemEnabled(constructRead, matchedId, enabled);
 }
 
 export interface LoadPackageResult {
@@ -151,6 +167,35 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 	}
 
 	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
+}
+
+async function setDirectResourceStateInProject(paths: ConstructPaths, resource: DirectResourceSummary, enabled: boolean): Promise<DisablePackageResult> {
+	let backupPath: string | undefined;
+	try {
+		const updated = await setDirectResourceEnabled(paths, resource, enabled);
+		backupPath = updated.backupPath;
+		if (!updated.updated) return { ok: false, backupPath, error: updated.reason ?? `No matching project resource found for ${resource.displayPath}.` };
+	} catch (error) {
+		return { ok: false, backupPath, error: `Construct ${enabled ? "enable" : "disable"} failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+	}
+
+	try {
+		const construct = await readJson(paths.projectConstructPath);
+		await writeJson(paths.projectConstructPath, updateConstructDirectResourceEnabled(construct, resource, enabled));
+		await rememberKnownProject({ cwd: paths.cwd });
+	} catch (error) {
+		return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+	}
+
+	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
+}
+
+export async function disableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary): Promise<DisablePackageResult> {
+	return setDirectResourceStateInProject(paths, resource, false);
+}
+
+export async function enableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary): Promise<DisablePackageResult> {
+	return setDirectResourceStateInProject(paths, resource, true);
 }
 
 export interface UnloadPackageResult {

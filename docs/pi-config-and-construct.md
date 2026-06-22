@@ -105,7 +105,7 @@ Current answers:
 - A package with all resource arrays set to `[]` is shown as `Disabled`.
 - `/construct load` can still adopt disabled package declarations as package declarations; broader disabled-specific load UX can be refined later.
 - Saved-loadout run still resets toward enabled/current behavior and can be revisited separately.
-- Dashboard Enter applies the obvious state change for actionable rows: install Available, disable Installed, or enable Disabled. Unloaded rows are read-only there; `/construct load` adopts them. `r` explicitly confirms and removes Installed or Disabled project package declarations.
+- Dashboard Enter applies the obvious state change for actionable rows: install Available, disable Active, or enable Disabled. Unloaded rows are read-only there; `/construct load` adopts them. `r` explicitly confirms and removes Active or Disabled project package declarations.
 - Status/drift distinguishes “disabled by package filters” from “missing from .pi/settings.json”.
 
 ## What we can reuse safely

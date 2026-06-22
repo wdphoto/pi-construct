@@ -8,8 +8,9 @@ trap 'rm -rf "$TMP"' EXIT
 HOME_DIR="$TMP/home"
 PROJECT_A="$TMP/project-a"
 PROJECT_B="$TMP/project-b"
+PROJECT_RES="$TMP/project-resources"
 PKG_DIR="$TMP/construct-e2e-package"
-mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PKG_DIR/extensions"
+mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PROJECT_RES" "$PKG_DIR/extensions"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -35,9 +36,75 @@ construct_pi() {
   )
 }
 
+trusted_construct_pi() {
+  local project="$1"
+  local prompt="$2"
+  (
+    cd "$project"
+    HOME="$HOME_DIR" pi --no-extensions --approve -e "$ROOT" -p "$prompt"
+  )
+}
+
 quiet_construct_pi() {
   construct_pi "$1" "$2" >/dev/null 2>&1
 }
+
+printf '== direct project resource load adopts metadata only ==\n'
+mkdir -p "$PROJECT_RES/.pi/skills/review" "$PROJECT_RES/.pi/prompts" "$PROJECT_RES/.pi/themes" "$PROJECT_RES/.pi/extensions"
+cat > "$PROJECT_RES/.pi/skills/review/SKILL.md" <<'MD'
+---
+description: Review helper
+---
+# Review
+MD
+cat > "$PROJECT_RES/.pi/prompts/pr-review.md" <<'MD'
+# PR Review
+MD
+cat > "$PROJECT_RES/.pi/themes/tokyo.json" <<'JSON'
+{"name":"tokyo"}
+JSON
+cat > "$PROJECT_RES/.pi/extensions/guard.ts" <<'TS'
+export default function guard() {}
+TS
+RESOURCE_DASHBOARD_BEFORE="$(trusted_construct_pi "$PROJECT_RES" '/construct' 2>&1)"
+grep -Fq '0 active · 0 disabled · 0 available · 4 unloaded' <<<"$RESOURCE_DASHBOARD_BEFORE"
+grep -Fq 'skill:review' <<<"$RESOURCE_DASHBOARD_BEFORE"
+RESOURCE_LOAD_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct load' 2>&1)"
+grep -Fq 'Construct load complete.' <<<"$RESOURCE_LOAD_OUTPUT"
+grep -Fq 'Added to Construct: 0' <<<"$RESOURCE_LOAD_OUTPUT"
+grep -Fq 'Direct project resources adopted: 4' <<<"$RESOURCE_LOAD_OUTPUT"
+RESOURCE_DASHBOARD_AFTER="$(trusted_construct_pi "$PROJECT_RES" '/construct' 2>&1)"
+grep -Fq '4 active · 0 disabled · 0 available · 0 unloaded' <<<"$RESOURCE_DASHBOARD_AFTER"
+grep -Fq 'extension:guard' <<<"$RESOURCE_DASHBOARD_AFTER"
+grep -Fq 'skill:review' <<<"$RESOURCE_DASHBOARD_AFTER"
+python3 - "$HOME_DIR" "$PROJECT_RES" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+construct = json.loads((project / ".pi/construct.json").read_text())
+items = list(construct.get("items", {}).values())
+assert sorted(item.get("kind") for item in items) == ["extension", "prompt", "skill", "theme"], construct
+assert all(str(item.get("path", "")).startswith(".pi/") for item in items), construct
+catalog_path = home / ".pi/agent/construct/catalog.json"
+if catalog_path.exists():
+    catalog = json.loads(catalog_path.read_text())
+    assert catalog.get("items", []) == [], catalog
+PY
+RESOURCE_SAVE_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct save direct-only' 2>&1)"
+grep -Fq 'No active Construct package sources were selected' <<<"$RESOURCE_SAVE_ONLY_OUTPUT"
+RESOURCE_COPY_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct copy' 2>&1)"
+grep -Fq 'No active Construct package sources found' <<<"$RESOURCE_COPY_ONLY_OUTPUT"
+python3 - "$HOME_DIR" <<'PY'
+import json
+import pathlib
+import sys
+catalog_path = pathlib.Path(sys.argv[1]) / ".pi/agent/construct/catalog.json"
+if catalog_path.exists():
+    catalog = json.loads(catalog_path.read_text())
+    assert catalog.get("profiles", []) == [], catalog
+PY
 
 printf '== project A raw local pi install ==\n'
 (
@@ -89,6 +156,40 @@ grep -Fq 'Available' <<<"$DASHBOARD_OUTPUT"
 grep -Fq 'construct-e2e-package' <<<"$DASHBOARD_OUTPUT"
 test ! -e "$PROJECT_B/.pi/construct.json"
 
+printf '== direct project resources appear in status ==\n'
+mkdir -p "$PROJECT_A/.pi/skills/review" "$PROJECT_A/.pi/prompts" "$PROJECT_A/.pi/themes" "$PROJECT_A/.pi/extensions"
+cat > "$PROJECT_A/.pi/skills/review/SKILL.md" <<'MD'
+---
+description: Review helper
+---
+# Review
+MD
+cat > "$PROJECT_A/.pi/prompts/pr-review.md" <<'MD'
+# PR Review
+MD
+cat > "$PROJECT_A/.pi/themes/tokyo.json" <<'JSON'
+{"name":"tokyo"}
+JSON
+cat > "$PROJECT_A/.pi/extensions/guard.ts" <<'TS'
+export default function guard() {}
+TS
+RESOURCE_STATUS_OUTPUT="$(trusted_construct_pi "$PROJECT_A" '/construct status full' 2>&1)"
+grep -Fq 'Direct project resources: 4' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq 'extension guard (enabled, auto, unloaded' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq '.pi/extensions/guard.ts' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq 'skill review (enabled, auto, unloaded' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq '.pi/skills/review/SKILL.md' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq 'prompt pr-review (enabled, auto, unloaded' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq '.pi/prompts/pr-review.md' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq 'theme tokyo (enabled, auto, unloaded' <<<"$RESOURCE_STATUS_OUTPUT"
+grep -Fq '.pi/themes/tokyo.json' <<<"$RESOURCE_STATUS_OUTPUT"
+RESOURCE_DASHBOARD_OUTPUT="$(trusted_construct_pi "$PROJECT_A" '/construct' 2>&1)"
+grep -Fq '0 available · 4 unloaded' <<<"$RESOURCE_DASHBOARD_OUTPUT"
+grep -Fq 'extension:guard' <<<"$RESOURCE_DASHBOARD_OUTPUT"
+grep -Fq 'skill:review' <<<"$RESOURCE_DASHBOARD_OUTPUT"
+grep -Fq 'prompt:pr-review' <<<"$RESOURCE_DASHBOARD_OUTPUT"
+grep -Fq 'theme:tokyo' <<<"$RESOURCE_DASHBOARD_OUTPUT"
+
 printf '== save and run saved loadout ==\n'
 SAVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&1)"
 grep -Fq 'Saved loadout: pi-projects' <<<"$SAVE_PROFILE_OUTPUT"
@@ -104,7 +205,7 @@ grep -Fq '"kind": "construct-loadout"' <<<"$COPY_PROFILE_OUTPUT"
 grep -Fq '"name": "pi-projects"' <<<"$COPY_PROFILE_OUTPUT"
 grep -Fq 'Local path sources may not work on another machine' <<<"$COPY_PROFILE_OUTPUT"
 COPY_CURRENT_OUTPUT="$(construct_pi "$PROJECT_A" '/construct copy' 2>&1)"
-grep -Fq 'Copied the current active Construct resources only.' <<<"$COPY_CURRENT_OUTPUT"
+grep -Fq 'Copied the current active Construct package sources only.' <<<"$COPY_CURRENT_OUTPUT"
 IMPORT_JSON="{\"kind\":\"construct-loadout\",\"version\":1,\"name\":\"shared\",\"sources\":[\"$PKG_DIR\"]}"
 IMPORT_PREVIEW_OUTPUT="$(construct_pi "$PROJECT_B" "/construct import $IMPORT_JSON" 2>&1)"
 grep -Fq 'Construct loadout import preview' <<<"$IMPORT_PREVIEW_OUTPUT"

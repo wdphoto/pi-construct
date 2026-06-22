@@ -2,6 +2,8 @@
 
 Construct is expanding from a package loadout manager into a project-level Pi resource manager. Packages stay first-class, but skills, prompt templates, themes, and extensions must be visible and manageable too.
 
+Status: direct project resource inventory is implemented in `/construct status full` and `/construct` using Pi's `DefaultPackageManager.resolve()` / `SettingsManager`. `/construct load` can adopt direct project resources into advisory project metadata without adding project-local files to the portable Construct library. Dashboard Enter can toggle Construct-managed direct resources with Pi-native `+path` / `-path` settings overrides. Saved loadouts/share snippets intentionally stay package-source-only for this slice; portable direct-resource application and sharing remain deferred.
+
 ## Decision
 
 Construct should support every native Pi project resource kind that Pi exposes through project settings or trusted project-local discovery:
@@ -33,10 +35,10 @@ Local Pi docs and implementation confirm the native model:
 | Kind | Native declaration/discovery | Construct current | Planned support |
 | --- | --- | --- | --- |
 | Package | `.pi/settings.json` `packages` | Full MVP support | Keep first-class |
-| Extension | `.pi/settings.json` `extensions`, `.pi/extensions/`, packages | Package-contained only | Add direct project resource rows and toggles |
-| Skill | `.pi/settings.json` `skills`, `.pi/skills/`, `.agents/skills/`, packages | Package-contained only | Add direct project resource rows and toggles |
-| Prompt | `.pi/settings.json` `prompts`, `.pi/prompts/`, packages | Package-contained only | Add direct project resource rows and toggles |
-| Theme | `.pi/settings.json` `themes`, `.pi/themes/`, packages | Package-contained only | Add direct project resource rows and toggles |
+| Extension | `.pi/settings.json` `extensions`, `.pi/extensions/`, packages | Direct top-level inventory/load/toggle | Portable apply/share later |
+| Skill | `.pi/settings.json` `skills`, `.pi/skills/`, `.agents/skills/`, packages | Direct top-level inventory/load/toggle | Portable apply/share later |
+| Prompt | `.pi/settings.json` `prompts`, `.pi/prompts/`, packages | Direct top-level inventory/load/toggle | Portable apply/share later |
+| Theme | `.pi/settings.json` `themes`, `.pi/themes/`, packages | Direct top-level inventory/load/toggle | Portable apply/share later |
 | System prompt | `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md` | None | Later explicit file-resource slice |
 
 We can support five primary loadout kinds now. The practical item count is not constrained by Pi; Construct UX should stay comfortable for dozens and add search/grouping before optimizing for hundreds.
@@ -48,6 +50,7 @@ We can support five primary loadout kinds now. The practical item count is not c
 - Pi trust remains Pi's decision; Construct must not bypass or replace trust.
 - Direct local resources are not packages. Do not pretend a project-local `.pi/skills/foo` is portable to another project unless Construct has a safe copy/export/package flow.
 - Packages remain the recommended share unit for cross-project reusable workflows.
+- Saved loadouts/share snippets are package-source-only for now. Adopted direct project-local resources stay local metadata/toggle state until portable direct paths or an explicit export/copy format are designed.
 - Local path resources can be reusable if their path is already reusable, for example `~/.pi-shared/skills` or `../team-pi/skills`.
 - Removing a local auto-discovered file is out of scope. Construct can disable it by writing Pi-native `-path` overrides, but it should not delete skill/prompt/theme/extension files.
 - Reload language should become resource-neutral: after changes, reload Pi resources with `/reload` or dashboard Enter.
@@ -119,7 +122,7 @@ Known-project counts remain informational only.
 
 ## Implementation plan
 
-### Slice 1 — Inventory and status, read-only
+### Slice 1 — Inventory and status, read-only — implemented
 
 - Add `ResourceKind` and resource identity helpers.
 - Add a resource inventory module that uses exported Pi APIs:
@@ -135,7 +138,7 @@ Acceptance:
 - A project with `.pi/prompts/review.md`, `.pi/themes/foo.json`, and `.pi/extensions/tool.ts` reports each resource.
 - Untrusted/non-TUI cases do not force project resource loading beyond Pi's trust state.
 
-### Slice 2 — Dashboard rows for direct resources
+### Slice 2 — Dashboard rows for direct resources — implemented
 
 - Generalize dashboard item naming from `DashboardPackage` to `DashboardResource`.
 - Group or label rows by kind while preserving the quiet count title.
@@ -149,14 +152,13 @@ Acceptance:
 - Direct resources can be shown with kind labels without crowding package rows.
 - Package rows keep current behavior.
 
-### Slice 3 — Load/adopt direct resources
+### Slice 3 — Load/adopt direct resources — project-local metadata adoption implemented
 
 - Extend `/construct load` to select unloaded packages and direct project resources.
 - For direct resources, write advisory `.pi/construct.json` metadata.
-- Add to the user catalog only when the direct resource is portable:
-  - settings-declared absolute or home-relative path
-  - settings-declared relative path outside the current project's `.pi/` when the user confirms it is reusable
+- Do not add direct resources to the user catalog in this slice, even when their paths might be portable.
 - Mark auto-discovered `.pi/...` resources as project-local; adopt them for current project management but do not offer them as installable in other projects yet.
+- Review portable direct-resource catalog entries later for settings-declared reusable paths.
 
 Acceptance:
 
@@ -164,7 +166,7 @@ Acceptance:
 - Loading a project-local skill does not claim it is available in unrelated projects.
 - Existing package load behavior is unchanged.
 
-### Slice 4 — Enable/disable direct resources
+### Slice 4 — Enable/disable direct resources — implemented for Construct-managed direct rows
 
 - Implement Pi-native top-level resource toggles using the same pattern as `pi config`:
   - disable: append/replace `-relative/path` in the matching settings array
@@ -192,12 +194,12 @@ Acceptance:
 - A `.pi/skills/foo` skill cannot be silently copied into another project.
 - Removing a direct resource declaration creates a backup and does not delete files.
 
-### Slice 6 — Saved loadouts and sharing
+### Slice 6 — Saved loadouts and sharing — package-source-only for now
 
-- Saved loadouts should save active Construct-managed resources only.
-- Active direct resources that are not loaded into Construct should follow the same save preflight: selected rows are loaded/included, unselected rows are skipped.
-- Sharing snippets should warn for local paths and exclude project-local file contents unless an explicit export/copy format exists.
-- Package recommendations remain prominent for reusable teams/workflows.
+- Saved loadouts save active Construct-managed package sources only.
+- Active direct resources, even after project-local adoption, are not included in saved loadouts or share snippets yet.
+- Sharing snippets warn for local package paths and exclude project-local file contents unless an explicit export/copy format exists.
+- Review portable direct-resource paths later, with package recommendations remaining prominent for reusable teams/workflows.
 
 ## UX notes
 
@@ -210,14 +212,14 @@ Resource row examples:
     ◇  extension guard        .pi/extensions/guard.ts
 ```
 
-State language should become resource-neutral:
+State language is resource-neutral:
 
 - `Active`: enabled in this project
 - `Disabled`: present but filtered off through Pi settings
 - `Available`: remembered by Construct and applicable here
 - `Unloaded`: present in this project but not Construct-managed
 
-This is a product language change from the current package-centric `Installed` label. Make it deliberately in the same release as direct resources.
+This replaced the package-centric `Installed` label in the same release as direct resources.
 
 ## Edge cases to test
 

@@ -30,6 +30,7 @@ This is a Pi-native project. Before reaching for external web docs, use Pi's ins
   - `extensions/construct/commands/unload.ts`
 - Package apply operations: `extensions/construct/package-ops.ts`.
 - Status/diagnostics: `extensions/construct/status.ts`.
+- Direct resource inventory: `extensions/construct/resources.ts`.
 
 ## Product model
 
@@ -43,9 +44,9 @@ Core loop:
    ```bash
    pi install <source> -l --approve
    ```
-2. Run `/construct load` to add those project resources to the Construct library.
-3. Optionally run `/construct save <name>` to save the active Construct resource grouping.
-4. In another project, run `/construct` or `/construct run <name>` to enable remembered resources.
+2. Run `/construct load` to add package declarations to the Construct library and adopt direct resources into project metadata.
+3. Optionally run `/construct save <name>` to save the active Construct package-source grouping.
+4. In another project, run `/construct` or `/construct run <name>` to enable remembered package sources.
 5. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
 
 Important files:
@@ -90,17 +91,19 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 ## Behavior rules
 
 - `/construct` opens the Construct Loadout dashboard.
-- Dashboard TUI title stays quiet: `Loadout: N installed | N disabled | N available | N unloaded`.
-- Dashboard row text stays plain; only the state icon column is colored: Saved is accent, Installed/active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
-- `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata.
+- Dashboard TUI title stays quiet: `Loadout: N active | N disabled | N available | N unloaded`.
+- Dashboard row text stays plain; only the state icon column is colored: Saved is accent, Active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
+- `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata; direct project resources are adopted into advisory current-project metadata only.
 - `/construct unload` removes resources from the Construct library/saved-loadout refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
+- `/construct status full` and `/construct` report direct project resources using Pi's native resolver; `/construct load` can adopt them into project metadata, and dashboard Enter toggles adopted direct resources with Pi-native `+path` / `-path` filters.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`.
 - Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It can prompt for new `.pi/settings.json` package declarations during a session and still scans on quit.
-- Saved loadouts are named groups of active Construct resources. `profile` is mostly the internal catalog term.
-- `/construct save <name>` includes active Construct resources, skips disabled resources, and in TUI offers active unloaded resources for optional loading/inclusion.
+- Saved loadouts are named groups of active Construct package sources. `profile` is mostly the internal catalog term.
+- `/construct save <name>` includes active Construct package sources, skips disabled package declarations, and in TUI offers active unloaded package declarations for optional loading/inclusion.
+- Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.
 - Saving over an existing loadout never appends or merges; TUI asks before replacing.
 - `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.
 - Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it through the dashboard progress/result/reload flow.

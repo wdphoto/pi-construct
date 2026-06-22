@@ -18,6 +18,7 @@ Open questions that remain scratchpad-level:
 - Best TUI paste experience for `/construct import`.
 - Whether `/construct copy <saved-name>` should accept fuzzy saved-loadout names or exact ids only.
 - Whether import should offer to run immediately after saving, or keep run as a second explicit action.
+- Review when saved loadouts/share snippets should include portable direct resources. Current decision: package-source-only; adopted project-local direct resources stay local metadata/toggle state until a safe portable path/export model exists.
 
 ## Research: known-project cleanup/doctor
 

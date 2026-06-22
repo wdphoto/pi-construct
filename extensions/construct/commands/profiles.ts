@@ -45,11 +45,11 @@ function usage(): string {
 		"/construct profile save <name>",
 		"/construct profile apply <name>",
 		"",
-		"Saved loadouts are named groups of active Construct resources. They never auto-run.",
+		"Saved loadouts are named groups of active Construct package sources. Direct project-local resources are not included yet.",
 	].join("\n");
 }
 
-async function activeManagedSources(paths: ConstructPaths): Promise<string[]> {
+async function activeManagedPackageSources(paths: ConstructPaths): Promise<string[]> {
 	const [settingsRead, constructRead] = await Promise.all([readJson(paths.projectSettingsPath), readJson(paths.projectConstructPath)]);
 	if (constructRead.state === "invalid") throw new Error(`Cannot save a loadout because .pi/construct.json is invalid JSON.\n${constructRead.error}`);
 	if (constructRead.state !== "ok" || !isObject(constructRead.data) || !isObject(constructRead.data.items)) return [];
@@ -83,7 +83,7 @@ async function disabledProjectPackageCount(paths: ConstructPaths): Promise<numbe
 	return getPackages(settingsRead).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length;
 }
 
-async function activeUnloadedSources(paths: ConstructPaths): Promise<Array<{ id: string; source: string }>> {
+async function activeUnloadedPackageSources(paths: ConstructPaths): Promise<Array<{ id: string; source: string }>> {
 	const candidates = await projectLoadCandidates(paths);
 	return candidates.adoptable.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: candidate.id, source: candidate.source }));
 }
@@ -96,15 +96,15 @@ async function promptForUnloadedSources(ctx: ExtensionCommandContext, name: stri
 		id: candidate.source,
 		label: candidate.id,
 		value: candidate.source,
-		description: "Active in this project, but not loaded into Construct. Select to load it into Construct and include it in the saved loadout.",
+		description: "Active package declaration in this project, but not loaded into Construct. Select to load it into Construct and include it in the saved loadout.",
 		checked: false,
-		section: "ACTIVE — not loaded into Construct",
+		section: "ACTIVE PACKAGES — not loaded into Construct",
 	}));
 	const selected = await pickCheckboxes(ctx, `Save loadout: ${name}`, pickerItems, {
 		initialSelection: "empty",
 		confirmHint: "Enter continues",
-		filterLabel: "Filter resources",
-		filterHint: "Type to narrow active resources not loaded into Construct",
+		filterLabel: "Filter package declarations",
+		filterHint: "Type to narrow active package declarations not loaded into Construct",
 		footerHint: "  Space selects · Enter continues · Esc cancels",
 	});
 	if (!selected) return undefined;
@@ -118,7 +118,7 @@ function replacementLines(existingSources: string[], nextSources: string[]): str
 	const added = nextSources.filter((source) => !existing.has(source));
 	const removed = existingSources.filter((source) => !next.has(source));
 	const unchanged = nextSources.filter((source) => existing.has(source));
-	const lines = [`Existing: ${existingSources.length} resources`, `New:      ${nextSources.length} resources`, ""];
+	const lines = [`Existing package sources: ${existingSources.length}`, `New package sources:      ${nextSources.length}`, ""];
 	function section(title: string, marker: string, sources: string[]): void {
 		lines.push(`${title}:`);
 		if (sources.length === 0) lines.push("- none");
@@ -205,7 +205,7 @@ function operationError(result: { error?: string; stderr?: string; exitCode?: nu
 function runProgressLines(steps: SavedLoadoutRunStep[]): string[] {
 	const complete = steps.filter((step) => step.state === "done" || step.state === "failed").length;
 	return [
-		`${complete}/${steps.length} resources complete`,
+		`${complete}/${steps.length} package sources complete`,
 		"",
 		...steps.map((step) => {
 			const marker = step.state === "done" ? "✓" : step.state === "failed" ? "!" : step.state === "running" ? "→" : " ";
@@ -238,7 +238,7 @@ async function runSavedLoadoutOperations(
 	}
 	const sources = profileSources(fresh.catalog, currentProfile);
 	if (sources.length === 0) {
-		return { title: "Saved loadout run failed", lines: [`Saved loadout has no resources: ${currentProfile.id}`] };
+		return { title: "Saved loadout run failed", lines: [`Saved loadout has no package sources: ${currentProfile.id}`] };
 	}
 
 	const steps: SavedLoadoutRunStep[] = sources.map((source) => {
@@ -430,10 +430,10 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	let initialManaged: string[];
 	let initialUnloaded: Array<{ id: string; source: string }>;
 	try {
-		[initialManaged, initialUnloaded] = await Promise.all([activeManagedSources(paths), activeUnloadedSources(paths)]);
+		[initialManaged, initialUnloaded] = await Promise.all([activeManagedPackageSources(paths), activeUnloadedPackageSources(paths)]);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Saved loadout not created.\nCould not inspect active project resources.\n${message}`);
+		showText(ctx, `Saved loadout not created.\nCould not inspect active project package sources.\n${message}`);
 		return;
 	}
 
@@ -449,9 +449,9 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 			ctx,
 			[
 				"Saved loadout not created.",
-				"No active Construct resources were selected for this saved loadout.",
-				initialUnloaded.length > 0 ? `Skipped active resources not loaded into Construct: ${initialUnloaded.length}` : undefined,
-				skippedDisabled > 0 ? `Skipped disabled resources: ${skippedDisabled}` : undefined,
+				"No active Construct package sources were selected for this saved loadout.",
+				initialUnloaded.length > 0 ? `Skipped active package declarations not loaded into Construct: ${initialUnloaded.length}` : undefined,
+				skippedDisabled > 0 ? `Skipped disabled package declarations: ${skippedDisabled}` : undefined,
 			]
 				.filter((line): line is string => line !== undefined)
 				.join("\n"),
@@ -470,16 +470,16 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 	let skippedActiveUnloaded = 0;
 	let skippedDisabled = 0;
 	try {
-		const freshUnloaded = await activeUnloadedSources(paths);
+		const freshUnloaded = await activeUnloadedPackageSources(paths);
 		const selectedSet = new Set(selectedBeforeWait);
 		selectedToLoad = uniqueSorted(freshUnloaded.filter((candidate) => selectedSet.has(candidate.source)).map((candidate) => candidate.source));
 		const selectedAfterWait = new Set(selectedToLoad);
 		skippedActiveUnloaded = freshUnloaded.filter((candidate) => !selectedAfterWait.has(candidate.source)).length;
 		skippedDisabled = await disabledProjectPackageCount(paths);
-		currentSources = uniqueSorted([...(await activeManagedSources(paths)), ...selectedToLoad]);
+		currentSources = uniqueSorted([...(await activeManagedPackageSources(paths)), ...selectedToLoad]);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		showText(ctx, `Saved loadout not created.\nCould not re-check project resources after waiting.\n${message}`);
+		showText(ctx, `Saved loadout not created.\nCould not re-check project package sources after waiting.\n${message}`);
 		return;
 	}
 
@@ -488,9 +488,9 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 			ctx,
 			[
 				"Saved loadout not created.",
-				"No active Construct resources were selected for this saved loadout.",
-				skippedActiveUnloaded > 0 ? `Skipped active resources not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
-				skippedDisabled > 0 ? `Skipped disabled resources: ${skippedDisabled}` : undefined,
+				"No active Construct package sources were selected for this saved loadout.",
+				skippedActiveUnloaded > 0 ? `Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
+				skippedDisabled > 0 ? `Skipped disabled package declarations: ${skippedDisabled}` : undefined,
 			]
 				.filter((line): line is string => line !== undefined)
 				.join("\n"),
@@ -520,14 +520,14 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		const enabledBySource = new Map(selectedToLoad.map((source) => [source, true]));
 		const loaded = await loadSourcesIntoConstruct(ctx, paths, selectedToLoad, { enabledBySource });
 		if (loaded.warnings.length > 0) {
-			showText(ctx, ["Saved loadout not created.", "Some selected resources could not be loaded into Construct.", ...loaded.warnings.map((warning) => `! ${warning}`)].join("\n"));
+			showText(ctx, ["Saved loadout not created.", "Some selected package declarations could not be loaded into Construct.", ...loaded.warnings.map((warning) => `! ${warning}`)].join("\n"));
 			return;
 		}
 	}
 
-	currentSources = uniqueSorted(await activeManagedSources(paths));
+	currentSources = uniqueSorted(await activeManagedPackageSources(paths));
 	if (currentSources.length === 0) {
-		showText(ctx, "Saved loadout not created. No active Construct resources found after loading selected resources.");
+		showText(ctx, "Saved loadout not created. No active Construct package sources found after loading selected package declarations.");
 		return;
 	}
 
@@ -564,10 +564,10 @@ async function saveProfile(ctx: ExtensionCommandContext, name: string): Promise<
 		ctx,
 		[
 			`Saved loadout: ${id}`,
-			`Included: ${currentSources.length} resources`,
-			selectedToLoad.length > 0 ? `Loaded into Construct and included: ${selectedToLoad.length}` : undefined,
-			`Skipped active resources not loaded into Construct: ${skippedActiveUnloaded}`,
-			`Skipped disabled resources: ${skippedDisabled}`,
+			`Included package sources: ${currentSources.length}`,
+			selectedToLoad.length > 0 ? `Loaded into Construct and included package sources: ${selectedToLoad.length}` : undefined,
+			`Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}`,
+			`Skipped disabled package declarations: ${skippedDisabled}`,
 			...currentSources.map((source) => `- ${source}`),
 		]
 			.filter((line): line is string => line !== undefined)
@@ -594,7 +594,7 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 	}
 	const sources = profileSources(catalog, profile);
 	if (sources.length === 0) {
-		showText(ctx, `Saved loadout has no resources: ${profile.id}`);
+		showText(ctx, `Saved loadout has no package sources: ${profile.id}`);
 		return;
 	}
 
@@ -655,21 +655,21 @@ async function copyLoadout(ctx: ExtensionCommandContext, query: string): Promise
 		const paths = await getPaths(ctx);
 		name = profileId(basename(paths.cwd) || "loadout");
 		try {
-			sources = uniqueSorted(await activeManagedSources(paths));
-			const skippedActiveUnloaded = (await activeUnloadedSources(paths)).length;
+			sources = uniqueSorted(await activeManagedPackageSources(paths));
+			const skippedActiveUnloaded = (await activeUnloadedPackageSources(paths)).length;
 			const skippedDisabled = await disabledProjectPackageCount(paths);
-			notes.push("Copied the current active Construct resources only.");
-			if (skippedActiveUnloaded > 0) notes.push(`Skipped active resources not loaded into Construct: ${skippedActiveUnloaded}`);
-			if (skippedDisabled > 0) notes.push(`Skipped disabled resources: ${skippedDisabled}`);
+			notes.push("Copied the current active Construct package sources only. Direct project-local resources are not included yet.");
+			if (skippedActiveUnloaded > 0) notes.push(`Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}`);
+			if (skippedDisabled > 0) notes.push(`Skipped disabled package declarations: ${skippedDisabled}`);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Construct loadout snippet not created.\nCould not inspect current active Construct resources.\n${message}`);
+			showText(ctx, `Construct loadout snippet not created.\nCould not inspect current active Construct package sources.\n${message}`);
 			return;
 		}
 	}
 
 	if (sources.length === 0) {
-		showText(ctx, requested ? `Saved loadout has no resources: ${requested}` : "Construct loadout snippet not created. No active Construct resources found in this project.");
+		showText(ctx, requested ? `Saved loadout has no package sources: ${requested}` : "Construct loadout snippet not created. No active Construct package sources found in this project.");
 		return;
 	}
 
@@ -730,7 +730,7 @@ function parseLoadoutSnippet(raw: string): { snippet?: ParsedLoadoutSnippet; err
 
 function importPreviewLines(snippet: ParsedLoadoutSnippet, warnings: string[], existingSources?: string[]): string[] {
 	const id = profileId(snippet.name);
-	const lines = [`Name: ${snippet.name}`, `Saved id: ${id}`, `Resources: ${snippet.sources.length}`, ""];
+	const lines = [`Name: ${snippet.name}`, `Saved id: ${id}`, `Package sources: ${snippet.sources.length}`, ""];
 	if (existingSources) {
 		lines.push(...replacementLines(existingSources, snippet.sources));
 	} else {
@@ -855,7 +855,7 @@ async function importLoadout(ctx: ExtensionCommandContext, raw: string): Promise
 		ctx,
 		[
 			`Imported saved loadout: ${id}`,
-			`Resources: ${parsed.snippet.sources.length}`,
+			`Package sources: ${parsed.snippet.sources.length}`,
 			load.added.length > 0 ? `Added to Construct library: ${load.added.length}` : undefined,
 			load.alreadyKnown > 0 ? `Already in Construct library: ${load.alreadyKnown}` : undefined,
 			...parsed.warnings.map((warning) => `! ${warning}`),
@@ -871,7 +871,7 @@ async function listProfiles(ctx: ExtensionCommandContext): Promise<void> {
 	if (catalog.profiles.length === 0) lines.push("- none");
 	else {
 		for (const profile of catalog.profiles) {
-			lines.push(`- ${profile.id}${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}: ${profile.sources.length || profile.items.length} resources`);
+			lines.push(`- ${profile.id}${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}: ${profile.sources.length || profile.items.length} package sources`);
 		}
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));

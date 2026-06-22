@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `saved`, and `run`.
+- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `saved`, `run`, `copy`, and `import`.
 - No startup prompt/write/adoption behavior; opt-in autoload remains confirmation-only and checks on quit.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -48,10 +48,10 @@ Expected:
 
 Expected:
 
-- `/construct load` asks in TUI mode and shows only unloaded/adoptable project declarations.
-- `/construct load <id-or-source ...>` directly loads matching unloaded/adoptable declarations.
-- `/construct load` explicitly loads current project package sources in print mode.
-- Load writes the user library and `.pi/construct.json` only because the user explicitly ran load.
+- `/construct load` asks in TUI mode and shows unloaded/adoptable project package declarations and direct project resources.
+- `/construct load <id-or-source-or-path ...>` directly loads matching unloaded/adoptable resources.
+- `/construct load` explicitly loads current project resources in print mode.
+- Load writes the user library for packages and `.pi/construct.json` for adopted resources only because the user explicitly ran load.
 - Load does not install, remove, reload, copy, execute, or alter `.pi/settings.json`.
 
 ## Manual unload
@@ -80,17 +80,17 @@ Expected:
 
 Expected:
 
-- `/construct save <name>` saves active Construct resources from the current project.
-- Disabled resources are skipped.
-- In TUI, active resources not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
+- `/construct save <name>` saves active Construct package sources from the current project.
+- Disabled package declarations are skipped.
+- In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
 - `/construct saved` lists saved loadouts.
 - `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
 - Saved loadouts appear as compact `◆` rows in `/construct`; selecting one and pressing Enter runs it in the current project.
-- `/construct copy [saved-name]` prints a JSON snippet and warns for local paths.
+- `/construct copy [saved-name]` prints a package-source JSON snippet and warns for local paths.
 - `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
 - Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
-- Saved loadouts store ids/sources, not package code or scripts.
+- Saved loadouts store ids/package sources, not package code, scripts, or direct project-local resource files.
 
 Manual TUI import write check:
 
@@ -101,15 +101,27 @@ Manual TUI import write check:
 5. Verify `~/.pi/agent/construct/catalog.json` contains the imported saved loadout and source.
 6. Verify the current project's `.pi/settings.json` was not created or edited.
 
+## Direct project resource inventory
+
+Expected:
+
+- `/construct status full` reports trusted project-local `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and `.pi/themes/` resources.
+- `/construct` shows those direct resources as rows: Unloaded/read-only before adoption, Active/Disabled and selectable after metadata adoption.
+- `/construct load` adopts direct project resources into `.pi/construct.json` metadata only and does not add project-local files to the user library, saved loadouts, or share snippets.
+- Enter on adopted direct resources writes Pi-native top-level `+path` / `-path` filters in `.pi/settings.json` and updates `.pi/construct.json` enabled state.
+- Direct resources are reported with kind, enabled/disabled state, Pi origin/source, Construct state (`unloaded` before adoption), and path.
+- Inventory uses Pi trust state; untrusted project-local resources are not forced into the resolved inventory.
+- Read-only status does not create `.pi/construct.json` or edit `.pi/settings.json`.
+
 ## Dashboard safety
 
 Check in real TUI usage:
 
 - fuzzy search works;
 - Space selects saved-loadout and package rows;
-- Enter runs Saved rows, installs Available, disables Installed, and enables Disabled rows;
+- Enter runs Saved rows, installs Available, disables Active, and enables Disabled rows;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
-- `r` shows a warning, then removes selected Installed or Disabled package declarations;
+- `r` shows a warning, then removes selected Active or Disabled package declarations;
 - Esc cancels;
 - package rows stay primary;
 - live TUI title uses the quiet `Loadout:` count format;

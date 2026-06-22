@@ -2,9 +2,9 @@
 
 # The Construct
 
-The Construct is a small global [Pi](https://pi.dev) extension for managing project-level package loadouts.
+The Construct is a small global [Pi](https://pi.dev) extension for managing project-level loadouts.
 
-It does **not** replace `pi install`, `pi remove`, or `pi config`. Normal Pi project files remain the source of truth. Construct remembers package sources you choose to load into its library, then gives you a fast `/construct` menu for installing, enabling, disabling, and removing those project package declarations.
+It does **not** replace `pi install`, `pi remove`, or `pi config`. Normal Pi project files remain the source of truth. Construct remembers package sources you choose to load into its library, then gives you a fast `/construct` menu for installing, enabling, disabling, and removing those project package declarations. It also reports direct project-local Pi resources such as `.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, and `.pi/extensions/`; `/construct load` can adopt them into advisory metadata so dashboard Enter can toggle them with Pi-native resource filters.
 
 ## Loadout menu
 
@@ -20,14 +20,14 @@ Example:
 Construct Loadout
 =================
 Project: /Users/you/site
-2 installed · 1 disabled · 3 available · 1 unloaded
+2 active · 1 disabled · 3 available · 1 unloaded
 
 Saved
 -----
-[ ] ◆  web-stack       3 resources
+[ ] ◆  web-stack       3 package sources
 
-Installed
----------
+Active
+------
 [ ] ✓  pi-web-access   npm:pi-web-access
 [ ] ✓  pi-subagents    git:github.com/your-org/pi-subagents
 
@@ -46,7 +46,7 @@ Unloaded
     ◇  local-tooling   ../local-tooling
 
 Legend: [ ] selectable · [x] selected · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.
-Controls: Space selects · Enter applies/runs · r removes installed/disabled · Esc cancels.
+Controls: Space selects · Enter applies/runs · r removes active/disabled · Esc cancels.
 ```
 
 In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: active is green, disabled is muted green, available is yellow, and unloaded is gray. Plain output stays uncolored for readability.
@@ -55,13 +55,13 @@ States:
 
 | State | Meaning | Enter | `r` |
 | --- | --- | --- | --- |
-| `Saved` | named saved loadout | run in this project | no-op |
-| `Installed` | active in this project and Construct-managed | disable | remove from project, after warning |
-| `Disabled` | installed here, but Pi package resource filters are off | enable | remove from project, after warning |
+| `Saved` | named package-source loadout | run in this project | no-op |
+| `Active` | active in this project and Construct-managed | disable | remove from project, after warning |
+| `Disabled` | present here, but Pi package/direct resource filters are off | enable | remove from project for packages; no delete for direct resources |
 | `Available` | remembered by Construct, not installed in this project | install into project | no-op |
-| `Unloaded` | declared in this project, not loaded into Construct | read-only | read-only |
+| `Unloaded` | declared/discovered in this project, not loaded into Construct | read-only | read-only |
 
-Use `/construct load` to adopt `Unloaded` rows into Construct.
+Use `/construct load` to adopt unloaded package declarations into Construct. Direct project resources (`.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, `.pi/extensions/`) can be adopted into project-local Construct metadata without adding those project-local files to the portable library or saved/share snippets; after adoption, dashboard Enter toggles them with Pi-native resource filters.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 
@@ -85,7 +85,7 @@ Or open the load picker for all unloaded project declarations:
 /construct load
 ```
 
-Save the active Construct resources as a named loadout:
+Save the active Construct package sources as a named loadout:
 
 ```text
 /construct save web-stack
@@ -106,7 +106,7 @@ Or run `/construct`, select a saved loadout or an `Available` package with Space
 /construct status                    # read-only diagnostics
 /construct load [id-or-source ...]   # adopt project package declarations into Construct
 /construct unload [id-or-source ...] # forget resources from Construct
-/construct save <name>               # save active Construct resources as a named loadout
+/construct save <name>               # save active Construct package sources as a named loadout
 /construct saved                     # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project
 /construct copy [saved-name]         # print a shareable saved-loadout JSON snippet
@@ -122,13 +122,13 @@ Direct examples:
 
 Notes:
 
-- `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages.
+- `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
-- `/construct save <name>` includes active Construct resources. Disabled resources are skipped. In TUI, active project resources not loaded into Construct can be selected for inclusion.
+- `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
 - `/construct run <saved-name>` applies the saved loadout once; projects are not live-linked to saved loadouts.
-- `/construct copy [saved-name]` prints a small JSON snippet; local path sources are warned as not generally shareable.
+- `/construct copy [saved-name]` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
-- Use `r` in `/construct` to remove an installed Construct-managed package declaration from the current project.
+- Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
 
 ## How it works
 

@@ -16,6 +16,11 @@ export interface ConstructPaths {
 	projectConstructPath: string;
 }
 
+export type ResourceKind = "package" | "extension" | "skill" | "prompt" | "theme";
+export type DirectResourceKind = Exclude<ResourceKind, "package">;
+export type ResourceScope = "user" | "project" | "temporary";
+export type ResourceOrigin = "package" | "top-level";
+
 export interface CatalogItem extends JsonObject {
 	id: string;
 	name?: string;
@@ -24,6 +29,22 @@ export interface CatalogItem extends JsonObject {
 	description?: string;
 	groups?: string[];
 	managed?: boolean;
+}
+
+export interface DirectResourceSummary {
+	id: string;
+	kind: DirectResourceKind;
+	name: string;
+	path: string;
+	displayPath: string;
+	settingsPath?: string;
+	baseDir?: string;
+	scope: ResourceScope;
+	origin: ResourceOrigin;
+	source: string;
+	enabled: boolean;
+	managed: boolean;
+	managedId?: string;
 }
 
 export interface CatalogProfile extends JsonObject {

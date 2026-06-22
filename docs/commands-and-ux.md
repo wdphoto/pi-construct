@@ -10,7 +10,7 @@ Construct is centered on one primary command: `/construct`.
 /construct load [id-or-source ...] # add current project resources to the Construct
 /construct unload [id-or-source ...] # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
-/construct save <name>             # save active Construct resources as a named loadout
+/construct save <name>             # save active Construct package sources as a named loadout
 /construct saved                   # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
 /construct copy [saved-name]       # print a shareable saved-loadout JSON snippet
@@ -31,16 +31,18 @@ User-facing copy should prefer **library** over **catalog** except when naming t
 
 ## `/construct load`
 
-Load means adding existing project-level Pi package declarations to the Construct library and current-project Construct metadata.
+Load means adding existing project-level Pi resources to Construct.
 
-- `/construct load` opens the picker in TUI mode with only unloaded/adoptable project package declarations.
-- `/construct load` adds all currently loadable project package declarations in print mode.
-- `/construct load <id-or-source ...>` directly loads matching unloaded/adoptable project package declarations.
-- Load reads `.pi/settings.json` and can write:
-  - `~/.pi/agent/construct/catalog.json`
+- `/construct load` opens the picker in TUI mode with unloaded/adoptable project package declarations and direct project resources.
+- `/construct load` adds all currently loadable project resources in print mode.
+- `/construct load <id-or-source-or-path ...>` directly loads matching unloaded/adoptable project resources.
+- Package declarations are added to the user Construct library and current-project Construct metadata.
+- Project-local direct resources are adopted into `.pi/construct.json` metadata only; they are not added to the portable library.
+- Load reads `.pi/settings.json` plus Pi's native resolved resource inventory and can write:
+  - `~/.pi/agent/construct/catalog.json` for package declarations only
   - `.pi/construct.json`
 - Load never installs, removes, reloads, copies files, executes package code, or edits `.pi/settings.json`.
-- Direct load arguments must already match project package declarations; use `pi install <source> -l --approve` or the dashboard Available section to add a package to the project first.
+- Direct package load arguments must already match project package declarations; use `pi install <source> -l --approve` or the dashboard Available section to add a package to the project first.
 
 ## `/construct unload`
 
@@ -82,7 +84,7 @@ Autoload rules:
 
 ## Saved loadouts
 
-Saved loadouts are named groups of active Construct resources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved.
+Saved loadouts are named groups of active Construct package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed.
 
 ```text
 /construct save www
@@ -94,9 +96,9 @@ Saved loadouts are named groups of active Construct resources. `profile` remains
 
 Save rules:
 
-- `/construct save <name>` includes active Construct resources.
-- Disabled resources are skipped.
-- In TUI, active project resources not loaded into Construct are offered; selected rows are loaded into Construct and included, unselected rows are skipped.
+- `/construct save <name>` includes active Construct package sources.
+- Disabled package declarations are skipped.
+- In TUI, active package declarations not loaded into Construct are offered; selected rows are loaded into Construct and included, unselected rows are skipped.
 - Saving over an existing name never appends or merges. TUI asks before replacing; non-TUI replacement refuses for now.
 
 Run rules:
@@ -108,7 +110,7 @@ Run rules:
 Copy/import rules:
 
 - `/construct copy <saved-name>` prints a `kind: "construct-loadout"` JSON snippet for that saved loadout.
-- `/construct copy` prints a snippet for the current active Construct resources.
+- `/construct copy` prints a snippet for the current active Construct package sources.
 - `/construct import <json>` validates and previews a pasted snippet.
 - TUI import asks before writing; non-TUI import previews only and changes no files.
 - Copy/import warns for local path sources because they are usually not portable across machines.
@@ -123,12 +125,12 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 Sections:
 
 - `Saved` — named saved loadouts that can be run in this project.
-- `Installed` — Construct-managed packages active in this project.
-- `Disabled` — Construct-managed packages declared in this project with all package resource filters set to `[]`.
+- `Active` — Construct-managed resources active in this project.
+- `Disabled` — Construct-managed resources present in this project but disabled by Pi package/direct resource filters.
 - `Available` — remembered packages that can be installed here.
-- `Unloaded` — project package declarations that Construct has not loaded/adopted yet; use `/construct load` to adopt them.
+- `Unloaded` — project package declarations or direct project resources that Construct has not loaded/adopted yet; use `/construct load` to adopt them. Project-local direct resources are adopted into `.pi/construct.json` metadata only, not the portable library; after adoption, Enter toggles direct resources with Pi-native filters.
 
-Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view.
+Runtime skills/commands are not shown in the default dashboard. Use `/construct status` for runtime inventory counts and `/construct status full` for the longer diagnostic view. The dashboard and status full now also report direct project resources discovered through Pi's native resolver: project extensions, skills, prompt templates, and themes.
 
 Controls:
 
@@ -136,14 +138,14 @@ Controls:
 - Space selects rows;
 - row grammar separates selection from state: `[x]` means selected, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
-- make the filter obvious with a label such as `Filter loadouts/packages:` and a hint that typing narrows by saved loadout/package/source/state;
-- in TUI, use a quiet title line like `Loadout: 1 installed | 0 disabled | 3 available | 0 unloaded`;
-- keep row text plain for readability; color only the compact state icon column: Saved accent, Installed/active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
+- make the filter obvious with a label such as `Filter loadouts/resources:` and a hint that typing narrows by saved loadout/package/resource/source/state;
+- in TUI, use a quiet title line like `Loadout: 1 active | 0 disabled | 3 available | 0 unloaded`;
+- keep row text plain for readability; color only the compact state icon column: Saved accent, Active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
-- Enter applies/runs the obvious action for selected rows: run `Saved`, install `Available`, disable `Installed`, or enable `Disabled`;
+- Enter applies/runs the obvious action for selected rows: run `Saved`, install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
-- `r` asks for confirmation, then removes selected `Installed` or `Disabled` package declarations from the project;
+- `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
 - after apply, Esc cancels reload and returns to the session.

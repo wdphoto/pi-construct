@@ -20,6 +20,8 @@ Construct is a project-level Pi resource manager. Package loadouts are the curre
 
 System prompt files are also native Pi project resources, but should be handled as a later explicit file-resource slice. See `docs/project-resource-loadout-plan.md`.
 
+Current direct-resource support includes inventory in `/construct status full`, rows in `/construct`, `/construct load` adoption into project-local Construct metadata, and dashboard toggles for adopted direct resources using Pi-native `+path` / `-path` filters.
+
 ## Current package workflow
 
 1. In project A, install a Pi package normally:
@@ -28,7 +30,7 @@ System prompt files are also native Pi project resources, but should be handled 
    ```
 2. Run `/construct load` in project A.
 3. Construct remembers selected package source strings in `~/.pi/agent/construct/catalog.json`.
-4. Optionally save the current active Construct resource group:
+4. Optionally save the current active Construct package-source group:
    ```text
    /construct save www
    ```
@@ -41,9 +43,9 @@ System prompt files are also native Pi project resources, but should be handled 
 ## Mental model
 
 - `/construct` is the project loadout menu.
-- `/construct load` adds existing project package declarations to the Construct.
+- `/construct load` adds existing project package declarations to the Construct and adopts direct project resources into project metadata.
 - `/construct unload` makes Construct forget resources without changing project package declarations.
-- `/construct save` names the current active Construct resource grouping.
+- `/construct save` names the current active Construct package-source grouping.
 - `/construct run` applies a saved loadout once; saved loadouts are not live project bindings.
 - `/reload` is Pi's public reload command; dashboard Enter uses `ctx.reload()` internally.
 
@@ -57,9 +59,9 @@ System prompt files are also native Pi project resources, but should be handled 
 - `.pi/settings.json` and project-local `.pi/` resources are Pi's source of truth.
 - `.pi/construct.json` is advisory metadata only.
 - Pi owns package resolution, dependency installs, updates, caches, resource discovery, and trust.
-- Construct remembers package source strings and safe native resource declarations; it does not invent arbitrary install scripts.
-- Saved loadouts and shared snippets are data, not executable scripts.
-- Project-local direct resources are not portable to other projects until Construct has a safe copy/export/package flow.
+- Construct remembers package source strings and project-local direct-resource metadata; it does not invent arbitrary install scripts.
+- Saved loadouts and shared snippets are package-source data for now, not executable scripts.
+- Project-local direct resources are not saved/shared or portable to other projects until Construct has a safe copy/export/package flow.
 - Construct does not write secrets, tokens, API keys, or auth material.
 
 ## Active command surface

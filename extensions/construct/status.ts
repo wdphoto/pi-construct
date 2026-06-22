@@ -5,6 +5,7 @@ import { describeRead, isObject, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { formatList, getManagedItems, getPackages } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
+import { collectDirectProjectResources, directResourceKinds, resourcePlural } from "./resources.js";
 
 interface StatusData {
 	paths: Awaited<ReturnType<typeof getPaths>>;
@@ -17,6 +18,7 @@ interface StatusData {
 	knownProjects: ReturnType<typeof parseKnownProjects>;
 	packages: ReturnType<typeof getPackages>;
 	managed: Awaited<ReturnType<typeof getManagedItems>>;
+	directResources: Awaited<ReturnType<typeof collectDirectProjectResources>>;
 	commands: ReturnType<ExtensionAPI["getCommands"]>;
 	tools: ReturnType<ExtensionAPI["getAllTools"]>;
 	activeTools: ReturnType<ExtensionAPI["getActiveTools"]>;
@@ -62,6 +64,7 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 		}
 	}
 	const managed = await getManagedItems(projectConstruct, packageSources, paths, disabledPackageSources);
+	const directResources = await collectDirectProjectResources(ctx, paths, projectConstruct);
 	return {
 		paths,
 		userCatalog,
@@ -73,6 +76,7 @@ async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext)
 		knownProjects,
 		packages,
 		managed,
+		directResources,
 		commands: pi.getCommands(),
 		tools: pi.getAllTools(),
 		activeTools: pi.getActiveTools(),
@@ -102,10 +106,12 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	const unknown = data.managed.length - enabled - disabled;
 	const drift = data.managed.filter((item) => item.drift);
 	const invalidPackages = data.packages.filter((pkg) => pkg.form === "invalid").length;
+	const directProjectResources = data.directResources.resources.length;
 	const warnings = [
 		...argumentWarnings,
 		...data.catalog.warnings,
 		...data.knownProjects.warnings,
+		...data.directResources.warnings,
 		...drift.map((item) => `${item.id} drift: ${item.drift}`),
 		...(invalidPackages > 0 ? [`${invalidPackages} invalid package declaration${invalidPackages === 1 ? "" : "s"} in .pi/settings.json`] : []),
 	];
@@ -122,6 +128,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "saved loadout")}`,
 		`Known projects: ${data.knownProjects.data.projects.length}`,
 		`Project packages: ${data.packages.length}`,
+		directProjectResources > 0 ? `Direct project resources: ${directProjectResources}` : undefined,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
 		`Autoload: ${autoloadEnabled(data) ? "on" : "off"}`,
 		"Load: manual only (/construct load)",
@@ -149,9 +156,19 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		.join("\n");
 }
 
+function directResourceState(resource: StatusData["directResources"]["resources"][number]): string {
+	return resource.managed ? "managed" : "unloaded";
+}
+
+function directResourceLine(resource: StatusData["directResources"]["resources"][number]): string {
+	const enabled = resource.enabled ? "enabled" : "disabled";
+	const settingsPath = resource.settingsPath ? `, settings ${resource.settingsPath}` : "";
+	return `- ${resource.kind} ${resource.name} (${enabled}, ${resource.source}, ${directResourceState(resource)}${settingsPath}) — ${resource.displayPath}`;
+}
+
 function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): string {
 	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
-	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} resources`);
+	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
 	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
 	const commandCounts = data.commands.reduce<Record<string, number>>((acc, command) => {
 		acc[command.source] = (acc[command.source] ?? 0) + 1;
@@ -163,6 +180,10 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		const source = item.source ? ` — ${item.source}` : "";
 		const drift = item.drift ? ` [drift: ${item.drift}]` : "";
 		return `- ${item.id} (${item.kind}, ${enabled})${source}${drift}`;
+	});
+	const directResourceLines = directResourceKinds.flatMap((kind) => {
+		const resources = data.directResources.resources.filter((resource) => resource.kind === kind);
+		return [`${resourcePlural(kind)}: ${resources.length}`, ...formatList(resources.map(directResourceLine), `no project ${resourcePlural(kind)}`)];
 	});
 
 	return [
@@ -199,6 +220,9 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		`Construct metadata: ${describeRead(data.projectConstruct)}`,
 		`Construct-managed items: ${data.managed.length}`,
 		...formatList(managedLines, "no Construct-managed items"),
+		`Direct project resources: ${data.directResources.resources.length}`,
+		...directResourceLines,
+		...data.directResources.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Runtime inventory",
 		"-----------------",

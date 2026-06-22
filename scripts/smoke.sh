@@ -55,7 +55,7 @@ quiet_pi() {
 printf '== new-project dashboard/status ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Construct Loadout"* ]]
-[[ "$DASHBOARD_OUTPUT" == *"Installed"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Unloaded"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
@@ -97,7 +97,7 @@ PY
 
 printf '== dashboard sees managed package ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
-[[ "$DASHBOARD_OUTPUT" == *"Installed"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
 
 printf '== disabled package filters are recognized ==\n'
@@ -117,7 +117,7 @@ source = sys.argv[2]
 }]}, indent=2) + "\n")
 PY
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
-[[ "$DASHBOARD_OUTPUT" == *"0 installed · 1 disabled"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"0 active · 1 disabled"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"– Disabled"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"pkg"* || "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
