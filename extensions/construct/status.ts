@@ -187,7 +187,7 @@ function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): strin
 		"",
 		"User Construct state",
 		"--------------------",
-		`Autoload: ${autoloadEnabled(data) ? "on" : "off"} (trusted TUI watcher plus quit-time prompt)`,
+		`Autoload: ${autoloadEnabled(data) ? "on" : "off"} (trusted TUI quit-time prompt)`,
 		"Load writes: user library and selected .pi/construct.json metadata only",
 		`Construct library: ${describeRead(data.userCatalog)}`,
 		`Construct settings: ${describeRead(data.userSettings)}`,

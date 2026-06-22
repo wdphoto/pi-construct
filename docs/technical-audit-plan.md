@@ -18,7 +18,7 @@ Construct is functionally healthy, but the bloat is real. The npm package is sma
 
 No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
 
-My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, and dashboard/run operation plumbing is shared. Autoload watcher simplification remains deliberately deferred.
+My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, dashboard/run operation plumbing is shared, and autoload has been simplified to passive quit-time prompts.
 
 ## Validation run
 
@@ -186,29 +186,21 @@ File: `extensions/construct/json.ts`
 
 Deferred option: add a distinct `state: "error"` only if future JSON plumbing work needs code-level branching between parse and I/O failures.
 
-### A8 — Autoload watcher may not be worth its code weight
+### A8 — Autoload watcher may not be worth its code weight — fixed on review branch
 
 Severity: product/maintenance decision
 File: `extensions/construct/commands/autoload.ts`
 
-Autoload is safe: off by default, trusted TUI only, confirmation-gated, and metadata-only. But the session watcher adds timing complexity, parent-path watch gaps, prompt annoyance risk, and around 250 lines of code around a non-core behavior.
+Autoload is safe: off by default, trusted TUI only, confirmation-gated, and metadata-only. But the session watcher added timing complexity, parent-path watch gaps, prompt annoyance risk, and code around a non-core behavior.
 
-Options:
+Resolution:
 
-1. **Polish the watcher**
-   - Rebind to `.pi/settings.json` when `.pi/` appears.
-   - Batch new declarations into one selectable prompt.
-   - Add “ask on exit / ignore this session / turn off” choices.
+- Removed the session-time `.pi/settings.json` filesystem watcher.
+- Removed watcher debounce/state and startup registration.
+- Kept the explicit `/construct autoload` toggle and trusted TUI quit-time prompt.
+- Updated docs/copy to present autoload as passive and exit-time only.
 
-2. **Downgrade autoload to exit-time only**
-   - Delete watcher/debounce/seen-source state.
-   - Keep the explicit `/construct autoload` toggle and quit-time prompt.
-   - Simpler, less surprising, fewer modal interruptions.
-
-3. **Keep as-is and document caveats**
-   - No immediate work, but complexity remains.
-
-Recommendation: seriously consider option 2. If Construct is feeling bloated, this is one of the few user-visible cuts that simplifies both code and mental model while preserving the core promise: “ask before adopting unloaded packages.”
+Deferred option: if Pi later exposes a public package-install or settings-change event, consider that before reintroducing filesystem watching.
 
 ### A9 — Package filter restoration remains an explicit product trade-off
 
@@ -274,7 +266,7 @@ The active docs should now be small enough for agents and humans to load without
 - `docs/product-model.md` — compact product model.
 - `docs/commands-and-ux.md` — current command/UX reference.
 - `docs/architecture.md` — architecture, data model, and Pi filter semantics.
-- `docs/autoload-transparency.md` — current autoload behavior and watcher caveats.
+- `docs/autoload-transparency.md` — passive quit-time autoload behavior and safety boundaries.
 - `docs/safety-and-maintenance.md` — safety rules and maintenance risks.
 - `docs/preflight-checklist.md` — release/manual checklist.
 - `docs/technical-audit-plan.md` — current audit discussion doc.
@@ -302,7 +294,6 @@ The important current facts from these files were folded into the active docs ab
 ### Pass 2 — Optional trim after review
 
 1. Split generic picker selection from apply/result panels if the picker keeps growing.
-2. Decide whether the autoload watcher should remain or simplify to exit-time only.
 
 ### Pass 3 — Only then add `/construct scan`
 
@@ -310,6 +301,5 @@ Implement scan as a read-only file parser with conservative skips and no runtime
 
 ## Decisions to discuss
 
-1. Do we keep the autoload session watcher, or simplify autoload to exit-time only? Deferred.
-2. Should remaining `profile` storage type/field language ever be renamed, or should it remain compatibility-only internals?
-3. Is package-level filter loss acceptable long-term, or do we want a filter snapshot before disable?
+1. Should remaining `profile` storage type/field language ever be renamed, or should it remain compatibility-only internals?
+2. Is package-level filter loss acceptable long-term, or do we want a filter snapshot before disable?

@@ -54,7 +54,7 @@ If a project package declaration has not been loaded into Construct, it appears 
 
 ## `/construct autoload`
 
-Autoload is off by default. When enabled, it watches for new project package declarations during the session and also checks on session quit. It always asks before loading anything into Construct.
+Autoload is off by default. When enabled, it checks on session quit for unloaded/adoptable project resources and asks before loading anything into Construct.
 
 ```text
 /construct autoload        # toggle on/off
@@ -67,8 +67,8 @@ Autoload rules:
 
 - trusted projects only;
 - TUI only;
-- session-time `.pi/settings.json` changes are offered one by one after Pi is idle;
-- quit/exit still scans for any remaining unloaded resources;
+- no session-time watcher or mid-session prompts;
+- quit/exit scans for unloaded resources;
 - always requires confirmation;
 - never installs packages;
 - never enables resources;

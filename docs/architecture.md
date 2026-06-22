@@ -170,4 +170,4 @@ Construct writes JSON through a shared helper that writes a complete temporary f
 
 Construct does not open menus, install packages, reload Pi, or write files just because Pi starts.
 
-Autoload is explicit opt-in behavior. Its reliable baseline is the session-quit scan: when enabled in a trusted TUI project, Construct can ask before loading unloaded package sources into Construct. The detailed transparency doc also describes the current settings watcher used for after-install visibility. Both paths are confirmation-only and metadata-only.
+Autoload is explicit opt-in behavior. When enabled in a trusted TUI project, Construct checks on session quit and can ask before loading unloaded package sources into Construct. It is confirmation-only, metadata-only, and intentionally has no session-time filesystem watcher.

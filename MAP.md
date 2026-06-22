@@ -27,15 +27,12 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
 - [x] Extract shared package source-set collection for raw/normalized declared, active, and disabled package declarations.
 - [x] Extract small pure UI scroll/truncation helpers without changing picker behavior.
-- [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only. Deferred until after review.
+- [x] Simplify autoload to passive quit-time prompts only; remove the session watcher.
 
 ## v0.0.x — autoload polish
 
-- [ ] Manually verify autoload settings-watcher prompts in TUI.
-- [ ] If keeping the watcher, consider richer choices: load now, ask on exit, ignore this session, turn autoload off.
-- [ ] If keeping the watcher, consider batching multiple newly declared packages into one selectable prompt.
-- [ ] If keeping the watcher, rebind directly to `.pi/settings.json` when the file appears after session start.
-- [ ] Prefer a future public Pi package-install/settings-change event over filesystem watching if Pi exposes one.
+- [ ] Manually verify quit-time autoload prompt in trusted TUI sessions.
+- [ ] Prefer a future public Pi package-install or settings-change event over filesystem watching if Pi exposes one.
 
 ## v0.0.x — project scan
 

@@ -8,7 +8,7 @@ Protect the manual product model:
 
 - `/construct` is the primary surface.
 - Support commands are `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import`.
-- No startup prompt/write/adoption behavior; opt-in autoload may attach a watcher, but remains confirmation-only and metadata-only.
+- No startup prompt/write/adoption behavior; opt-in autoload is quit-time only, confirmation-only, and metadata-only.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
 - Mutating project loadout checks must back up `.pi/settings.json` before direct edits.
@@ -64,7 +64,7 @@ Expected:
 - Autoload is off by default.
 - `/construct autoload` toggles on/off.
 - `/construct autoload on|off|status` works explicitly.
-- Autoload watches `.pi/settings.json` during trusted TUI sessions and prompts for newly declared compatible packages after Pi is idle.
+- Autoload checks for unloaded/adoptable project resources on trusted TUI session quit and prompts before writing.
 - Autoload also scans on quit/exit, not reload or session switch.
 - Autoload requires confirmation before writing.
 - Autoload does not install, enable, execute, reload, or alter `.pi/settings.json`.

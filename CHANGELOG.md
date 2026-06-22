@@ -9,7 +9,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 ### Changed
 - Consolidated active documentation around the current product model, command UX, architecture, safety, preflight, autoload, and audit notes.
 - Clarified `/construct load` help text to include direct-resource path arguments.
-- Clarified verbose autoload status wording around watcher and quit-time prompts.
+- Simplified autoload to passive quit-time prompts only; removed the session-time `.pi/settings.json` watcher and mid-session autoload prompts.
 - Added a `check:hygiene` script for unused local/parameter checks.
 - Split saved-loadout helper logic and shared dashboard/run operation handling into smaller internal modules without changing the public command surface.
 - Renamed the saved-loadout command module from stale profile language to `commands/saved-loadouts.ts`; JSON schema compatibility is unchanged.

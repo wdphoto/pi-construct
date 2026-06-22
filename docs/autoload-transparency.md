@@ -20,49 +20,29 @@ It must never silently install packages, enable resources, reload Pi, execute pa
 
 ## Current behavior
 
-Autoload has two checks when enabled.
+Autoload is passive. When enabled, Construct checks on session quit for unloaded/adoptable project package declarations and asks before loading them.
 
-### Session watcher
-
-On session start, Construct may attach one lightweight filesystem watcher only when all of these are true:
-
-- `~/.pi/agent/construct/settings.json` has `autoload: true`;
-- Pi is in TUI mode;
-- UI is available;
-- the project is trusted.
-
-The watcher observes `.pi/settings.json` or the nearest available parent path, debounces events, waits until Pi is idle, re-reads project/Construct state, and asks before loading newly adoptable package declarations.
+Construct does not watch `.pi/settings.json` during the session. This keeps the feature quiet and avoids mid-session modal prompts, filesystem watcher edge cases, and parent-directory watch gaps.
 
 Prompt copy should keep the boundary obvious:
 
 ```text
-Load new Pi package into Construct?
+Load project resources into Construct?
 
-Construct autoload noticed a new project package declaration.
+Construct autoload found project resources that are not in the Construct yet.
 
-Package: <id>
-Source: <source>
+- <id>: <source>
 
-Load this source into the Construct library?
-This only records the source and project metadata.
-It does not install packages, enable resources, edit .pi/settings.json, or reload Pi.
+Load these before exit?
+This will not install packages or edit .pi/settings.json.
 ```
 
-### Quit-time scan
+If confirmed, Construct writes only the Construct library and selected `.pi/construct.json` metadata. It does not reload Pi.
 
-On session quit, Construct scans for remaining unloaded/adoptable project package declarations and asks before loading them. This is the reliable fallback for watcher misses and for users who install packages shortly before quitting.
+## Why exit-time only?
 
-## Why a watcher instead of an install hook?
+Local Pi docs/types do not currently expose a stable package-install or settings-change event for extensions. Construct should not depend on private package-manager internals, parse `pi install` output, or keep a fragile filesystem watcher alive.
 
-Local Pi docs/types do not currently expose a stable package-install event for extensions. Construct should not depend on private package-manager internals or parse `pi install` output. If Pi later exposes a public package-install or settings-change event, prefer that over filesystem watching.
+Exit-time autoload preserves the safety model and most of the convenience while keeping Construct passive: users finish their work, then Construct asks whether to remember newly declared project resources before leaving.
 
-## Caveats
-
-- `fs.watch` behavior differs by platform/filesystem.
-- If `.pi/` or `.pi/settings.json` appears after the watcher starts, rebinding directly to the settings file would be more robust than the current parent-path watch.
-- One prompt per new package is transparent but can be annoying when several packages appear at once.
-- Live watcher prompts still need manual TUI verification.
-
-## Possible simplification
-
-If Construct continues to feel too heavy, the session watcher is a good candidate to remove. Exit-time autoload alone would preserve the safety model and most of the convenience while deleting timing complexity and modal mid-session prompts.
+If Pi later exposes a public package-install or settings-change event, prefer that over filesystem watching.
