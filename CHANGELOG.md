@@ -6,6 +6,10 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+- None yet.
+
+## 0.0.13 - 2026-06-22
+
 ### Added
 - Added `/construct save <name>`, `/construct list`, and `/construct run <saved-name>` as the public saved-loadout command language.
 - Added `/construct share <saved-name>` to print a shareable saved-loadout JSON snippet.
