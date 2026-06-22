@@ -26,6 +26,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Rename the saved-loadout command module away from stale profile terminology while preserving JSON schema compatibility.
 - [x] Extract shared operation/progress/result handling used by dashboard apply and saved-loadout run.
 - [x] Extract shared package source-set collection for raw/normalized declared, active, and disabled package declarations.
+- [x] Extract small pure UI scroll/truncation helpers without changing picker behavior.
 - [ ] Decide whether autoload keeps the session watcher or simplifies to exit-time only. Deferred until after review.
 
 ## v0.0.x — autoload polish

@@ -116,7 +116,7 @@ Resolution so far:
 
 Deferred option: split the command module further by action (`save`, `run`, `share`, `import`) only when another saved-loadout feature needs those seams. Do not add more saved-loadout behavior while this module remains broad.
 
-### A3 — The generic checkbox picker is becoming a framework
+### A3 — The generic checkbox picker is becoming a framework — pure scroll helpers extracted on review branch
 
 Severity: medium maintainability
 File: `extensions/construct/ui.ts`
@@ -125,22 +125,12 @@ File: `extensions/construct/ui.ts`
 
 That was a good incremental path, but it is now carrying dashboard-specific semantics through generic options.
 
-Options:
+Resolution so far:
 
-1. **Keep it stable, extract only pure render helpers**
-   - Lowest behavior risk.
-   - Makes `ui.ts` easier to scan but does not reduce conceptual load much.
+- Added small pure `scrollWindow()` and `truncateLines()` helpers used by summary, confirmation, and apply panels.
+- Kept picker phases and behavior intact; no TUI interaction semantics changed.
 
-2. **Split picker phases**
-   - `pickCheckboxes()` only selects/filters rows.
-   - `showProgressPanel()` handles applying/result/reload panel.
-   - `confirmPanel()` handles destructive confirmations.
-
-3. **Move dashboard-specific row semantics out of picker**
-   - Picker supports only generic `relatedIds` and `quickSelectIds`.
-   - Dashboard owns all labels and action language.
-
-Recommendation: option 2 remains the direction if picker weight becomes painful. Saved-loadout run no longer carries a bespoke progress/result panel; it now uses shared operation panel plumbing.
+Deferred option: split `pickCheckboxes()` into selection, confirmation, and progress/result panels only if the picker keeps growing or a TUI harness makes the behavior safer to refactor.
 
 ### A4 — Dashboard apply and saved-loadout run duplicate operation orchestration — fixed on review branch
 

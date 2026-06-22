@@ -21,6 +21,18 @@ export function showText(ctx: ExtensionCommandContext, text: string): void {
 	console.error(text);
 }
 
+function truncateLines(lines: string[], width: number): string[] {
+	return lines.map((line) => truncateToWidth(line, width));
+}
+
+function scrollWindow(lines: string[], scroll: number, maxVisible: number): { scroll: number; visible: string[]; rangeLabel?: string } {
+	const maxScroll = Math.max(0, lines.length - maxVisible);
+	const nextScroll = Math.max(0, Math.min(scroll, maxScroll));
+	const visible = lines.slice(nextScroll, nextScroll + maxVisible);
+	const rangeLabel = lines.length > maxVisible ? `(${nextScroll + 1}-${Math.min(nextScroll + maxVisible, lines.length)}/${lines.length})` : undefined;
+	return { scroll: nextScroll, visible, rangeLabel };
+}
+
 export async function showSummary(ctx: ExtensionCommandContext, text: string): Promise<void> {
 	if (ctx.mode !== "tui") {
 		showText(ctx, text);
@@ -41,17 +53,16 @@ export async function showSummary(ctx: ExtensionCommandContext, text: string): P
 
 		function render(width: number): string[] {
 			if (cachedLines && cachedWidth === width) return cachedLines;
-			const maxScroll = Math.max(0, body.length - maxVisible);
-			scroll = Math.min(scroll, maxScroll);
-			const visible = body.slice(scroll, scroll + maxVisible);
+			const window = scrollWindow(body, scroll, maxVisible);
+			scroll = window.scroll;
 			const lines = [theme.fg("accent", theme.bold(heading)), ""];
-			for (const line of visible) {
+			for (const line of window.visible) {
 				lines.push(line.startsWith("!") ? theme.fg("warning", line) : line);
 			}
-			if (body.length > maxVisible) lines.push("", theme.fg("muted", `  (${scroll + 1}-${Math.min(scroll + maxVisible, body.length)}/${body.length})`));
+			if (window.rangeLabel) lines.push("", theme.fg("muted", `  ${window.rangeLabel}`));
 			lines.push("", theme.fg("muted", "  Enter/Esc closes"));
 			cachedWidth = width;
-			cachedLines = lines.map((line) => truncateToWidth(line, width));
+			cachedLines = truncateLines(lines, width);
 			return cachedLines;
 		}
 
@@ -281,29 +292,27 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function renderConfirmation(width: number): string[] {
 			const maxVisible = 16;
-			const maxScroll = Math.max(0, confirmationLines.length - maxVisible);
-			confirmationScroll = Math.min(confirmationScroll, maxScroll);
-			const visible = confirmationLines.slice(confirmationScroll, confirmationScroll + maxVisible);
+			const window = scrollWindow(confirmationLines, confirmationScroll, maxVisible);
+			confirmationScroll = window.scroll;
 			const lines = [theme.fg("warning", theme.bold(confirmationTitle)), ""];
-			for (const line of visible) {
+			for (const line of window.visible) {
 				if (line.startsWith("!")) lines.push(theme.fg("warning", line));
 				else if (line.trimStart().startsWith("`")) lines.push(theme.fg("accent", line));
 				else lines.push(line);
 			}
-			if (confirmationLines.length > maxVisible) lines.push("", theme.fg("muted", `  (${confirmationScroll + 1}-${Math.min(confirmationScroll + maxVisible, confirmationLines.length)}/${confirmationLines.length})`));
+			if (window.rangeLabel) lines.push("", theme.fg("muted", `  ${window.rangeLabel}`));
 			lines.push("", theme.fg("warning", `  ${confirmationHint}`));
-			return lines.map((line) => truncateToWidth(line, width));
+			return truncateLines(lines, width);
 		}
 
 		function renderApply(width: number): string[] {
 			const maxVisible = 16;
-			const maxScroll = Math.max(0, applyLines.length - maxVisible);
-			applyScroll = Math.min(applyScroll, maxScroll);
-			const visible = applyLines.slice(applyScroll, applyScroll + maxVisible);
+			const window = scrollWindow(applyLines, applyScroll, maxVisible);
+			applyScroll = window.scroll;
 			const elapsedSeconds = Math.max(0, Math.floor((Date.now() - applyStartedAt) / 1000));
 			const heading = phase === "applying" ? `${spinnerFrames[spinnerTick % spinnerFrames.length]} ${applyTitle} · ${elapsedSeconds}s` : applyTitle;
 			const lines = [theme.fg("accent", theme.bold(heading)), ""];
-			for (const line of visible) {
+			for (const line of window.visible) {
 				if (line.startsWith("!")) lines.push(theme.fg("warning", line));
 				else if (line.startsWith("+")) lines.push(theme.fg("success", line));
 				else if (line.startsWith("-")) lines.push(theme.fg("muted", line));
@@ -311,9 +320,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				else if (line.trimStart().startsWith("/")) lines.push(theme.fg("accent", theme.bold(line)));
 				else lines.push(line);
 			}
-			if (applyLines.length > maxVisible) lines.push("", theme.fg("muted", `  (${applyScroll + 1}-${Math.min(applyScroll + maxVisible, applyLines.length)}/${applyLines.length})`));
+			if (window.rangeLabel) lines.push("", theme.fg("muted", `  ${window.rangeLabel}`));
 			lines.push("", phase === "applying" ? theme.fg("muted", "  Applying package changes…") : theme.fg("accent", `  ${applyConfirmHint}`));
-			return lines.map((line) => truncateToWidth(line, width));
+			return truncateLines(lines, width);
 		}
 
 		function render(width: number): string[] {
@@ -330,13 +339,13 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (items.length === 0) {
 				lines.push(theme.fg("muted", "  No items available"), "", theme.fg("muted", "  Esc to close"));
 				cachedWidth = width;
-				cachedLines = lines.map((line) => truncateToWidth(line, width));
+				cachedLines = truncateLines(lines, width);
 				return cachedLines;
 			}
 			if (visibleItems.length === 0) {
 				lines.push(theme.fg("muted", "  No matching items"), "", theme.fg("muted", "  Esc cancels"));
 				cachedWidth = width;
-				cachedLines = lines.map((line) => truncateToWidth(line, width));
+				cachedLines = truncateLines(lines, width);
 				return cachedLines;
 			}
 
@@ -388,7 +397,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			for (const footerLine of footerLines) lines.push(theme.fg("muted", footerLine));
 			if (options.actions?.remove) lines.push(theme.fg("muted", `  Selected: ${checked.size}`));
 			cachedWidth = width;
-			cachedLines = lines.map((line) => truncateToWidth(line, width));
+			cachedLines = truncateLines(lines, width);
 			return cachedLines;
 		}
 
