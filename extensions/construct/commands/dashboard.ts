@@ -347,12 +347,13 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			const enabled = byAction("Enable");
 			const disabled = byAction("Disable");
 			const removed = byAction("Remove");
+			const hasErrors = failures.length > 0 || partialRuntimeChanges.length > 0;
 			return {
 				title: cancelled
 					? appliedChanges > 0
 						? "Construct Loadout cancelled after partial changes"
 						: "Construct Loadout cancelled"
-					: failures.length > 0
+					: hasErrors
 						? "Construct Loadout applied with errors"
 						: "Construct Loadout changes applied",
 				confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",

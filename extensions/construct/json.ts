@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { chmod, mkdir, open, readFile, realpath, rename, rm, stat } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { access, chmod, mkdir, open, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { JsonObject, JsonReadResult } from "./types.js";
 
@@ -23,21 +23,26 @@ export async function writeJson(path: string, data: unknown): Promise<void> {
 	const dir = dirname(targetPath);
 	await mkdir(dir, { recursive: true });
 	const tempPath = join(dir, `.${basename(targetPath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
-	const existingMode = await stat(targetPath).then((info) => info.mode).catch(() => undefined);
+	let existingMode: number | undefined;
+	try {
+		const existing = await stat(targetPath);
+		await access(targetPath, constants.W_OK);
+		existingMode = existing.mode & 0o777;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+
 	const file = await open(tempPath, "wx");
+	let closed = false;
 	try {
 		await file.writeFile(`${JSON.stringify(data, null, 2)}\n`, "utf8");
 		await file.sync();
-	} catch (error) {
-		await file.close().catch(() => undefined);
-		await rm(tempPath, { force: true }).catch(() => undefined);
-		throw error;
-	}
-	await file.close();
-	try {
+		await file.close();
+		closed = true;
 		if (existingMode !== undefined) await chmod(tempPath, existingMode);
 		await rename(tempPath, targetPath);
 	} catch (error) {
+		if (!closed) await file.close().catch(() => undefined);
 		await rm(tempPath, { force: true }).catch(() => undefined);
 		throw error;
 	}
