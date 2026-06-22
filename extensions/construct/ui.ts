@@ -154,12 +154,19 @@ export interface CheckboxPickerConfirmation {
 	confirmHint?: string;
 }
 
+export interface CheckboxPickerLegendItem {
+	icon: string;
+	label: string;
+	tone: CheckboxPickerTone;
+}
+
 export interface CheckboxPickerOptions {
 	confirmHint?: string;
 	footerHint?: string;
 	filterLabel?: string;
 	filterHint?: string;
 	titleBold?: boolean;
+	stateLegend?: CheckboxPickerLegendItem[];
 	initialSelection?: "checked" | "empty";
 	actions?: {
 		remove?: boolean;
@@ -233,6 +240,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function filteredItems(): CheckboxPickerItem[] {
 			return items.filter((item) => fuzzyMatches(searchableText(item), query));
+		}
+
+		function renderLegendItem(item: CheckboxPickerLegendItem): string {
+			return `${styleTone(item.tone, item.icon)} ${theme.fg("muted", item.label)}`;
 		}
 
 		function selectedItem(): CheckboxPickerItem | undefined {
@@ -348,6 +359,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const item = selectedItem();
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
 			lines.push("");
+			if (options.stateLegend) lines.push(`  ${options.stateLegend.map(renderLegendItem).join(theme.fg("muted", " · "))}`);
 			const footerLines = (options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`).split("\n");
 			for (const footerLine of footerLines) lines.push(theme.fg("muted", footerLine));
 			if (options.actions?.remove) lines.push(theme.fg("muted", `  Selected: ${checked.size}`));

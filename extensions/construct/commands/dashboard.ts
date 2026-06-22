@@ -167,8 +167,8 @@ function dashboardPickerTitle(packages: DashboardPackage[]): string {
 	return `Loadout: ${counts.installed} installed | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
 }
 
-function sectionTone(section: DashboardSection): CheckboxPickerTone {
-	return section === "Unloaded" ? "muted" : "accent";
+function sectionTone(_section: DashboardSection): CheckboxPickerTone {
+	return "muted";
 }
 
 function stateTone(section: DashboardSection): CheckboxPickerTone {
@@ -289,7 +289,14 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		confirmHint: "Enter applies",
 		filterLabel: "Filter packages",
 		filterHint: "Type to narrow by package, source, or state · Backspace edits",
-		footerHint: "  [x] selected · ✓ active · – disabled · + available · ◇ unloaded\n  Space selects · Enter applies · r removes installed/disabled · Esc cancels",
+		stateLegend: [
+			{ icon: "[x]", label: "selected", tone: "muted" },
+			{ icon: "✓", label: "active", tone: "success" },
+			{ icon: "–", label: "disabled", tone: "muted" },
+			{ icon: "+", label: "available", tone: "warning" },
+			{ icon: "◇", label: "unloaded", tone: "muted" },
+		],
+		footerHint: "  Space selects · Enter applies · r removes installed/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		onSubmit: async (ids, update, signal, submitAction) => {
