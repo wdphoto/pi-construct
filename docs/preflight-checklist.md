@@ -8,7 +8,7 @@ Protect the manual product model:
 
 - `/construct` is the primary surface.
 - Support commands are `status`, `load`, `unload`, `autoload`, and WIP `profile`.
-- No lifecycle/startup behavior.
+- No startup prompt/write/adoption behavior; opt-in autoload remains confirmation-only and checks on quit.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
 - Mutating project loadout checks must back up `.pi/settings.json` before direct edits.

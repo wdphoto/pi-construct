@@ -133,6 +133,6 @@ Rules:
 
 ## Lifecycle behavior
 
-Construct has no startup adoption behavior. It does not open menus, install packages, reload Pi, or write files just because Pi starts.
+Construct does not open menus, install packages, reload Pi, or write files just because Pi starts.
 
-Autoload is explicit opt-in behavior. When enabled in a trusted TUI project, Construct can watch `.pi/settings.json` during the session and prompt before loading newly declared package sources into Construct. It also scans on session quit. Both paths are confirmation-only and metadata-only.
+Autoload is explicit opt-in behavior. Its reliable baseline is the session-quit scan: when enabled in a trusted TUI project, Construct can ask before loading unloaded package sources into Construct. The detailed transparency doc also describes the current settings watcher used for after-install visibility. Both paths are confirmation-only and metadata-only.

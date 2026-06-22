@@ -2,14 +2,13 @@
 
 ## Decision
 
-Construct keeps `/construct autoload` as an explicit on/off toggle, but has **no startup behavior**.
+Construct keeps `/construct autoload` as an explicit on/off toggle.
 
 - Do not open Construct when a project loads.
-- Do not prompt to load resources on startup.
-- Do not install, remove, reload, or write Construct state from startup hooks.
+- Do not install, remove, reload, or write Construct state just because Pi starts.
 - Keep `/construct load` as the explicit adoption command.
 
-Autoload is off by default and always asks before writing.
+Autoload is off by default and always asks before writing. Its reliable baseline is the quit-time check: on session exit, Construct can scan for unloaded project resources and ask before loading them into Construct.
 
 Product note: keep autoload transparent. It should surface compatible unloaded package declarations, show source strings, and require confirmation. It should not silently adopt packages under the hood.
 

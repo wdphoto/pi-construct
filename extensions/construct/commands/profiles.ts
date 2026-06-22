@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
-import { deriveId, findCatalogItem, loadCatalog, parseCatalog, addSourcesToCatalog } from "../catalog.js";
+import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
 import { isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { loadPackageIntoProject } from "../package-ops.js";
