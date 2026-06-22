@@ -29,6 +29,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Dashboard state language now uses resource-neutral `Active` instead of package-centric `Installed`.
 - Documented and enforced the current split: saved loadouts/share snippets remain package-source-only while direct project-local resources stay project-local metadata/toggle state.
 
+### Fixed
+- Collapsed duplicate project metadata rows for equivalent local package sources, so relative and absolute forms of the same package do not appear as separate dashboard resources.
+
 ## 0.0.12 - 2026-06-21
 
 ### Added

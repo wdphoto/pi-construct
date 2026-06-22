@@ -192,7 +192,7 @@ export async function loadSourcesIntoConstruct(
 		let nextMetadataChanged = 0;
 		for (const source of selectedSources) {
 			const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
-			const itemId = uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source);
+			const itemId = await uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source, source, paths);
 			const enabled = options.enabledBySource?.get(source);
 			construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });
 			nextMetadataChanged += 1;

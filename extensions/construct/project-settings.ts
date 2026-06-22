@@ -3,7 +3,7 @@ import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { isObject, readJson, writeJson } from "./json.js";
-import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "./sources.js";
+import { managedPackageSourceIdentity, normalizeSourceForLibrary, packageSourceIdentity } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
 	return (
@@ -57,6 +57,7 @@ export async function getManagedItems(
 ): Promise<ManagedItemSummary[]> {
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
 	const summaries: ManagedItemSummary[] = [];
+	const seenPackageKeys = new Set<string>();
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value)) {
 			summaries.push({ id, kind: "unknown", drift: "invalid metadata" });
@@ -69,6 +70,11 @@ export async function getManagedItems(
 		if (kind === "package") {
 			const identity = await managedPackageSourceIdentity(value, paths);
 			source = identity.displaySource;
+			const identityKey = identity.normalizedInstallSource ?? source;
+			if (identityKey) {
+				if (seenPackageKeys.has(identityKey)) continue;
+				seenPackageKeys.add(identityKey);
+			}
 			if (source) {
 				const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
 				const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
@@ -145,10 +151,21 @@ export function upsertConstructItem(
 	};
 }
 
-export function uniqueManagedIdInConstruct(construct: JsonObject, baseId: string, source: string): string {
+function sourceSetsOverlap(a: Set<string>, b: Set<string>): boolean {
+	for (const value of a) {
+		if (b.has(value)) return true;
+	}
+	return false;
+}
+
+export async function uniqueManagedIdInConstruct(construct: JsonObject, baseId: string, declaredSource: string, requestedSource: string, paths: ConstructPaths): Promise<string> {
 	const items = isObject(construct.items) ? construct.items : {};
+	const targetIdentity = await packageSourceIdentity(declaredSource, requestedSource, paths);
 	for (const [id, value] of Object.entries(items)) {
-		if (isObject(value) && (value.source === source || value.requestedSource === source)) return id;
+		if (!isObject(value) || value.kind !== "package") continue;
+		const identity = await managedPackageSourceIdentity(value, paths);
+		if (identity.normalizedInstallSource && targetIdentity.normalizedInstallSource && identity.normalizedInstallSource === targetIdentity.normalizedInstallSource) return id;
+		if (sourceSetsOverlap(identity.matchSources, targetIdentity.matchSources)) return id;
 	}
 	const existing = new Set(Object.keys(items));
 	if (!existing.has(baseId)) return baseId;
@@ -159,9 +176,9 @@ export function uniqueManagedIdInConstruct(construct: JsonObject, baseId: string
 	return `${baseId}-${Date.now()}`;
 }
 
-export function uniqueManagedId(baseId: string, construct: JsonReadResult, source: string): string {
+export async function uniqueManagedId(baseId: string, construct: JsonReadResult, declaredSource: string, requestedSource: string, paths: ConstructPaths): Promise<string> {
 	if (construct.state !== "ok" || !isObject(construct.data)) return baseId;
-	return uniqueManagedIdInConstruct(construct.data, baseId, source);
+	return uniqueManagedIdInConstruct(construct.data, baseId, declaredSource, requestedSource, paths);
 }
 
 export function chooseDeclaredSource(before: PackageDeclarationSummary[], after: PackageDeclarationSummary[], requestedSource: string): string {

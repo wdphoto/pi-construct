@@ -24,31 +24,37 @@ export interface ManagedPackageSourceIdentity {
 	matchSources: Set<string>;
 }
 
-export async function managedPackageSourceIdentity(item: JsonObject, paths: ConstructPaths): Promise<ManagedPackageSourceIdentity> {
-	const declaredSource = typeof item.source === "string" && item.source.trim() ? item.source.trim() : undefined;
-	const requestedSource = typeof item.requestedSource === "string" && item.requestedSource.trim() ? item.requestedSource.trim() : undefined;
-	const installSource = requestedSource ?? declaredSource;
+export async function packageSourceIdentity(declaredSource: string | undefined, requestedSource: string | undefined, paths: ConstructPaths): Promise<ManagedPackageSourceIdentity> {
+	const declared = declaredSource?.trim() || undefined;
+	const requested = requestedSource?.trim() || undefined;
+	const installSource = requested ?? declared;
 	const displaySource = installSource;
 	const matchSources = new Set<string>();
 	const settingsDir = dirname(paths.projectSettingsPath);
 
-	const declaredNormalizedSource = declaredSource ? await normalizeSourceForLibrary(declaredSource, settingsDir) : undefined;
-	const requestedNormalizedSource = requestedSource ? await normalizeSourceForLibrary(requestedSource, paths.cwd) : undefined;
-	if (declaredSource) {
-		matchSources.add(declaredSource);
+	const declaredNormalizedSource = declared ? await normalizeSourceForLibrary(declared, settingsDir) : undefined;
+	const requestedNormalizedSource = requested ? await normalizeSourceForLibrary(requested, paths.cwd) : undefined;
+	if (declared) {
+		matchSources.add(declared);
 		if (declaredNormalizedSource) matchSources.add(declaredNormalizedSource);
 	}
-	if (requestedSource) {
-		matchSources.add(requestedSource);
+	if (requested) {
+		matchSources.add(requested);
 		if (requestedNormalizedSource) matchSources.add(requestedNormalizedSource);
 	}
 
 	return {
-		declaredSource,
-		requestedSource,
+		declaredSource: declared,
+		requestedSource: requested,
 		installSource,
 		displaySource,
 		normalizedInstallSource: requestedNormalizedSource ?? declaredNormalizedSource ?? installSource,
 		matchSources,
 	};
+}
+
+export async function managedPackageSourceIdentity(item: JsonObject, paths: ConstructPaths): Promise<ManagedPackageSourceIdentity> {
+	const declaredSource = typeof item.source === "string" ? item.source : undefined;
+	const requestedSource = typeof item.requestedSource === "string" ? item.requestedSource : undefined;
+	return packageSourceIdentity(declaredSource, requestedSource, paths);
 }

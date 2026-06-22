@@ -94,7 +94,7 @@ export async function loadPackageIntoProject(
 	let itemId: string | undefined;
 	try {
 		const freshConstructRead = await readJson(paths.projectConstructPath);
-		itemId = input.item?.managed ? input.item.id : uniqueManagedId(input.item?.id ?? deriveId(input.source), freshConstructRead, declaredSource);
+		itemId = input.item?.managed ? input.item.id : await uniqueManagedId(input.item?.id ?? deriveId(input.source), freshConstructRead, declaredSource, input.source, paths);
 		const construct = upsertConstructItem(parseProjectConstruct(freshConstructRead), itemId, declaredSource, input.source, paths);
 		await writeJson(paths.projectConstructPath, construct);
 		await rememberKnownProject({ cwd: paths.cwd });

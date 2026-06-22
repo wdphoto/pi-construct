@@ -125,7 +125,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
 	const construct = await readJson(paths.projectConstructPath);
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
-	const items: Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }> = [];
+	const items: Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean; identityKey: string }> = [];
 	for (const [id, value] of Object.entries(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
 		const identity = await managedPackageSourceIdentity(value, paths);
@@ -135,9 +135,14 @@ async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: strin
 			source: identity.displaySource,
 			matchSources: identity.matchSources,
 			enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
+			identityKey: identity.normalizedInstallSource ?? identity.displaySource,
 		});
 	}
-	return items.sort((a, b) => a.id.localeCompare(b.id));
+	const deduped = new Map<string, (typeof items)[number]>();
+	for (const item of items.sort((a, b) => a.id.localeCompare(b.id))) {
+		if (!deduped.has(item.identityKey)) deduped.set(item.identityKey, item);
+	}
+	return [...deduped.values()];
 }
 
 async function projectPackageSourceSets(paths: ConstructPaths): Promise<{

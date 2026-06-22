@@ -240,6 +240,47 @@ OUTPUT="$(construct_pi "$HOME_G" "$PROJECT_G" '/construct load' 2>&1)"
 grep -Fq 'No project resources are waiting to be loaded.' <<<"$OUTPUT"
 test ! -e "$HOME_G/.pi/agent/construct/catalog.json"
 
+printf '== duplicate local metadata collapses to one dashboard row ==\n'
+HOME_I="$TMP/home-duplicate-local-metadata"
+PROJECT_I="$TMP/project-duplicate-local-metadata"
+PKG_I="$TMP/pi-tripwire"
+mkdir -p "$HOME_I/.pi/agent/construct" "$PROJECT_I/.pi" "$PKG_I/extensions"
+python3 - "$HOME_I" "$PROJECT_I" "$PKG_I" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+pkg = pathlib.Path(sys.argv[3]).resolve()
+relative = "../../pi-tripwire"
+(home / ".pi/agent/construct/catalog.json").write_text(json.dumps({
+  "version": 1,
+  "items": [{"id": "pi-tripwire", "kind": "package", "source": str(pkg)}],
+  "profiles": []
+}, indent=2) + "\n")
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [{
+  "source": relative,
+  "extensions": [],
+  "skills": [],
+  "prompts": [],
+  "themes": []
+}]}, indent=2) + "\n")
+(project / ".pi/construct.json").write_text(json.dumps({
+  "version": 1,
+  "managedBy": "the-construct",
+  "items": {
+    "pi-tripwire": {"kind": "package", "source": str(pkg), "enabled": False},
+    "pi-tripwire-2": {"kind": "package", "source": relative, "requestedSource": str(pkg), "enabled": False}
+  }
+}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_I" "$PROJECT_I" '/construct' 2>&1)"
+grep -Fq '0 active · 1 disabled · 0 available · 0 unloaded' <<<"$OUTPUT"
+grep -Fq 'pi-tripwire' <<<"$OUTPUT"
+! grep -Fq 'pi-tripwire-2' <<<"$OUTPUT"
+OUTPUT="$(construct_pi "$HOME_I" "$PROJECT_I" '/construct status' 2>&1)"
+grep -Fq 'Construct-managed: 0 enabled · 1 disabled' <<<"$OUTPUT"
+
 printf '== local-only package declaration ==\n'
 HOME_E="$TMP/home-local-only"
 PROJECT_E="$TMP/project-local-only"
