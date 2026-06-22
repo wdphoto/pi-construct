@@ -45,6 +45,8 @@ Legend: [ ] selectable · [x] selected · ✓ active · – disabled · + availa
 Controls: Space selects · Enter applies · r removes installed/disabled · Esc cancels.
 ```
 
+In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: active is green, disabled is muted green, available is yellow, and unloaded is gray. Plain output stays uncolored for readability.
+
 States:
 
 | State | Meaning | Enter | `r` |
@@ -56,7 +58,7 @@ States:
 
 Use `/construct load` to adopt `Unloaded` rows into Construct.
 
-After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. If you return to the session instead, run `/reload` when ready.
+After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 
 ## Basic workflow
 

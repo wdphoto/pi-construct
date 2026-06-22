@@ -88,6 +88,8 @@ Check in real TUI usage:
 - `r` shows a warning, then removes selected Installed or Disabled package declarations;
 - Esc cancels;
 - package rows stay primary;
+- live TUI title uses the quiet `Loadout:` count format;
+- row text stays plain, section headings use accent/heading color, and only state icons carry color: active green, disabled muted green, available yellow, unloaded gray;
 - Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;

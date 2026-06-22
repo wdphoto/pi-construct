@@ -104,7 +104,8 @@ Controls:
 - row grammar separates selection from state: `[x]` means selected, while compact icons `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a label such as `Filter packages:` and a hint that typing narrows by package/source/state;
-- keep row text plain for readability; color only the compact state icon column: Installed success, Available warning/yellow, Disabled muted, Unloaded muted gray;
+- in TUI, use a quiet title line like `Loadout: 1 installed | 0 disabled | 3 available | 0 unloaded`;
+- keep row text plain for readability; color only the compact state icon column: Installed/active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
 - Enter applies the obvious state change for actionable rows: install `Available`, disable `Installed`, or enable `Disabled`;
@@ -114,4 +115,4 @@ Controls:
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
 - after apply, Esc cancels reload and returns to the session.
 
-Keep hints subtle and summaries quiet. Success output should be verbose enough to show changed packages, then end with the Enter-to-reload / Esc-to-return choice.
+Keep hints subtle and summaries quiet. Success output should be verbose enough to show changed packages, then end with the Enter-to-reload / Esc-cancels-reload choice.

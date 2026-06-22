@@ -79,6 +79,8 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 ## Behavior rules
 
 - `/construct` opens the Construct Loadout dashboard.
+- Dashboard TUI title stays quiet: `Loadout: N installed | N disabled | N available | N unloaded`.
+- Dashboard row text stays plain; only the state icon column is colored: Installed/active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
 - `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata.
 - `/construct unload` removes resources from the Construct library/profile refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
@@ -100,6 +102,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Do not install the extension into live global Pi config unless explicitly requested.
 - Prefer disposable fixture projects for testing project-local writes.
 - Before editing any `.pi/settings.json`, create a backup.
+- Use the shared JSON write helper for Construct JSON writes; it writes via temp file and rename. Mutating flows should re-read relevant JSON state after idle waits or long-running package operations before merging/writing.
 - Never write secrets, tokens, API keys, auth material, or generated package cache paths.
 - Keep extra slash commands out unless clearly needed.
 
