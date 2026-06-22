@@ -7,6 +7,7 @@ Construct is centered on one primary command: `/construct`.
 ```text
 /construct                         # one loadout menu / dashboard
 /construct status                  # read-only diagnostics
+/construct scan [path]             # read-only report of unloaded trusted local project resources
 /construct load [id-or-source-or-path ...] # add current project resources to the Construct
 /construct unload [id-or-source ...]         # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
@@ -21,6 +22,25 @@ Construct is centered on one primary command: `/construct`.
 No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc cancels reload and returns to the session.
 
 User-facing copy should prefer **library** over **catalog** except when naming the file path.
+
+## `/construct scan`
+
+Scan is an explicit read-only report for local project folders.
+
+- `/construct scan` reads Pi's trust store and scans trusted local paths that are not obviously broad/private roots.
+- `/construct scan <path>` scans a specific local tree, useful for monorepos or project parent folders.
+- It detects Pi projects by `.pi/settings.json`, `.pi/construct.json`, or project-local `.pi/extensions`, `.pi/skills`, `.pi/prompts`, and `.pi/themes` directories.
+- It scans only projects trusted by Pi. Untrusted projects are skipped and listed.
+- It reports package declarations missing from the Construct library or that project's `.pi/construct.json` metadata.
+- It reports direct project-local resources not adopted into that project's `.pi/construct.json` metadata.
+- It uses conservative file parsing instead of executing packages or running Pi resource resolution across projects.
+- In the TUI, it shows lightweight progress while scanning and presents findings as a selectable checklist.
+- Pressing Enter on selected scan findings shows per-project `/construct load` guidance only; scan itself does not write.
+- It skips noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
+- It never installs, loads, unloads, changes trust, reloads Pi, or writes files.
+- It ends with `No files were changed.`
+
+Scan is intentionally project-local. It does not scan user/global skill locations such as `~/.pi/agent/skills`, `~/.agents/skills`, or generated Pi package caches.
 
 ## `/construct load`
 

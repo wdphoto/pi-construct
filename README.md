@@ -105,6 +105,14 @@ In another project, run that saved loadout:
 /construct run web-stack
 ```
 
+To look for trusted projects with unloaded package declarations or direct `.pi/` resources:
+
+```text
+/construct scan
+```
+
+Run `/construct scan` with no path to scan trusted Pi paths from Pi's trust store. Pass a folder only when you want to inspect a specific local tree, such as a monorepo or project parent. In the TUI, scan shows lightweight progress and a selectable review list; Enter shows per-project load guidance for selected findings. Scan is read-only and project-local: it looks for Pi-trusted projects with `.pi/settings.json`, `.pi/construct.json`, `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and `.pi/themes/`. Untrusted projects are skipped and listed. It does not scan global/user skill locations or Pi package caches.
+
 Or run `/construct`, focus a saved loadout and press Enter to activate it, or select an `Available` package with Space and press Enter to install it. Saved loadout rows are recipe/spotlight rows: focusing one marks member package rows with `[·]`; pressing Space on the saved row quick-selects those member package rows for bulk package actions.
 
 ## Commands
@@ -112,6 +120,7 @@ Or run `/construct`, focus a saved loadout and press Enter to activate it, or se
 ```text
 /construct                           # open the loadout menu
 /construct status                    # read-only diagnostics
+/construct scan [path]               # read-only report of unloaded trusted local project resources
 /construct load [id-or-source-or-path ...] # adopt project resources into Construct
 /construct unload [id-or-source ...]       # forget resources from Construct
 /construct save <name>               # save active Construct package sources as a named loadout
@@ -131,6 +140,7 @@ Direct examples:
 
 Notes:
 
+- `/construct scan` is a read-only local project report over trusted Pi paths. `/construct scan <path>` scans a specific local tree, useful for monorepos or project parent folders. Both modes scan only Pi-trusted projects, skip noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`, and end with `No files were changed.`
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
 - `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. Saving an existing name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety. In TUI, active package declarations not loaded into Construct can be selected for inclusion.

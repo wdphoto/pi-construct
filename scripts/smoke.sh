@@ -9,7 +9,8 @@ HOME_DIR="$TMP/home"
 PROJECT_DIR="$TMP/project"
 PKG_DIR="$TMP/pkg"
 PKG2_DIR="$TMP/pkg-two"
-mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG2_DIR/extensions"
+SCAN_PROJECT_DIR="$TMP/scan-project"
+mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG2_DIR/extensions" "$SCAN_PROJECT_DIR/.pi/skills/helper" "$SCAN_PROJECT_DIR/.pi/prompts" "$SCAN_PROJECT_DIR/.pi/themes" "$SCAN_PROJECT_DIR/.pi/extensions/tool"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -41,11 +42,52 @@ cat > "$PKG2_DIR/extensions/noop.ts" <<'TS'
 export default function noop() {}
 TS
 
-run_pi() {
+cat > "$SCAN_PROJECT_DIR/.pi/settings.json" <<JSON
+{
+  "packages": ["$PKG2_DIR"]
+}
+JSON
+cat > "$SCAN_PROJECT_DIR/.pi/skills/helper/SKILL.md" <<'MD'
+---
+name: helper
+description: Helps scan smoke tests.
+---
+# Helper
+MD
+cat > "$SCAN_PROJECT_DIR/.pi/prompts/review.md" <<'MD'
+Review this.
+MD
+cat > "$SCAN_PROJECT_DIR/.pi/themes/simple.json" <<'JSON'
+{
+  "name": "simple"
+}
+JSON
+cat > "$SCAN_PROJECT_DIR/.pi/extensions/tool/index.ts" <<'TS'
+export default function tool() {}
+TS
+python3 - "$HOME_DIR" "$SCAN_PROJECT_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2]).resolve()
+trust_path = home / ".pi/agent/trust.json"
+trust_path.parent.mkdir(parents=True, exist_ok=True)
+trust_path.write_text(json.dumps({str(project): True}, indent=2) + "\n")
+PY
+
+run_pi_in() {
+  local dir="$1"
+  local prompt="$2"
   (
-    cd "$PROJECT_DIR"
-    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT" -p "$1"
+    cd "$dir"
+    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT" -p "$prompt"
   )
+}
+
+run_pi() {
+  run_pi_in "$PROJECT_DIR" "$1"
 }
 
 quiet_pi() {
@@ -175,9 +217,41 @@ printf '== saved loadout list ==\n'
 LIST_OUTPUT="$(run_pi '/construct list')"
 [[ "$LIST_OUTPUT" == *"Saved Construct loadouts"* ]]
 
+printf '== project scan ==\n'
+SCAN_TRUST_OUTPUT="$(run_pi '/construct scan')"
+[[ "$SCAN_TRUST_OUTPUT" == *"Construct scan"* ]]
+[[ "$SCAN_TRUST_OUTPUT" == *"Source: Pi trust store"* ]]
+[[ "$SCAN_TRUST_OUTPUT" == *"Trusted projects scanned: 1"* ]]
+[[ "$SCAN_TRUST_OUTPUT" == *"scan-project"* ]]
+SCAN_OUTPUT="$(run_pi "/construct scan $TMP")"
+[[ "$SCAN_OUTPUT" == *"Construct scan"* ]]
+[[ "$SCAN_OUTPUT" == *"Trusted projects scanned: 1"* ]]
+[[ "$SCAN_OUTPUT" == *"Skipped untrusted projects: 1"* ]]
+[[ "$SCAN_OUTPUT" == *"scan-project"* ]]
+[[ "$SCAN_OUTPUT" == *"Unloaded package declarations:"* ]]
+[[ "$SCAN_OUTPUT" == *"package $PKG2_DIR"* ]]
+[[ "$SCAN_OUTPUT" == *"skill helper"* ]]
+[[ "$SCAN_OUTPUT" == *"prompt review"* ]]
+[[ "$SCAN_OUTPUT" == *"theme simple"* ]]
+[[ "$SCAN_OUTPUT" == *"extension tool"* ]]
+[[ "$SCAN_OUTPUT" == *"not trusted by Pi"* ]]
+[[ "$SCAN_OUTPUT" == *"No files were changed."* ]]
+SCAN_LOAD_OUTPUT="$(run_pi_in "$SCAN_PROJECT_DIR" '/construct load')"
+[[ "$SCAN_LOAD_OUTPUT" == *"Construct load complete."* ]]
+[[ "$SCAN_LOAD_OUTPUT" == *"Project items armed:"* ]]
+[[ "$SCAN_LOAD_OUTPUT" == *"Direct project resources adopted:"* ]]
+SCAN_AFTER_LOAD_OUTPUT="$(run_pi "/construct scan $TMP")"
+[[ "$SCAN_AFTER_LOAD_OUTPUT" == *"No unloaded resources found."* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"package $PKG2_DIR"* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"skill helper"* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"prompt review"* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"theme simple"* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"extension tool"* ]]
+
 printf '== removed command surface ==\n'
 UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
 [[ "$UNKNOWN_OUTPUT" == *"Unknown /construct subcommand: sync"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct scan [path]"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct load"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct unload"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct list"* ]]

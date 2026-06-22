@@ -6,6 +6,10 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Added `/construct scan [path]`, a read-only trusted local project report for unloaded package declarations and direct project `.pi/` resources.
+- Added a TUI scan review checklist with lightweight progress and selected-item load guidance.
+
 ### Changed
 - Clarified README saved-loadout recipe update and removal behavior.
 

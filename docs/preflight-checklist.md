@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import`.
+- Support commands are `status`, `scan`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import`.
 - No startup prompt/write/adoption behavior; opt-in autoload is quit-time only, confirmation-only, and metadata-only.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -18,6 +18,7 @@ Protect the manual product model:
 ```text
 /construct
 /construct status
+/construct scan [path]
 /construct load [id-or-source-or-path ...]
 /construct unload [id-or-source ...]
 /construct autoload
@@ -36,6 +37,17 @@ Expected:
 - `/construct` prints/opens the loadout view.
 - `/construct status` reports missing Construct metadata.
 - `.pi/construct.json` is not created.
+
+## Scan
+
+Expected:
+
+- `/construct scan` reads Pi's trust store and reports unloaded package declarations and direct project `.pi/` resources for trusted local paths.
+- `/construct scan <path>` reports the same findings under an explicit local folder.
+- `/construct scan [path]` lists and skips untrusted projects and overly broad/private trusted roots.
+- `/construct scan [path]` skips noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
+- `/construct scan [path]` does not install, load, unload, change trust, reload Pi, or write files.
+- Output ends with `No files were changed.`
 
 ## Manual load
 

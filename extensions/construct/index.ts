@@ -3,6 +3,7 @@ import { handleAutoload, maybePromptAutoloadOnShutdown } from "./commands/autolo
 import { handleDashboard } from "./commands/dashboard.js";
 import { handleLoad } from "./commands/load.js";
 import { handleSavedLoadoutCommand } from "./commands/saved-loadouts.js";
+import { handleScan } from "./commands/scan.js";
 import { handleUnload } from "./commands/unload.js";
 import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
@@ -13,7 +14,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "save", "list", "run", "share", "remove", "import", "autoload"];
+			const commands = ["status", "scan", "load", "unload", "save", "list", "run", "share", "remove", "import", "autoload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -32,6 +33,11 @@ export default function constructExtension(pi: ExtensionAPI) {
 
 			if (command === "load") {
 				await handleLoad(rest, ctx);
+				return;
+			}
+
+			if (command === "scan") {
+				await handleScan(rest, ctx);
 				return;
 			}
 
@@ -83,6 +89,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"Construct is intentionally small now:",
 					"- /construct",
 					"- /construct status",
+					"- /construct scan [path]",
 					"- /construct load [id-or-source-or-path ...]",
 					"- /construct unload [id-or-source ...]",
 					"- /construct autoload [on|off|status]",

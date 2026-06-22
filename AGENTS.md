@@ -67,6 +67,7 @@ Primary public command:
 Support commands:
 
 - `/construct status`
+- `/construct scan`
 - `/construct load`
 - `/construct unload`
 - `/construct autoload`
@@ -81,7 +82,7 @@ Use Pi's normal `/reload` after loadout changes. Do not advertise or re-add `/co
 
 `/construct run <saved-name>` is the explicit product-approved command for applying a saved loadout. Do not use `/construct run` as a dashboard alias.
 
-Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `on`, `off`, `wipe`, or `reload` command paths without an explicit product decision. `/construct remove <saved-name>` is approved only for deleting saved loadout recipes, not project resources.
+Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog`, `enable`, `disable`, `on`, `off`, `wipe`, or `reload` command paths without an explicit product decision. `/construct scan [path]` is approved only as a read-only trusted local project report; no-arg scan may read Pi's trust store but must refuse broad/private roots. `/construct remove <saved-name>` is approved only for deleting saved loadout recipes, not project resources.
 
 ## Behavior rules
 
@@ -94,8 +95,8 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `/construct status full` and `/construct` report direct project resources using Pi's native resolver; `/construct load` can adopt them into project metadata, and dashboard Enter toggles adopted direct resources with Pi-native `+path` / `-path` filters.
 - `.pi/construct.json` is advisory metadata only.
-- `/construct status` is read-only and must not create `.pi/construct.json`.
-- Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It can prompt for new `.pi/settings.json` package declarations during a session and still scans on quit.
+- `/construct status` and `/construct scan` are read-only and must not create `.pi/construct.json`.
+- Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It scans on trusted TUI quit only; no live `.pi/settings.json` watcher.
 - Saved loadouts are named groups of active Construct package sources. `profile` is mostly the internal catalog term.
 - `/construct save <name>` includes active Construct package sources, skips disabled package declarations, and in TUI offers active unloaded package declarations for optional loading/inclusion.
 - Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.

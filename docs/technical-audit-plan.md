@@ -229,14 +229,14 @@ Recommendation:
 
 - Keep package-only counts for now.
 - Avoid showing known-project counts on direct-resource rows until the index stores resource refs.
-- If `/construct scan` lands, design its report as read-only findings rather than expanding the known-project index implicitly.
+- `/construct scan` now reports read-only findings and does not expand the known-project index implicitly.
 
 ### A11 — Project scan can easily become the next bloat source
 
 Severity: product scope risk
 Roadmap: `MAP.md` project scan section
 
-`/construct scan [path]` is useful, but it must not become a second dashboard, a package manager, or a hidden broad resolver.
+`/construct scan [path]` is useful, but it must not become a second dashboard, a package manager, or a hidden broad resolver. The first implementation intentionally landed as option 1 below, with no-arg trust-store scanning, explicit path override, and trusted-project-only scanning.
 
 Options:
 
@@ -250,7 +250,7 @@ Options:
 
 3. No scan yet; rely on current project only.
 
-Recommendation: option 1 only. Keep output summary-oriented and explicitly end with `No files were changed.` Do not integrate scan results into the dashboard in the first slice.
+Decision: option 1 only. With no path, scan trusted Pi paths from the trust store while refusing broad/private roots; with a path, scan that explicit root. In both modes, scan only Pi-trusted projects, keep output summary-oriented, and explicitly end with `No files were changed.` Do not integrate scan results into the dashboard in the first slice.
 
 ## Documentation audit
 
@@ -296,9 +296,9 @@ The important current facts from these files were folded into the active docs ab
 
 1. Split generic picker selection from apply/result panels if the picker keeps growing.
 
-### Pass 3 — Only then add `/construct scan`
+### Pass 3 — Add `/construct scan` — done on feature branch
 
-Implement scan as a read-only file parser with conservative skips and no runtime adoption. Keep it out of the dashboard until the command proves useful.
+Scan is implemented as a read-only file parser with conservative skips and no runtime adoption. Keep it out of the dashboard until the command proves useful.
 
 ## Decisions to discuss
 

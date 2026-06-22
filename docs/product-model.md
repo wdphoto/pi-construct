@@ -69,6 +69,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 ```text
 /construct
 /construct status
+/construct scan [path]
 /construct load
 /construct unload
 /construct autoload
