@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths, JsonReadResult, LoadResult } from "./types.js";
-import { isObject, readJson, writeJson } from "./json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
 export { isLocalPathSource, normalizeSourceForLibrary } from "./sources.js";
@@ -11,7 +11,7 @@ export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warn
 	const warnings: string[] = [];
 	if (catalog.state === "missing") return { data: { version: 1, items: [], profiles: [] }, warnings };
 	if (catalog.state === "invalid") {
-		warnings.push(`Catalog is invalid JSON: ${catalog.error}`);
+		warnings.push(describeJsonReadIssue("Catalog", catalog));
 		return { data: { version: 1, items: [], profiles: [] }, warnings };
 	}
 	if (!isObject(catalog.data)) {
@@ -161,7 +161,7 @@ export async function addSourcesToCatalog(
 	const paths = await getPaths(ctx);
 	const catalogRead = await readJson(paths.userCatalogPath);
 	if (catalogRead.state === "invalid") {
-		return { added: [], alreadyKnown: 0, warnings: [`Skipped Construct library load because catalog JSON is invalid: ${catalogRead.error}`] };
+		return { added: [], alreadyKnown: 0, warnings: [`Skipped Construct library load because ${describeJsonReadIssue("catalog", catalogRead)}`] };
 	}
 
 	const { data: catalog, warnings } = parseCatalog(catalogRead);

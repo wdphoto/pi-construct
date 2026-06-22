@@ -1,7 +1,7 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { ExtensionCommandContext, ExtensionContext, SessionShutdownEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
-import { isObject, readJson, writeJson } from "../json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { formatLoadResult, loadSourcesIntoConstruct, projectLoadCandidates } from "./load.js";
 import { showText, waitForIdleBeforeConstructWrite } from "../ui.js";
@@ -29,7 +29,7 @@ async function readAutoloadSettings(ctx: Pick<ExtensionCommandContext | Extensio
 	const paths = await getPaths(ctx);
 	const read = await readJson(paths.userSettingsPath);
 	if (read.state === "missing") return { enabled: false };
-	if (read.state === "invalid") return { enabled: false, warning: `Construct settings are invalid JSON: ${read.error}` };
+	if (read.state === "invalid") return { enabled: false, warning: describeJsonReadIssue("Construct settings", read) };
 	if (!isObject(read.data)) return { enabled: false, warning: "Construct settings are not a JSON object." };
 	return { enabled: parseAutoloadSetting(read.data) };
 }
@@ -113,7 +113,7 @@ async function promptForNewAutoloadCandidates(ctx: ExtensionContext, state: Auto
 
 			const constructRead = await readJson(paths.projectConstructPath);
 			if (constructRead.state === "invalid") {
-				ctx.ui.notify("Construct autoload skipped: .pi/construct.json is invalid JSON.", "warning");
+				ctx.ui.notify(`Construct autoload skipped: ${describeJsonReadIssue(".pi/construct.json", constructRead)}`, "warning");
 				continue;
 			}
 			const enabledBySource = new Map([[candidate.source, !candidate.disabledByFilters]]);
@@ -237,7 +237,7 @@ export async function maybePromptAutoloadOnShutdown(event: SessionShutdownEvent,
 
 	const constructRead = await readJson(paths.projectConstructPath);
 	if (constructRead.state === "invalid") {
-		ctx.ui.notify("Construct autoload skipped: .pi/construct.json is invalid JSON.", "warning");
+		ctx.ui.notify(`Construct autoload skipped: ${describeJsonReadIssue(".pi/construct.json", constructRead)}`, "warning");
 		return;
 	}
 	const sources = candidates.adoptable.map((candidate) => candidate.source);

@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, JsonReadResult, KnownProjectEntry, KnownProjectsData } from "./types.js";
-import { isObject, readJson, writeJson } from "./json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
 import { normalizeSourceForLibrary } from "./sources.js";
@@ -10,7 +10,7 @@ export function parseKnownProjects(read: JsonReadResult): { data: KnownProjectsD
 	const warnings: string[] = [];
 	if (read.state === "missing") return { data: { version: 1, projects: [] }, warnings };
 	if (read.state === "invalid") {
-		warnings.push(`Known-project index is invalid JSON: ${read.error}`);
+		warnings.push(describeJsonReadIssue("Known-project index", read));
 		return { data: { version: 1, projects: [] }, warnings };
 	}
 	if (!isObject(read.data)) {
@@ -69,7 +69,7 @@ export async function rememberKnownProject(ctx: Pick<ExtensionCommandContext | E
 	const paths = await getPaths(ctx);
 	try {
 		const read = await readJson(paths.userProjectsPath);
-		if (read.state === "invalid") return { updated: false, warning: `Could not update known-project index because it is invalid JSON: ${read.error}` };
+		if (read.state === "invalid") return { updated: false, warning: `Could not update known-project index because ${describeJsonReadIssue("known-project index", read)}` };
 		const { data, warnings } = parseKnownProjects(read);
 		if (read.state === "ok" && warnings.length > 0) return { updated: false, warning: `Could not update known-project index because it has structural warnings: ${warnings.join("; ")}` };
 		const packages = await projectPackageSources(paths);

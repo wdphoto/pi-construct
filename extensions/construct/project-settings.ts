@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
-import { isObject, readJson, writeJson } from "./json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary, packageSourceIdentity } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
@@ -110,7 +110,7 @@ export function parseProjectConstruct(construct: JsonReadResult): JsonObject {
 		return { version: 1, managedBy: "the-construct", items: {} };
 	}
 	if (construct.state === "invalid") {
-		throw new Error(`Cannot update invalid Construct metadata: ${construct.error}`);
+		throw new Error(`Cannot update Construct metadata because ${describeJsonReadIssue(".pi/construct.json", construct)}`);
 	}
 	if (!isObject(construct.data)) {
 		throw new Error("Cannot update Construct metadata because .pi/construct.json is not an object.");
@@ -197,7 +197,7 @@ export function packageSource(entry: unknown): string | undefined {
 
 export function readSettingsObject(settings: JsonReadResult): JsonObject {
 	if (settings.state === "missing") return {};
-	if (settings.state === "invalid") throw new Error(`Cannot edit invalid .pi/settings.json: ${settings.error}`);
+	if (settings.state === "invalid") throw new Error(`Cannot edit .pi/settings.json because ${describeJsonReadIssue(".pi/settings.json", settings)}`);
 	if (!isObject(settings.data)) throw new Error("Cannot edit .pi/settings.json because it is not a JSON object.");
 	return { ...settings.data };
 }

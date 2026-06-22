@@ -93,7 +93,7 @@ function compactCount(count: number, singular: string, plural = `${singular}s`):
 function compactRead(result: Awaited<ReturnType<typeof readJson>>): string {
 	if (result.state === "ok") return "ok";
 	if (result.state === "missing") return "missing";
-	return "invalid JSON";
+	return "invalid/unreadable JSON";
 }
 
 function autoloadEnabled(data: StatusData): boolean {

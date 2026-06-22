@@ -2,7 +2,7 @@ import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/
 import type { CatalogItem, DirectResourceSummary, DirectResourceKind, JsonObject } from "../types.js";
 import { dirname } from "node:path";
 import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog } from "../catalog.js";
-import { isObject, readJson, writeJson } from "../json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
@@ -317,7 +317,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "invalid") {
-		showText(ctx, `Construct load failed.\nCannot load because .pi/settings.json is invalid JSON.\n${settingsRead.error}`);
+		showText(ctx, `Construct load failed.\nCannot load because ${describeJsonReadIssue(".pi/settings.json", settingsRead)}`);
 		return;
 	}
 	if (settingsRead.state === "ok" && !isObject(settingsRead.data)) {
@@ -327,7 +327,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	const constructRead = await readJson(paths.projectConstructPath);
 	if (constructRead.state === "invalid") {
-		showText(ctx, `Construct load failed.\nCannot load because .pi/construct.json is invalid JSON.\n${constructRead.error}`);
+		showText(ctx, `Construct load failed.\nCannot load because ${describeJsonReadIssue(".pi/construct.json", constructRead)}`);
 		return;
 	}
 	if (constructRead.state === "ok" && !isObject(constructRead.data)) {
@@ -337,7 +337,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	const catalogRead = await readJson(paths.userCatalogPath);
 	if (catalogRead.state === "invalid") {
-		showText(ctx, `Construct load failed.\nCannot load because Construct library catalog is invalid JSON.\n${catalogRead.error}`);
+		showText(ctx, `Construct load failed.\nCannot load because ${describeJsonReadIssue("Construct library catalog", catalogRead)}`);
 		return;
 	}
 	const catalogCheck = parseCatalog(catalogRead);

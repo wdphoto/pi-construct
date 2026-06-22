@@ -48,8 +48,12 @@ export async function writeJson(path: string, data: unknown): Promise<void> {
 	}
 }
 
+export function describeJsonReadIssue(subject: string, result: Extract<JsonReadResult, { state: "invalid" }>): string {
+	return `${subject} could not be read or parsed as JSON: ${result.error}`;
+}
+
 export function describeRead(result: JsonReadResult): string {
 	if (result.state === "ok") return `present: ${result.path}`;
 	if (result.state === "missing") return `missing: ${result.path}`;
-	return `invalid: ${result.path} (${result.error})`;
+	return `invalid or unreadable: ${result.path} (${result.error})`;
 }

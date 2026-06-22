@@ -16,6 +16,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ### Fixed
 - Made dashboard and unload TUI selection identities distinct from visible package ids, so remembered sources with the same derived id do not collapse into one checkbox.
+- Clarified JSON diagnostics so unreadable files are reported as read/parse failures rather than only “invalid JSON”.
 
 ### Removed
 - Removed stale completed planning docs now covered by current docs and the changelog.

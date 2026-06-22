@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { CatalogProfile, ConstructPaths } from "../types.js";
 import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
-import { isObject, readJson, writeJson } from "../json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
 import { getPaths } from "../paths.js";
 import { getPackages } from "../project-settings.js";
@@ -42,7 +42,7 @@ function usage(): string {
 
 async function activeManagedPackageSources(paths: ConstructPaths): Promise<string[]> {
 	const [settingsRead, constructRead] = await Promise.all([readJson(paths.projectSettingsPath), readJson(paths.projectConstructPath)]);
-	if (constructRead.state === "invalid") throw new Error(`Cannot save a loadout because .pi/construct.json is invalid JSON.\n${constructRead.error}`);
+	if (constructRead.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", constructRead)}`);
 	if (constructRead.state !== "ok" || !isObject(constructRead.data) || !isObject(constructRead.data.items)) return [];
 
 	const projectSources = new Set<string>();

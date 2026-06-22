@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, ConstructPaths, JsonObject } from "../types.js";
 import { loadCatalog } from "../catalog.js";
-import { isObject, readJson, writeJson } from "../json.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { getPackages } from "../project-settings.js";
 import { knownProjectCountForSources, knownProjectCounts, readKnownProjects, rememberKnownProject } from "../projects.js";
@@ -44,7 +44,7 @@ async function knownProjectCountsByItem(ctx: ExtensionCommandContext, items: Cat
 async function currentProjectActiveCount(paths: ConstructPaths, selected: CatalogItem[]): Promise<{ active: number; warning?: string }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { active: 0 };
-	if (settingsRead.state === "invalid") return { active: 0, warning: `Could not check current project package state because .pi/settings.json is invalid JSON: ${settingsRead.error}` };
+	if (settingsRead.state === "invalid") return { active: 0, warning: `Could not check current project package state because ${describeJsonReadIssue(".pi/settings.json", settingsRead)}` };
 
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const activeSources = new Set<string>();
@@ -65,7 +65,7 @@ async function currentProjectActiveCount(paths: ConstructPaths, selected: Catalo
 async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: CatalogItem[]): Promise<{ removed: number; warning?: string }> {
 	const constructRead = await readJson(paths.projectConstructPath);
 	if (constructRead.state === "missing") return { removed: 0 };
-	if (constructRead.state === "invalid") return { removed: 0, warning: `Could not update project Construct metadata because .pi/construct.json is invalid JSON: ${constructRead.error}` };
+	if (constructRead.state === "invalid") return { removed: 0, warning: `Could not update project Construct metadata because ${describeJsonReadIssue(".pi/construct.json", constructRead)}` };
 	if (!isObject(constructRead.data)) return { removed: 0, warning: "Could not update project Construct metadata because .pi/construct.json is not an object." };
 	if (!isObject(constructRead.data.items)) return { removed: 0 };
 
@@ -91,7 +91,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	const paths = await getPaths(ctx);
 	const { read, catalog, warnings } = await loadCatalog(ctx);
 	if (read.state === "invalid") {
-		showText(ctx, `Construct unload failed.\nConstruct library catalog is invalid JSON.\n${read.error}`);
+		showText(ctx, `Construct unload failed.\n${describeJsonReadIssue("Construct library catalog", read)}`);
 		return;
 	}
 	if (read.state === "ok" && warnings.length > 0) {
@@ -144,7 +144,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	const selectedKeysBeforeWait = new Set(selected.map(catalogItemKey));
 	const freshCatalog = await loadCatalog(ctx);
 	if (freshCatalog.read.state === "invalid") {
-		showText(ctx, `Construct unload failed.\nConstruct library catalog is invalid JSON after waiting.\n${freshCatalog.read.error}`);
+		showText(ctx, `Construct unload failed.\nAfter waiting, ${describeJsonReadIssue("Construct library catalog", freshCatalog.read)}`);
 		return;
 	}
 	if (freshCatalog.read.state === "ok" && freshCatalog.warnings.length > 0) {

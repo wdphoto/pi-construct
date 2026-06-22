@@ -201,20 +201,14 @@ Resolution:
   ```
 - Keep it separate from `npm run check` for now, while feature code is still moving.
 
-### A7 — `readJson` conflates I/O errors with invalid JSON
+### A7 — `readJson` conflates I/O errors with invalid JSON — copy fixed on review branch
 
 Severity: low-medium correctness / diagnostics
 File: `extensions/construct/json.ts`
 
-`readJson()` returns `state: "invalid"` for parse failures and read failures alike. A permissions error, directory path, or transient filesystem error can be reported as “invalid JSON,” and some parse helpers treat invalid state as “empty plus warning.”
+`readJson()` still uses the existing `state: "invalid"` union member for both parse failures and read failures to avoid invasive plumbing churn. User-facing copy now says files “could not be read or parsed as JSON,” and status reports `invalid/unreadable JSON` instead of implying every failure is a syntax error.
 
-Options:
-
-1. Add `state: "error"` to distinguish I/O failure from JSON parse failure.
-2. Keep the type as-is but improve error copy: “could not read or parse JSON”.
-3. Leave it; the practical user files are normal JSON files.
-
-Recommendation: option 2 now, option 1 only if we touch JSON plumbing for another reason. Adding a union state is invasive.
+Deferred option: add a distinct `state: "error"` only if future JSON plumbing work needs code-level branching between parse and I/O failures.
 
 ### A8 — Autoload watcher may not be worth its code weight
 
