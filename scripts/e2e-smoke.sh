@@ -94,8 +94,8 @@ if catalog_path.exists():
 PY
 RESOURCE_SAVE_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct save direct-only' 2>&1)"
 grep -Fq 'No active Construct package sources were selected' <<<"$RESOURCE_SAVE_ONLY_OUTPUT"
-RESOURCE_COPY_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct copy' 2>&1)"
-grep -Fq 'No active Construct package sources found' <<<"$RESOURCE_COPY_ONLY_OUTPUT"
+RESOURCE_SHARE_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct share direct-only' 2>&1)"
+grep -Fq 'Saved loadout not found: direct-only' <<<"$RESOURCE_SHARE_ONLY_OUTPUT"
 python3 - "$HOME_DIR" <<'PY'
 import json
 import pathlib
@@ -197,18 +197,17 @@ SAVE_AGAIN_OUTPUT="$(construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&
 grep -Fq 'Saved loadout already exists: pi-projects' <<<"$SAVE_AGAIN_OUTPUT"
 PROFILE_LIST_OUTPUT="$(construct_pi "$PROJECT_A" '/construct list' 2>&1)"
 grep -Fq 'pi-projects' <<<"$PROFILE_LIST_OUTPUT"
-PROFILE_SAVED_ALIAS_OUTPUT="$(construct_pi "$PROJECT_A" '/construct saved' 2>&1)"
-grep -Fq 'pi-projects' <<<"$PROFILE_SAVED_ALIAS_OUTPUT"
 SAVED_DASHBOARD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct' 2>&1)"
 grep -Fq 'Saved' <<<"$SAVED_DASHBOARD_OUTPUT"
 grep -Fq '◆  pi-projects' <<<"$SAVED_DASHBOARD_OUTPUT"
 grep -Fq '1 available' <<<"$SAVED_DASHBOARD_OUTPUT"
-COPY_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct copy pi-projects' 2>&1)"
-grep -Fq '"kind": "construct-loadout"' <<<"$COPY_PROFILE_OUTPUT"
-grep -Fq '"name": "pi-projects"' <<<"$COPY_PROFILE_OUTPUT"
-grep -Fq 'Local path sources may not work on another machine' <<<"$COPY_PROFILE_OUTPUT"
-COPY_CURRENT_OUTPUT="$(construct_pi "$PROJECT_A" '/construct copy' 2>&1)"
-grep -Fq 'Copied the current active Construct package sources only.' <<<"$COPY_CURRENT_OUTPUT"
+SHARE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct share pi-projects' 2>&1)"
+grep -Fq 'Construct loadout share snippet' <<<"$SHARE_PROFILE_OUTPUT"
+grep -Fq '"kind": "construct-loadout"' <<<"$SHARE_PROFILE_OUTPUT"
+grep -Fq '"name": "pi-projects"' <<<"$SHARE_PROFILE_OUTPUT"
+grep -Fq 'Local path sources may not work on another machine' <<<"$SHARE_PROFILE_OUTPUT"
+SHARE_USAGE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct share' 2>&1)"
+grep -Fq 'Usage: /construct share <saved-name>' <<<"$SHARE_USAGE_OUTPUT"
 IMPORT_JSON="{\"kind\":\"construct-loadout\",\"version\":1,\"name\":\"shared\",\"sources\":[\"$PKG_DIR\"]}"
 IMPORT_PREVIEW_OUTPUT="$(construct_pi "$PROJECT_B" "/construct import $IMPORT_JSON" 2>&1)"
 grep -Fq 'Construct loadout import preview' <<<"$IMPORT_PREVIEW_OUTPUT"
@@ -230,6 +229,26 @@ construct = json.loads((project / ".pi/construct.json").read_text())
 assert any(profile.get("id") == "pi-projects" and source in profile.get("sources", []) for profile in catalog.get("profiles", [])), catalog
 assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else project / ".pi" / entry).resolve()) == source for entry in settings.get("packages", [])), settings
 assert any((item.get("source") == source or item.get("requestedSource") == source) and item.get("enabled") is True for item in construct.get("items", {}).values()), construct
+PY
+
+printf '== remove saved loadout recipe only ==\n'
+REMOVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct remove pi-projects' 2>&1)"
+grep -Fq 'Removed saved loadout: pi-projects' <<<"$REMOVE_PROFILE_OUTPUT"
+grep -Fq 'No project files were changed.' <<<"$REMOVE_PROFILE_OUTPUT"
+PROFILE_LIST_AFTER_REMOVE="$(construct_pi "$PROJECT_B" '/construct list' 2>&1)"
+! grep -Fq 'pi-projects' <<<"$PROFILE_LIST_AFTER_REMOVE"
+python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2])
+source = str(pathlib.Path(sys.argv[3]).resolve())
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+settings = json.loads((project / ".pi/settings.json").read_text())
+assert any(item.get("source") == source for item in catalog.get("items", [])), catalog
+assert not any(profile.get("id") == "pi-projects" for profile in catalog.get("profiles", [])), catalog
+assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else project / ".pi" / entry).resolve()) == source for entry in settings.get("packages", [])), settings
 PY
 
 printf '== unload removes package from Construct only ==\n'
@@ -261,5 +280,11 @@ SYNC_OUTPUT="$(construct_pi "$PROJECT_B" '/construct sync' 2>&1)"
 grep -Fq 'Unknown /construct subcommand: sync' <<<"$SYNC_OUTPUT"
 RELOAD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct reload' 2>&1)"
 grep -Fq 'Unknown /construct subcommand: reload' <<<"$RELOAD_OUTPUT"
+COPY_OUTPUT="$(construct_pi "$PROJECT_B" '/construct copy pi-projects' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: copy' <<<"$COPY_OUTPUT"
+PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct profile list' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: profile' <<<"$PROFILE_OUTPUT"
+SAVED_OUTPUT="$(construct_pi "$PROJECT_B" '/construct saved' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: saved' <<<"$SAVED_OUTPUT"
 
 printf 'e2e smoke ok\n'

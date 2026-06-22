@@ -13,17 +13,9 @@ Construct is centered on one primary command: `/construct`.
 /construct save <name>             # save active Construct package sources as a named loadout
 /construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
-/construct copy [saved-name]       # print a shareable saved-loadout JSON snippet
-/construct import <json>           # preview/import a saved-loadout JSON snippet
-```
-
-Compatibility aliases remain available for now:
-
-```text
-/construct saved
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct share <saved-name>      # print a shareable saved-loadout JSON snippet
+/construct remove <saved-name>     # remove a saved loadout recipe only
+/construct import [json]           # paste/preview/import a saved-loadout JSON snippet
 ```
 
 No separate public toggle/library/catalog/reload command family for now. After dashboard changes, Construct offers Enter-to-reload using Pi's normal reload path; Esc cancels reload and returns to the session.
@@ -91,7 +83,8 @@ Saved loadouts are named groups of active Construct package sources. `profile` r
 /construct save www
 /construct list
 /construct run www
-/construct copy www
+/construct share www
+/construct remove www
 /construct import '{"kind":"construct-loadout","version":1,"name":"www","sources":["npm:pkg"]}'
 ```
 
@@ -108,14 +101,15 @@ Run rules:
 - Running a saved loadout is not a live binding; replacing the saved loadout later does not change projects that already ran it.
 - `run` does not execute arbitrary scripts.
 
-Copy/import rules:
+Share/import/remove rules:
 
-- `/construct copy <saved-name>` prints a `kind: "construct-loadout"` JSON snippet for that saved loadout.
-- `/construct copy` prints a snippet for the current active Construct package sources.
-- `/construct import <json>` validates and previews a pasted snippet.
-- TUI import asks before writing; non-TUI import previews only and changes no files.
-- Copy/import warns for local path sources because they are usually not portable across machines.
-- Copy/import refuses generated Pi package cache paths and source strings that look like secrets.
+- `/construct share <saved-name>` prints a `kind: "construct-loadout"` JSON snippet for that saved loadout.
+- Share prints to screen/output only in this slice; it is not clipboard or file export.
+- `/construct import` opens a TUI paste box for JSON, then previews before writing.
+- `/construct import <json>` validates and previews a pasted snippet; non-TUI import previews only and changes no files.
+- Share/import warns for local path sources because they are usually not portable across machines.
+- Share/import refuses generated Pi package cache paths and source strings that look like secrets.
+- `/construct remove <saved-name>` deletes only the saved loadout recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
 
 Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing or selecting one marks its member package rows with `[·]`, and pressing Enter installs/enables only the package sources that are not already active. Disable/remove remains a package-row action, not a saved-loadout action.
 

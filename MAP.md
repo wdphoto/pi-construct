@@ -28,12 +28,12 @@ See `docs/profiles-and-sharing-plan.md`. Public copy should say saved loadout / 
 
 - [x] Add `/construct save <name>` as the canonical command for saving the current active Construct package-source grouping.
 - [x] Add `/construct run <saved-name>` as the canonical command for applying/running a saved loadout in the current project.
-- [x] Add `/construct list` as the canonical command for listing saved loadouts; keep `/construct saved` and `/construct profile save/list/apply` as compatibility aliases.
+- [x] Add `/construct list` as the canonical command for listing saved loadouts; remove unreleased saved/profile aliases.
 - [x] Save only active Construct package sources. Disabled package declarations are skipped.
 - [x] During TUI save, offer active package declarations not loaded into Construct; selected rows are loaded into Construct and included, unselected rows are skipped.
 - [x] Never append or merge on save. If the saved name exists, TUI asks before replacing it; non-TUI replacement refuses for now.
 - [x] Make save summaries show included, newly loaded/included, skipped active-unloaded, and skipped disabled counts.
-- [x] Add smoke coverage for `/construct save`, `/construct list`, `/construct saved`, and `/construct run`.
+- [x] Add smoke coverage for `/construct save`, `/construct list`, and `/construct run`.
 - [x] Bring run/apply into the newer in-panel progress/result/reload flow used by the dashboard.
 - [x] Fold saved loadouts into the main `/construct` TUI as compact recipe/spotlight rows that mark member package rows without turning disable/remove into saved-loadout group actions.
 
@@ -41,12 +41,13 @@ See `docs/profiles-and-sharing-plan.md`. Public copy should say saved loadout / 
 
 See `docs/profiles-and-sharing-plan.md`.
 
-- [x] Add `/construct copy [saved-name]` to print a small JSON snippet for a saved loadout or the current active Construct grouping.
-- [x] Keep `/construct copy` print-first for now. Do not depend on Pi internal clipboard helpers unless Pi exposes a public API.
+- [x] Add `/construct share <saved-name>` to print a small JSON snippet for a saved loadout.
+- [x] Keep `/construct share` print-first for now. Do not depend on Pi internal clipboard helpers unless Pi exposes a public API.
+- [x] Add `/construct remove <saved-name>` to delete only a saved loadout recipe.
 - [x] Add `/construct import` for pasted saved-loadout snippets, with preview/confirmation before writing anything.
 - [x] Define and validate the snippet schema: `kind`, `version`, `name`, active package sources only, no secrets, no local cache paths.
-- [x] Warn on local path sources during copy/import because they are usually not shareable across machines.
-- [x] Add smoke coverage for copy/import preview using disposable projects and disposable HOME.
+- [x] Warn on local path sources during share/import because they are usually not shareable across machines.
+- [x] Add smoke coverage for share/import preview/remove using disposable projects and disposable HOME.
 - [x] Add manual/TUI coverage notes for confirmed import writes.
 
 ## v0.0.x — native project resources
@@ -85,7 +86,7 @@ See `docs/project-resource-loadout-plan.md`. This follows saved loadouts so the 
 
 ## Later
 
-- [ ] Consider lazy imports for heavier Construct modules if dashboard/profile/copy/import code grows, following pi-resource-center's startup-speed pattern. Keep the entrypoint lean.
+- [ ] Consider lazy imports for heavier Construct modules if dashboard/saved-loadout/share/import code grows, following pi-resource-center's startup-speed pattern. Keep the entrypoint lean.
 - [ ] Polish package source labels, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
 - [ ] Reference Pi's `DefaultPackageManager` and `SettingsManager` discovery patterns when implementing known-project counts, but keep Construct's model limited to user-local known projects rather than broad resource management.
 - [ ] Resource-level package filters only if truly needed beyond the all-resources disabled state.

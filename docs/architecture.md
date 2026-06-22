@@ -8,8 +8,7 @@ The current implementation now inventories and toggles packages plus direct proj
 
 1. **Command layer**
    - Registers `/construct`.
-   - Supports public `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `copy`, and `import` subcommands.
-   - Keeps `/construct saved` and `/construct profile list|save|apply` as compatibility aliases for the internal saved-loadout model.
+   - Supports public `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import` subcommands.
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**

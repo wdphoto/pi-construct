@@ -75,17 +75,9 @@ Current direct-resource support includes inventory in `/construct status full`, 
 /construct save <name>
 /construct list
 /construct run <saved-name>
-/construct copy [saved-name]
-/construct import <json>
-```
-
-Compatibility aliases remain for now:
-
-```text
-/construct saved
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct share <saved-name>
+/construct remove <saved-name>
+/construct import [json]
 ```
 
 Separate toggle/library/catalog command families are intentionally out of the active product surface.

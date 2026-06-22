@@ -14,7 +14,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "load", "unload", "save", "list", "saved", "run", "copy", "import", "profile", "profiles", "autoload"];
+			const commands = ["status", "load", "unload", "save", "list", "run", "share", "remove", "import", "autoload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -51,7 +51,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			if (command === "list" || command === "saved") {
+			if (command === "list") {
 				await handleProfile(pi, "list", ctx);
 				return;
 			}
@@ -61,18 +61,18 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			if (command === "copy") {
-				await handleProfile(pi, `copy ${rest}`.trim(), ctx);
+			if (command === "share") {
+				await handleProfile(pi, `share ${rest}`.trim(), ctx);
+				return;
+			}
+
+			if (command === "remove") {
+				await handleProfile(pi, `remove ${rest}`.trim(), ctx);
 				return;
 			}
 
 			if (command === "import") {
 				await handleProfile(pi, `import ${rest}`.trim(), ctx);
-				return;
-			}
-
-			if (command === "profile" || command === "profiles") {
-				await handleProfile(pi, rest, ctx);
 				return;
 			}
 
@@ -90,8 +90,9 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct save <name>",
 					"- /construct list",
 					"- /construct run <saved-name>",
-					"- /construct copy [saved-name]",
-					"- /construct import <json>",
+					"- /construct share <saved-name>",
+					"- /construct remove <saved-name>",
+					"- /construct import [json]",
 				].join("\n"),
 			);
 		},

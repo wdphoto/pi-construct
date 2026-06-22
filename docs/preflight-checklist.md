@@ -7,7 +7,7 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `copy`, and `import`; `/construct saved` remains an alias.
+- Support commands are `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import`.
 - No startup prompt/write/adoption behavior; opt-in autoload remains confirmation-only and checks on quit.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
@@ -24,17 +24,9 @@ Protect the manual product model:
 /construct save <name>
 /construct list
 /construct run <saved-name>
-/construct copy [saved-name]
-/construct import <json>
-```
-
-Compatibility aliases:
-
-```text
-/construct saved
-/construct profile list
-/construct profile save <name>
-/construct profile apply <name>
+/construct share <saved-name>
+/construct remove <saved-name>
+/construct import [json]
 ```
 
 ## New-project behavior
@@ -85,11 +77,12 @@ Expected:
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
-- `/construct list` lists saved loadouts; `/construct saved` remains an alias.
+- `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
 - Saved loadouts appear as compact `◆` rows in `/construct`; selecting one marks member package rows with `[·]`, and pressing Enter installs/enables only package sources that are not already active.
-- `/construct copy [saved-name]` prints a package-source JSON snippet and warns for local paths.
-- `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
+- `/construct share <saved-name>` prints a package-source JSON snippet and warns for local paths.
+- `/construct remove <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.
+- `/construct import` opens a TUI paste box; `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
 - Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
 - Saved loadouts store ids/package sources, not package code, scripts, or direct project-local resource files.
 

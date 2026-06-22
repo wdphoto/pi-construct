@@ -2,14 +2,16 @@
 
 This note promotes profiles from a WIP command family to the next product slice. In user-facing copy, prefer **saved loadout** or just **saved**. `profile` remains the internal catalog/data-model word.
 
-Status: command language, save semantics, run UX parity, saved rows in `/construct`, print-first copy, and import preview/confirmation are implemented.
+Status: command language, save semantics, run UX parity, saved rows in `/construct`, print-first share, saved-loadout remove, and import preview/confirmation are implemented.
 
 ## Decisions
 
 - Public save command: `/construct save <name>`.
 - Public list command: `/construct list`.
 - Public run command: `/construct run <saved-name>`.
-- Existing `/construct saved` and `/construct profile ...` commands may stay as compatibility aliases while docs move to the shorter language.
+- Public share command: `/construct share <saved-name>`.
+- Public remove command: `/construct remove <saved-name>`.
+- Unreleased `/construct saved`, `/construct copy`, and `/construct profile ...` aliases are not part of the public surface.
 - A saved loadout is a named grouping of **active Construct package sources** for now.
 - Disabled package declarations are skipped.
 - Active package declarations that are not loaded into Construct are offered during save; selected packages are loaded into Construct and included, unselected packages are skipped.
@@ -127,7 +129,7 @@ Running a saved loadout is not a live binding. If the saved loadout is later rep
 
 ## Sharing model
 
-Sharing should export/import saved loadouts as small JSON snippets:
+Sharing should print/import saved loadouts as small JSON snippets:
 
 ```json
 {
@@ -147,7 +149,11 @@ Rules:
 - No secrets, auth material, env values, generated package cache paths, or installed cache locations.
 - Local path package sources may be saved for personal reuse but should be warned as not generally shareable across machines.
 - Direct project-local resource paths/file contents are excluded for now; review portable direct paths or an explicit export/copy format later.
+- `/construct share <name>` prints JSON to screen/output. It is not clipboard and not file export in this slice.
+- `/construct import` opens a TUI paste box for JSON, then previews and confirms before writing.
+- `/construct import <json>` remains a direct paste/print fallback; non-TUI previews only and changes no files.
 - Import writes only the user-local Construct library/saved loadout first. Running it in a project remains a separate explicit action.
+- `/construct remove <name>` deletes only the saved recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
 
 ## Dashboard/UI direction
 
@@ -181,7 +187,7 @@ Active
 ### Slice 1 — command language and save semantics — implemented
 
 - Add `/construct save <name>`, `/construct list`, and `/construct run <name>` as canonical commands.
-- Keep `/construct saved` and `/construct profile save/list/apply` as compatibility aliases.
+- Keep unreleased profile/saved aliases out of the public surface.
 - Update save behavior to include active Construct-managed package sources and offer active unloaded package declarations for inclusion in TUI.
 - Skip disabled package declarations.
 - Confirm before replacing an existing saved loadout in TUI.
@@ -199,11 +205,12 @@ Active
 - Running a saved loadout from the dashboard should expand to package operations with no duplicate installs.
 - Saved rows show active/disabled/available/unloaded member counts and mark member package rows with `[·]` while focused or selected.
 
-### Slice 4 — sharing — implemented
+### Slice 4 — sharing and saved-loadout removal — implemented
 
-- Add `/construct copy [saved-name]` to print a JSON snippet for a saved loadout or current active Construct package-source grouping.
-- Add `/construct import` for pasted snippets with preview/confirmation before writing.
-- Add copy/import preview smoke coverage with disposable projects and disposable HOME; confirm import writes manually in TUI until a safe interactive harness exists.
+- Add `/construct share <saved-name>` to print a JSON snippet for a saved loadout.
+- Add `/construct remove <saved-name>` to delete only the saved loadout recipe.
+- Add `/construct import` for pasted snippets with preview/confirmation before writing; in TUI, no-arg import opens a paste box.
+- Add share/import/remove smoke coverage with disposable projects and disposable HOME; confirm import writes manually in TUI until a safe interactive harness exists.
 
 ## Non-goals for now
 

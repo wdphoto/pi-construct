@@ -167,7 +167,7 @@ AUTOLOAD_OUTPUT="$(run_pi '/construct autoload off')"
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Autoload: off"* ]]
 
-printf '== saved loadout list alias ==\n'
+printf '== saved loadout list ==\n'
 LIST_OUTPUT="$(run_pi '/construct list')"
 [[ "$LIST_OUTPUT" == *"Saved Construct loadouts"* ]]
 
@@ -177,10 +177,22 @@ UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
 [[ "$UNKNOWN_OUTPUT" == *"/construct load"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct unload"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct list"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct share <saved-name>"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct remove <saved-name>"* ]]
 RELOAD_OUTPUT="$(run_pi '/construct reload')"
 [[ "$RELOAD_OUTPUT" == *"Unknown /construct subcommand: reload"* ]]
+COPY_OUTPUT="$(run_pi '/construct copy')"
+[[ "$COPY_OUTPUT" == *"Unknown /construct subcommand: copy"* ]]
+PROFILE_OUTPUT="$(run_pi '/construct profile list')"
+[[ "$PROFILE_OUTPUT" == *"Unknown /construct subcommand: profile"* ]]
+SAVED_OUTPUT="$(run_pi '/construct saved')"
+[[ "$SAVED_OUTPUT" == *"Unknown /construct subcommand: saved"* ]]
 RUN_OUTPUT="$(run_pi '/construct run')"
 [[ "$RUN_OUTPUT" == *"Usage: /construct run <saved-name>"* ]]
+SHARE_OUTPUT="$(run_pi '/construct share')"
+[[ "$SHARE_OUTPUT" == *"Usage: /construct share <saved-name>"* ]]
+REMOVE_OUTPUT="$(run_pi '/construct remove')"
+[[ "$REMOVE_OUTPUT" == *"Usage: /construct remove <saved-name>"* ]]
 DASHBOARD_ALIAS_OUTPUT="$(run_pi '/construct dashboard')"
 [[ "$DASHBOARD_ALIAS_OUTPUT" == *"Unknown /construct subcommand: dashboard"* ]]
 

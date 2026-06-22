@@ -109,8 +109,9 @@ Or run `/construct`, select a saved loadout or an `Available` package with Space
 /construct save <name>               # save active Construct package sources as a named loadout
 /construct list                      # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project
-/construct copy [saved-name]         # print a shareable saved-loadout JSON snippet
-/construct import <json>             # preview/import a saved-loadout JSON snippet
+/construct share <saved-name>        # print a shareable saved-loadout JSON snippet
+/construct remove <saved-name>       # remove a saved loadout recipe only
+/construct import [json]             # paste/preview/import a saved-loadout JSON snippet
 ```
 
 Direct examples:
@@ -125,9 +126,10 @@ Notes:
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
 - `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
-- `/construct list` lists saved loadouts. `/construct saved` remains an alias.
+- `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once; projects are not live-linked to saved loadouts.
-- `/construct copy [saved-name]` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
+- `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
+- `/construct remove <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
 - Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
 

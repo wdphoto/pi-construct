@@ -1,4 +1,4 @@
-import { basename, dirname } from "node:path";
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { CatalogData, CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
@@ -37,14 +37,9 @@ function usage(): string {
 		"/construct list",
 		"/construct save <name>",
 		"/construct run <saved-name>",
-		"/construct copy [saved-name]",
-		"/construct import <json>",
-		"",
-		"Compatibility aliases:",
-		"/construct saved",
-		"/construct profile list",
-		"/construct profile save <name>",
-		"/construct profile apply <name>",
+		"/construct share <saved-name>",
+		"/construct remove <saved-name>",
+		"/construct import [json]",
 		"",
 		"Saved loadouts are named groups of active Construct package sources. Direct project-local resources are not included yet.",
 	].join("\n");
@@ -611,6 +606,79 @@ async function applyProfile(pi: ExtensionAPI, ctx: ExtensionCommandContext, quer
 	await showSummary(ctx, runResultText(result));
 }
 
+async function confirmRemoveSavedLoadout(ctx: ExtensionCommandContext, profile: CatalogProfile, sources: string[]): Promise<boolean> {
+	if (ctx.mode !== "tui") return true;
+	return ctx.ui.custom<boolean>((tui, theme, keybindings, done) => {
+		const lines = [
+			`Saved loadout: ${profile.id}`,
+			`Package sources: ${sources.length}`,
+			"",
+			"This removes only the saved recipe.",
+			"It will not uninstall packages, disable resources, edit this project, or remove sources from the Construct library.",
+		];
+		let cachedWidth: number | undefined;
+		let cachedLines: string[] | undefined;
+		function invalidate(): void {
+			cachedWidth = undefined;
+			cachedLines = undefined;
+		}
+		function render(width: number): string[] {
+			if (cachedLines && cachedWidth === width) return cachedLines;
+			const rendered = [theme.fg("warning", theme.bold(`Remove saved loadout: ${profile.id}`)), "", ...lines, "", theme.fg("warning", "  Enter removes · Esc cancels")];
+			cachedWidth = width;
+			cachedLines = rendered.map((line) => truncateToWidth(line, width));
+			return cachedLines;
+		}
+		function handleInput(data: string): void {
+			if (keybindings.matches(data, "tui.select.confirm")) done(true);
+			if (keybindings.matches(data, "tui.select.cancel")) done(false);
+		}
+		return { render, handleInput, invalidate };
+	});
+}
+
+async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
+	const requested = query.trim();
+	if (!requested) {
+		showText(ctx, "Usage: /construct remove <saved-name>");
+		return;
+	}
+	const before = await loadCatalog(ctx);
+	if (before.read.state === "ok" && before.warnings.length > 0) {
+		showText(ctx, ["Saved loadout not removed.", `Fix ${before.paths.userCatalogPath} first.`, ...before.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		return;
+	}
+	const profile = findProfile(before.catalog, requested);
+	if (!profile) {
+		showText(ctx, `Saved loadout not found: ${requested}`);
+		return;
+	}
+	const sources = profileSources(before.catalog, profile);
+	const confirmed = await confirmRemoveSavedLoadout(ctx, profile, sources);
+	if (!confirmed) {
+		showText(ctx, "Saved loadout removal cancelled. No files were changed.");
+		return;
+	}
+	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct remove saved loadout");
+	if (!ready) {
+		showText(ctx, "Saved loadout removal cancelled. No files were changed.");
+		return;
+	}
+	const fresh = await loadCatalog(ctx);
+	if (fresh.read.state === "ok" && fresh.warnings.length > 0) {
+		showText(ctx, ["Saved loadout not removed.", `Fix ${fresh.paths.userCatalogPath} first.`, ...fresh.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		return;
+	}
+	const current = findProfile(fresh.catalog, profile.id) ?? findProfile(fresh.catalog, requested);
+	if (!current) {
+		showText(ctx, `Saved loadout not found: ${requested}`);
+		return;
+	}
+	const profiles = fresh.catalog.profiles.filter((entry) => entry.id !== current.id);
+	await writeJson(fresh.paths.userCatalogPath, { ...fresh.catalog, version: 1, profiles });
+	await showSummary(ctx, [`Removed saved loadout: ${current.id}`, "No project files were changed."].join("\n"));
+}
+
 function generatedCacheSources(sources: string[]): string[] {
 	return sources.filter((source) => source.includes("/.pi/agent/npm/") || source.includes("/.pi/agent/git/"));
 }
@@ -619,77 +687,59 @@ function secretLikeSources(sources: string[]): string[] {
 	return sources.filter((source) => /\/\/[^/\s:@]+:[^/\s@]+@/.test(source) || /[?&#](?:token|api[_-]?key|password|secret)=/i.test(source));
 }
 
-function loadoutSnippetText(input: { name: string; sources: string[]; notes?: string[]; warnings?: string[] }): string {
+function loadoutShareSnippetText(input: { name: string; sources: string[]; warnings?: string[] }): string {
 	const snippet = {
 		kind: "construct-loadout",
 		version: 1,
 		name: input.name,
 		sources: input.sources,
 	};
-	const lines = ["Construct loadout snippet", "========================", "Copy this JSON:", "", JSON.stringify(snippet, null, 2)];
-	if (input.notes && input.notes.length > 0) lines.push("", "Notes", "-----", ...input.notes.map((note) => `- ${note}`));
+	const lines = ["Construct loadout share snippet", "===============================", "Copy this JSON:", "", JSON.stringify(snippet, null, 2)];
 	if (input.warnings && input.warnings.length > 0) lines.push("", "Warnings", "--------", ...input.warnings.map((warning) => `! ${warning}`));
 	return lines.join("\n");
 }
 
-async function copyLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
+async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
 	const requested = query.trim();
-	let name: string;
-	let sources: string[];
-	const notes: string[] = [];
-	const warnings: string[] = [];
-
-	if (requested) {
-		const { catalog, warnings: catalogWarnings } = await loadCatalog(ctx);
-		if (catalogWarnings.length > 0) {
-			showText(ctx, ["Construct loadout snippet not created.", ...catalogWarnings.map((warning) => `! ${warning}`)].join("\n"));
-			return;
-		}
-		const profile = findProfile(catalog, requested);
-		if (!profile) {
-			showText(ctx, `Saved loadout not found: ${requested}`);
-			return;
-		}
-		name = profile.name ?? profile.id;
-		sources = uniqueSorted(profileSources(catalog, profile));
-	} else {
-		const paths = await getPaths(ctx);
-		name = profileId(basename(paths.cwd) || "loadout");
-		try {
-			sources = uniqueSorted(await activeManagedPackageSources(paths));
-			const skippedActiveUnloaded = (await activeUnloadedPackageSources(paths)).length;
-			const skippedDisabled = await disabledProjectPackageCount(paths);
-			notes.push("Copied the current active Construct package sources only. Direct project-local resources are not included yet.");
-			if (skippedActiveUnloaded > 0) notes.push(`Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}`);
-			if (skippedDisabled > 0) notes.push(`Skipped disabled package declarations: ${skippedDisabled}`);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			showText(ctx, `Construct loadout snippet not created.\nCould not inspect current active Construct package sources.\n${message}`);
-			return;
-		}
+	if (!requested) {
+		showText(ctx, "Usage: /construct share <saved-name>");
+		return;
 	}
+	const warnings: string[] = [];
+	const { catalog, warnings: catalogWarnings } = await loadCatalog(ctx);
+	if (catalogWarnings.length > 0) {
+		showText(ctx, ["Construct loadout share snippet not created.", ...catalogWarnings.map((warning) => `! ${warning}`)].join("\n"));
+		return;
+	}
+	const profile = findProfile(catalog, requested);
+	if (!profile) {
+		showText(ctx, `Saved loadout not found: ${requested}`);
+		return;
+	}
+	const name = profile.name ?? profile.id;
+	const sources = uniqueSorted(profileSources(catalog, profile));
 
 	if (sources.length === 0) {
-		showText(ctx, requested ? `Saved loadout has no package sources: ${requested}` : "Construct loadout snippet not created. No active Construct package sources found in this project.");
+		showText(ctx, `Saved loadout has no package sources: ${requested}`);
 		return;
 	}
 
 	const secretLike = secretLikeSources(sources);
 	if (secretLike.length > 0) {
-		showText(ctx, ["Construct loadout snippet not created.", "Refusing to print source strings that look like they contain secrets.", ...secretLike.map((source) => `! ${source}`)].join("\n"));
+		showText(ctx, ["Construct loadout share snippet not created.", "Refusing to print source strings that look like they contain secrets.", ...secretLike.map((source) => `! ${source}`)].join("\n"));
 		return;
 	}
 
 	const generatedCache = generatedCacheSources(sources);
 	if (generatedCache.length > 0) {
-		showText(ctx, ["Construct loadout snippet not created.", "Refusing to print generated Pi package cache paths.", ...generatedCache.map((source) => `! ${source}`)].join("\n"));
+		showText(ctx, ["Construct loadout share snippet not created.", "Refusing to print generated Pi package cache paths.", ...generatedCache.map((source) => `! ${source}`)].join("\n"));
 		return;
 	}
 
 	const localPaths = sources.filter(isLocalPathSource);
 	if (localPaths.length > 0) warnings.push(`Local path sources may not work on another machine: ${localPaths.join(", ")}`);
 
-	await showSummary(ctx, loadoutSnippetText({ name, sources, notes, warnings }));
+	await showSummary(ctx, loadoutShareSnippetText({ name, sources, warnings }));
 }
 
 type ParsedLoadoutSnippet = { name: string; sources: string[] };
@@ -793,8 +843,66 @@ async function confirmImportLoadout(ctx: ExtensionCommandContext, snippet: Parse
 	});
 }
 
+async function promptForImportText(ctx: ExtensionCommandContext): Promise<string | undefined> {
+	if (ctx.mode !== "tui") return undefined;
+	return ctx.ui.custom<string | undefined>((tui, theme, keybindings, done) => {
+		let text = "";
+		let cachedWidth: number | undefined;
+		let cachedLines: string[] | undefined;
+		function invalidate(): void {
+			cachedWidth = undefined;
+			cachedLines = undefined;
+		}
+		function render(width: number): string[] {
+			if (cachedLines && cachedWidth === width) return cachedLines;
+			const body = text ? text.split("\n") : [theme.fg("muted", "Paste Construct loadout JSON here.")];
+			const maxVisible = 14;
+			const visible = body.slice(Math.max(0, body.length - maxVisible));
+			const rendered = [theme.fg("accent", theme.bold("Import saved loadout")), "", ...visible, "", theme.fg("muted", "  Paste JSON · Backspace edits · Enter previews · Esc cancels")];
+			cachedWidth = width;
+			cachedLines = rendered.map((line) => truncateToWidth(line, width));
+			return cachedLines;
+		}
+		function handleInput(data: string): void {
+			if (keybindings.matches(data, "tui.select.cancel")) {
+				done(undefined);
+				return;
+			}
+			if (keybindings.matches(data, "tui.select.confirm")) {
+				done(text);
+				return;
+			}
+			if (data === "\u007f" || data === "\b") {
+				text = text.slice(0, -1);
+				invalidate();
+				tui.requestRender();
+				return;
+			}
+			if (data && !data.startsWith("\u001b")) {
+				text += data;
+				invalidate();
+				tui.requestRender();
+			}
+		}
+		return { render, handleInput, invalidate };
+	});
+}
+
 async function importLoadout(ctx: ExtensionCommandContext, raw: string): Promise<void> {
-	const parsed = parseLoadoutSnippet(raw);
+	let importText = raw;
+	if (!importText.trim()) {
+		if (ctx.mode !== "tui") {
+			showText(ctx, "Usage: /construct import <construct-loadout-json>");
+			return;
+		}
+		const pasted = await promptForImportText(ctx);
+		if (pasted === undefined) {
+			showText(ctx, "Construct loadout import cancelled. No files were changed.");
+			return;
+		}
+		importText = pasted;
+	}
+	const parsed = parseLoadoutSnippet(importText);
 	if (!parsed.snippet) {
 		showText(ctx, ["Construct loadout import failed.", ...parsed.errors.map((error) => `! ${error}`), ...parsed.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
@@ -881,7 +989,7 @@ async function listProfiles(ctx: ExtensionCommandContext): Promise<void> {
 
 export async function handleProfile(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { command, rest } = splitArgs(args);
-	if (command === "dashboard" || command === "list" || command === "saved") {
+	if (command === "list") {
 		await listProfiles(ctx);
 		return;
 	}
@@ -889,12 +997,16 @@ export async function handleProfile(pi: ExtensionAPI, args: string, ctx: Extensi
 		await saveProfile(ctx, rest);
 		return;
 	}
-	if (command === "apply" || command === "run" || command === "load") {
+	if (command === "run") {
 		await applyProfile(pi, ctx, rest);
 		return;
 	}
-	if (command === "copy") {
-		await copyLoadout(ctx, rest);
+	if (command === "share") {
+		await shareLoadout(ctx, rest);
+		return;
+	}
+	if (command === "remove") {
+		await removeSavedLoadout(ctx, rest);
 		return;
 	}
 	if (command === "import") {

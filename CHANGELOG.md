@@ -7,10 +7,11 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 ## Unreleased
 
 ### Added
-- Added `/construct save <name>`, `/construct list`, and `/construct run <saved-name>` as the public saved-loadout command language; `/construct saved` remains an alias.
+- Added `/construct save <name>`, `/construct list`, and `/construct run <saved-name>` as the public saved-loadout command language.
+- Added `/construct share <saved-name>` to print a shareable saved-loadout JSON snippet.
+- Added `/construct remove <saved-name>` to delete only a saved loadout recipe.
 - Added saved-loadout rows to the main `/construct` dashboard.
-- Added `/construct copy [saved-name]` to print a shareable saved-loadout JSON snippet.
-- Added `/construct import <json>` to validate and preview saved-loadout snippets, with TUI confirmation before writing.
+- Added `/construct import [json]` to validate and preview saved-loadout snippets, with TUI confirmation before writing and a TUI paste box when no JSON is provided.
 - Added direct project resource inventory to `/construct status full` and `/construct` for trusted project extensions, skills, prompt templates, and themes.
 - Added `/construct load` adoption for direct project resources into `.pi/construct.json` metadata without adding project-local files to the portable Construct library.
 - Added dashboard enable/disable actions for adopted direct project resources using Pi-native top-level `+path` / `-path` filters.
@@ -19,11 +20,11 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 ### Changed
 - Profile save now skips disabled resources and, in TUI, can offer active project resources not loaded into Construct for optional loading/inclusion before saving.
 - Saving over an existing loadout now asks before replacing in TUI and refuses replacement in non-TUI.
-- User-facing docs now prefer saved loadout/saved wording while keeping profile commands as compatibility aliases.
+- User-facing docs now prefer saved loadout/saved wording and keep unreleased profile/saved aliases out of the public command surface.
 - `/construct run <saved-name>` now uses the dashboard-style TUI progress/result/reload panel.
 - Selecting saved loadouts in `/construct` runs them through the same package operation flow as package rows, while avoiding duplicate package operations for repeated sources.
 - Saved loadout dashboard rows now act as recipe/spotlight rows: they show member status counts and mark member package rows with `[·]` without turning disable/remove into saved-loadout group actions.
-- Copy/import output warns for local path sources and refuses generated Pi package cache paths or source strings that look like secrets.
+- Share/import output warns for local path sources and refuses generated Pi package cache paths or source strings that look like secrets.
 - Status/dashboard diagnostics now use Pi's native `DefaultPackageManager.resolve()` / `SettingsManager` resource discovery path for direct project resources instead of custom filesystem rules.
 - Dashboard state language now uses resource-neutral `Active` instead of package-centric `Installed`.
 - Documented and enforced the current split: saved loadouts/share snippets remain package-source-only while direct project-local resources stay project-local metadata/toggle state.
