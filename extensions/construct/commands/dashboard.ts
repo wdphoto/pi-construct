@@ -168,11 +168,12 @@ function dashboardPickerTitle(packages: DashboardPackage[]): string {
 }
 
 function sectionTone(_section: DashboardSection): CheckboxPickerTone {
-	return "muted";
+	return "accent";
 }
 
 function stateTone(section: DashboardSection): CheckboxPickerTone {
-	if (section === "Installed") return "success";
+	if (section === "Installed") return "green";
+	if (section === "Disabled") return "mutedGreen";
 	if (section === "Available") return "warning";
 	return "muted";
 }
@@ -291,8 +292,8 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "Type to narrow by package, source, or state · Backspace edits",
 		stateLegend: [
 			{ icon: "[x]", label: "selected", tone: "muted" },
-			{ icon: "✓", label: "active", tone: "success" },
-			{ icon: "–", label: "disabled", tone: "muted" },
+			{ icon: "✓", label: "active", tone: "green" },
+			{ icon: "–", label: "disabled", tone: "mutedGreen" },
 			{ icon: "+", label: "available", tone: "warning" },
 			{ icon: "◇", label: "unloaded", tone: "muted" },
 		],

@@ -21,7 +21,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Dashboard/profile package operations now distinguish metadata-only failures from no-op failures, so runtime-affecting partial changes still get reload guidance.
 - Re-read project/library/profile state after idle waits in load, unload, profile, and package install flows to reduce stale-snapshot overwrites.
 - Simplified the dashboard TUI title to a quiet `Loadout:` count line with pipe separators.
-- Quieted dashboard section header colors and added a live TUI legend with color-coded state icons.
+- Tuned dashboard TUI colors: headings use accent color, active icons use a clearer green, disabled icons use muted green, available icons stay yellow, and unloaded icons stay gray.
 
 ## 0.0.11 - 2026-06-21
 

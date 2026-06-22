@@ -114,7 +114,7 @@ export async function waitForIdleBeforeConstructWrite(
 	}
 }
 
-export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success";
+export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success" | "green" | "mutedGreen";
 
 export interface CheckboxPickerItem {
 	id: string;
@@ -231,6 +231,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function styleTone(tone: CheckboxPickerTone | undefined, text: string): string {
+			if (tone === "green") return theme.fg("syntaxComment", text);
+			if (tone === "mutedGreen") return theme.fg("syntaxComment", `\x1b[2m${text}\x1b[22m`);
 			return theme.fg(tone ?? "accent", text);
 		}
 
