@@ -231,6 +231,7 @@ Known-project assignment counts currently track package declarations only. That 
 Decision:
 
 - Keep package-only counts for now.
+- Keep known-project counts out of dashboard rows for now; the dashboard stays focused on current-project state/actions, while status/unload can carry broader informational counts.
 - Avoid showing known-project counts on direct-resource rows until the index stores resource refs.
 - `/construct scan` now reports conservative findings and does not expand the known-project index implicitly.
 - `/construct status full` reports missing known-project paths as informational notes, but Construct does not prune the index automatically and does not add a doctor command yet.

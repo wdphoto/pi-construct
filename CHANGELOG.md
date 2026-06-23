@@ -15,6 +15,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Document package toggles as whole-package operations and make dashboard disable confirmation explicit about not preserving partial package filters.
 - Document saved loadouts/share snippets as package-source-only, with direct project resources staying project-local metadata.
 - Show missing known-project paths in `/construct status full` without adding a new cleanup/doctor command or pruning automatically.
+- Document that known-project counts stay out of dashboard rows and remain limited to status/unload contexts.
 
 ## 0.0.18 - 2026-06-23
 

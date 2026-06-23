@@ -73,6 +73,9 @@ Completed as a small no-new-command cleanup pass. The goal was to turn remaining
   - Do not add `/construct doctor` yet.
   - `/construct status full` shows lightweight missing-path notes for known-project entries whose paths no longer exist.
   - Do not prune known-project entries automatically yet.
+- [x] Decide and document known-project dashboard count policy.
+  - Decision: keep known-project counts out of dashboard rows for now.
+  - Counts remain informational in status/unload contexts only; the index is package-only and not full filesystem usage.
 
 ## Later
 

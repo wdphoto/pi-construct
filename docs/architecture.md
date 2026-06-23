@@ -46,6 +46,7 @@ The current implementation inventories and toggles packages plus direct project 
    - User-local file: `~/.pi/agent/construct/projects.json`.
    - Tracks projects Construct has touched and their package declarations.
    - Counts are informational only and should be labeled as “known projects,” not full filesystem usage.
+   - Counts stay in status/unload contexts and out of dashboard rows for now.
    - `/construct status full` can report entries whose saved paths are missing, but Construct does not prune the index automatically.
 
 6. **Project metadata layer**
