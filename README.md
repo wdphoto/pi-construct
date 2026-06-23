@@ -4,7 +4,7 @@
 
 The Construct is a global extension for [Pi](https://pi.dev) that manages project-level resources.
 
-Fire up `/construct`, tap your **spacebar** to select a resource, then hit **Enter** to install it or deactivate it. I did my best to make setting up a new project as fast as possible.
+Run `/construct`, tap your **spacebar** to select a resource, then hit **Enter** to install it. **The end.**
 
 ## Loadout menu
 
