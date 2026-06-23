@@ -62,7 +62,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 - Saved loadouts and shared snippets are package-source data for now, not executable scripts.
 - Project-local direct resources are not saved/shared or portable to other projects in the current product model; they require a future explicit copy/export/package flow before becoming portable.
 - Package enable/disable is whole-package only for unfiltered or whole-package-disabled declarations for now. Construct does not snapshot partial Pi package filters and refuses to replace already-partial filters with whole-package toggles.
-- Package-contained resource picking writes native Pi package filters. For Available packages, this is an explicit install-with-filters dashboard action: inspect remembered source resources, install project-local after confirmation, then disable unselected package-contained resources with Pi filters.
+- Package-contained resource picking writes native Pi package filters. For Available packages, this is an explicit install-with-filters dashboard action: lazily inspect remembered source resources after unfold, install project-local after confirmation, then disable unselected package-contained resources with Pi filters.
 - Construct does not write secrets, tokens, API keys, or auth material.
 
 ## Active command surface

@@ -116,7 +116,7 @@ Check in real TUI usage:
 - Space selects package/direct rows, and on a Loadouts row quick-selects its selectable recipe item rows;
 - focusing Loadouts rows marks recipe item rows with `[·]` without directly selecting them;
 - Enter on a focused Loadouts row runs it additively; Enter on selected package/direct rows installs Available, disables Active, and enables Disabled rows;
-- Right Arrow unfolds Active/Disabled package resources and Available package resources when Pi can resolve them; Available child selections install project-local with native filters, while Active/Disabled child selections only update filters;
+- Right Arrow unfolds Active/Disabled package resources and lazily inspects Available package resources when Pi can resolve them; Available child selections start unchecked and install project-local with native filters, while Active/Disabled child selections only update filters;
 - running Loadouts rows is additive/activating only and does not disable/remove active recipe items;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
 - `r` shows a warning, then removes selected Active or Disabled package declarations; Loadouts rows themselves do not remove recipe items, and package-contained child rows are filtered rather than removed;

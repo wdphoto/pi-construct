@@ -197,6 +197,7 @@ export interface CheckboxPickerOptions {
 	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction, changedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
 	inspectKey?: string;
+	loadChildren?: (focusedItem: CheckboxPickerItem) => Promise<CheckboxPickerItem[]>;
 	onSubmit?: (
 		selectedIds: string[],
 		update: (title: string, lines: string[]) => void,
@@ -228,9 +229,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		const changed = new Set<string>();
 		let query = "";
 		let selected = 0;
-		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "done" = "pick";
+		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "loading" | "done" = "pick";
 		const expanded = new Set(items.filter((item) => item.expandedByDefault).map((item) => item.id));
-		const itemById = new Map(items.map((item) => [item.id, item]));
+		let itemById = new Map(items.map((item) => [item.id, item]));
 		const hasTreeItems = items.some((item) => item.expandable || item.parentId);
 		let submittedIds: string[] | undefined;
 		let submittedChangedIds: string[] = [];
@@ -247,6 +248,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let applyScroll = 0;
 		let applyStartedAt = Date.now();
 		let submitAbort: AbortController | undefined;
+		let loadingToken = 0;
 		let spinnerTick = 0;
 		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 		const animationTimer = setInterval(() => {
@@ -356,7 +358,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				else lines.push(line);
 			}
 			if (window.rangeLabel) lines.push("", theme.fg("muted", `  ${window.rangeLabel}`));
-			lines.push("", phase === "applying" ? theme.fg("muted", "  Applying package changes…") : theme.fg("accent", `  ${applyConfirmHint}`));
+			lines.push(
+				"",
+				phase === "applying"
+					? theme.fg("muted", "  Applying package changes…")
+					: phase === "loading"
+						? theme.fg("muted", "  Inspecting package resources…")
+						: theme.fg("accent", `  ${applyConfirmHint}`),
+			);
 			return truncateLines(lines, width);
 		}
 
@@ -492,6 +501,64 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			startConfirmation("remove", confirmation, ids);
 		}
 
+		function refreshItemIndex(): void {
+			itemById = new Map(items.map((item) => [item.id, item]));
+		}
+
+		function startLoadChildren(item: CheckboxPickerItem): void {
+			if (!options.loadChildren) return;
+			const token = ++loadingToken;
+			phase = "loading";
+			applyStartedAt = Date.now();
+			spinnerTick = 0;
+			setApplyState(`Inspecting ${item.label}`, [
+				"Resolving package-contained resources with Pi.",
+				"For Available packages, this may clone/cache package sources before showing child rows.",
+				"Press Esc to return to the dashboard; already-started Pi resolution may still finish in the background.",
+			]);
+			void (async () => {
+				try {
+					const children = await options.loadChildren!(item);
+					if (token !== loadingToken) return;
+					const existingIds = new Set(items.map((candidate) => candidate.id));
+					const newChildren = children.filter((child) => !existingIds.has(child.id));
+					if (newChildren.length > 0) {
+						const parentIndex = items.findIndex((candidate) => candidate.id === item.id);
+						items.splice(parentIndex >= 0 ? parentIndex + 1 : items.length, 0, ...newChildren);
+						for (const child of newChildren) {
+							if (child.checked) checked.add(child.id);
+						}
+						refreshItemIndex();
+						expanded.add(item.id);
+						const visibleIndex = filteredItems().findIndex((candidate) => candidate.id === item.id);
+						selected = Math.max(0, visibleIndex);
+						phase = "pick";
+						invalidate();
+						tui.requestRender();
+						return;
+					}
+					confirmationTitle = `Package resources: ${item.label}`;
+					confirmationLines = ["No package-contained resources resolved for this package."];
+					confirmationHint = "Press Enter/Esc to return";
+					confirmationTone = "accent";
+					confirmationScroll = 0;
+					phase = "inspect";
+					invalidate();
+					tui.requestRender();
+				} catch (error) {
+					if (token !== loadingToken) return;
+					confirmationTitle = `Could not inspect ${item.label}`;
+					confirmationLines = [`! ${error instanceof Error ? error.message : String(error)}`];
+					confirmationHint = "Press Enter/Esc to return";
+					confirmationTone = "warning";
+					confirmationScroll = 0;
+					phase = "inspect";
+					invalidate();
+					tui.requestRender();
+				}
+			})();
+		}
+
 		function startSubmit(action: CheckboxPickerSubmitAction, idsOverride?: string[]): void {
 			submittedIds = idsOverride ?? selectedIds();
 			submittedChangedIds = [...changed];
@@ -522,6 +589,15 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function handleInput(data: string): void {
 			if (phase !== "pick") {
+				if (phase === "loading") {
+					if (keybindings.matches(data, "tui.select.cancel")) {
+						loadingToken += 1;
+						phase = "pick";
+						invalidate();
+						tui.requestRender();
+					}
+					return;
+				}
 				if (phase === "confirmSubmit" || phase === "inspect") {
 					if (keybindings.matches(data, "tui.select.up")) {
 						confirmationScroll = Math.max(0, confirmationScroll - 1);
@@ -596,6 +672,11 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (keybindings.matches(data, "tui.editor.cursorRight") || matchesKey(data, Key.right)) {
 				const item = selectedItem();
 				if (item?.expandable && !expanded.has(item.id)) {
+					const hasLoadedChildren = items.some((candidate) => candidate.parentId === item.id);
+					if (!hasLoadedChildren && options.loadChildren) {
+						startLoadChildren(item);
+						return;
+					}
 					expanded.add(item.id);
 					invalidate();
 					tui.requestRender();
