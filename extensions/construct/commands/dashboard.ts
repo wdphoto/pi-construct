@@ -595,8 +595,13 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 				description: entrypointNote ? `${entrypointNote}\n${actionDescription}` : actionDescription,
 				checked: available ? false : resource.enabled,
 				disabled: !editable,
-				stateText: available ? "+" : resource.enabled ? "✓" : "–",
-				stateTone: available ? "warning" : resource.enabled ? "success" : "muted",
+				stateText: available ? "+" : undefined,
+				stateTone: available ? "warning" : undefined,
+				checkedStateText: available ? undefined : "✓",
+				uncheckedStateText: available ? undefined : "–",
+				checkedStateTone: available ? undefined : "success",
+				uncheckedStateTone: available ? undefined : "muted",
+				hideSelectionMarker: !available,
 				marker: editable ? undefined : "   ",
 			});
 		}

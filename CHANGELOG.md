@@ -8,6 +8,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ### Changed
 - Skip whole-package enable/disable actions for selected package rows that already have partial Pi filters, showing a guided no-op instead of running into the package-filter guard.
+- Show package child-resource target state with the row state icon instead of preselecting enabled children with `[x]` markers.
 
 ## 0.0.21 - 2026-06-23
 
