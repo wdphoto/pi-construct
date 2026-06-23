@@ -324,7 +324,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → unfolds known package resources · ← folds · i details/inspects Available · r removes selected from project · Esc cancels.",
+		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → inspects/unfolds package resources · ← folds · i details · r removes selected from project · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing),
 	);
@@ -673,7 +673,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package · ← fold · i details/inspect Available · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → inspect/unfold package · ← fold · i details · r remove · Esc cancel\n  ? inspectable · [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);

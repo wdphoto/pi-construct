@@ -66,7 +66,7 @@ Unloaded
 
 ✓ active · – disabled · + available · ◇ unloaded
 
-Space selects · Enter applies/runs · → unfolds known package resources · ← folds · i details/inspects Available · r removes · Esc cancels
+Space selects · Enter applies/runs · → inspects/unfolds package resources · ← folds · i details · r removes · Esc cancels
 ```
 
 In the live TUI, the dashboard title includes the package/version string, followed by a quiet count line. Row content is color-coded by state: saved/loadout and active use the heading accent, disabled is muted, available is yellow, and unloaded/read-only is gray. The cursor and checkbox markers stay plain; the focused row content is bold.
@@ -85,7 +85,7 @@ Use `/construct load` to adopt unloaded package declarations into Construct. Dir
 
 Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections.
 
-On an installed package row with multiple Pi-resolved resources, Right Arrow unfolds package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. For `Available` packages, press `i` to inspect resources lazily; if Pi finds multiple resources, Construct opens the child picker with selections unchecked, installs the package project-local first, then immediately narrows it to the selected resources. Packages with zero or one resolved resource stay as whole-package rows. No package files are copied, and saved loadout recipes stay package-source-only.
+On an installed package row with multiple Pi-resolved resources, Right Arrow unfolds package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. `Available` package rows use a `?` marker when resources can be inspected; press Right Arrow to inspect lazily. If Pi finds multiple resources, Construct opens the child picker with selections unchecked, installs the package project-local first, then immediately narrows it to the selected resources. Packages with zero or one resolved resource stay as whole-package rows. No package files are copied, and saved loadout recipes stay package-source-only.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 
