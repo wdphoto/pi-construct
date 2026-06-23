@@ -339,8 +339,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	}
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
-		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes selected from project · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected/all resources · [~] mixed package resources · [-] all package resources off · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Space selects · on mixed package rows, selects all resources/restores the original mix · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes selected from project · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -621,7 +621,10 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 		return `${base}\nNo cached package resource list is available yet, so there is no dropdown. Enter installs the whole package.`;
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
-		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.`;
+		if (resourceCount > 1) {
+			const mixedHint = item.filterState === "partially-filtered" ? " Space on [~] selects all contained resources; Space again restores the original mix." : "";
+			return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.${mixedHint}`;
+		}
 		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use i for the exact path.`;
 		return `${base}\nNo package-contained resources resolved for this package.`;
 	}
@@ -650,6 +653,7 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			marker: item.section === "Unloaded" ? "[!]" : undefined,
 			relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
+			aggregateChildIds: item.type === "package" && visibleChildren.length > 0 ? visibleChildren.map((child) => child.id) : undefined,
 			confirmOnFocus: item.type === "saved",
 			expandable: visibleChildren.length > 0,
 		});
@@ -763,7 +767,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  [~] mixed resources · [-] all resources off · [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);

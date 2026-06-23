@@ -175,6 +175,7 @@ export interface CheckboxPickerItem {
 	selectionMarkerMode?: "checked" | "changed";
 	relatedIds?: string[];
 	quickSelectIds?: string[];
+	aggregateChildIds?: string[];
 	confirmOnFocus?: boolean;
 	parentId?: string;
 	depth?: number;
@@ -361,6 +362,48 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled).map((candidate) => candidate.id);
 		}
 
+		function aggregateChildTargets(item: CheckboxPickerItem): string[] {
+			if (!item.aggregateChildIds) return [];
+			const targetIds = new Set(item.aggregateChildIds);
+			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled).map((candidate) => candidate.id);
+		}
+
+		type AggregateState = "none" | "partial" | "all";
+
+		interface AggregateChildState {
+			ids: string[];
+			target: AggregateState;
+			baseline: AggregateState;
+			dirty: boolean;
+		}
+
+		function aggregateStateFor(ids: string[], source: Set<string>): AggregateState {
+			const selectedCount = ids.filter((id) => source.has(id)).length;
+			if (selectedCount === 0) return "none";
+			if (selectedCount === ids.length) return "all";
+			return "partial";
+		}
+
+		function aggregateChildState(item: CheckboxPickerItem): AggregateChildState | undefined {
+			const ids = aggregateChildTargets(item);
+			if (ids.length === 0) return undefined;
+			return {
+				ids,
+				target: aggregateStateFor(ids, checked),
+				baseline: aggregateStateFor(ids, initiallyChecked),
+				dirty: ids.some((id) => changed.has(id)),
+			};
+		}
+
+		function aggregateMarkerFor(item: CheckboxPickerItem): string | undefined {
+			const aggregate = aggregateChildState(item);
+			if (!aggregate) return undefined;
+			if (!aggregate.dirty && aggregate.target !== "partial") return undefined;
+			if (aggregate.target === "all") return "[x]";
+			if (aggregate.target === "partial") return "[~]";
+			return "[-]";
+		}
+
 		function stateTextFor(item: CheckboxPickerItem): string {
 			if (checked.has(item.id) && item.checkedStateText !== undefined) return item.checkedStateText;
 			if (!checked.has(item.id) && item.uncheckedStateText !== undefined) return item.uncheckedStateText;
@@ -378,10 +421,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function selectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
+			const aggregateMarker = aggregateMarkerFor(item);
+			if (aggregateMarker) return aggregateMarker;
 			return markerChecked(item) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
 		}
 
 		function plainSelectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
+			const aggregateMarker = aggregateMarkerFor(item);
+			if (aggregateMarker) return aggregateMarker;
 			return item.marker ?? (markerChecked(item) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
 		}
 
@@ -819,13 +866,26 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (data === " ") {
 				const item = selectedItem();
 				if (item && !item.disabled) {
-					const targetIds = quickSelectTargets(item);
+					const aggregate = aggregateMarkerFor(item) ? aggregateChildState(item) : undefined;
+					const targetIds = aggregate?.ids ?? quickSelectTargets(item);
 					if (targetIds.length > 0) {
-						const allTargetsChecked = targetIds.every((id) => checked.has(id));
-						for (const id of targetIds) {
-							if (allTargetsChecked) checked.delete(id);
-							else checked.add(id);
-							syncChanged(id);
+						if (aggregate && checked.has(item.id)) {
+							checked.delete(item.id);
+							syncChanged(item.id);
+						}
+						if (aggregate?.target === "all" && aggregate.baseline === "partial") {
+							for (const id of targetIds) {
+								if (initiallyChecked.has(id)) checked.add(id);
+								else checked.delete(id);
+								syncChanged(id);
+							}
+						} else {
+							const allTargetsChecked = targetIds.every((id) => checked.has(id));
+							for (const id of targetIds) {
+								if (allTargetsChecked) checked.delete(id);
+								else checked.add(id);
+								syncChanged(id);
+							}
 						}
 					} else if (!item.quickSelectIds) {
 						if (checked.has(item.id)) checked.delete(item.id);

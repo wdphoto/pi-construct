@@ -6,6 +6,14 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.23 - 2026-06-23
+
+### Changed
+- Show package parent rows as `[~]` when their resolved child resources are already mixed by Pi filters, without requiring a manual child toggle first.
+- Make mixed package-row Space behavior reversible: Space selects all child resources, and Space again restores the original mixed baseline when the package started partially filtered.
+- Show `[-]` for package parent rows when a pending child-resource selection turns every visible resource off, making aggregate resource state explicit.
+- Update dashboard legend/footer copy for mixed and all-off package resource markers.
+
 ## 0.0.22 - 2026-06-23
 
 ### Changed
