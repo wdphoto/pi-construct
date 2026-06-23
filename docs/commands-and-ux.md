@@ -24,7 +24,7 @@ User-facing copy should prefer **library** over **catalog** except when naming t
 
 ## `/construct status`
 
-Status is read-only. `/construct status` gives a compact current-project summary, and `/construct status full` gives diagnostics for JSON files, Construct library state, project package/direct-resource inventory, project package-contained resource inventory, native package filter state, and runtime command/tool inventory. Package-contained resources are reported read-only for now as groundwork for a future dashboard inspection/plucking flow. Verbose status may also note known-project entries whose saved paths no longer exist; those notes are informational only and Construct does not prune the known-project index automatically.
+Status is read-only. `/construct status` gives a compact current-project summary, and `/construct status full` gives diagnostics for JSON files, Construct library state, project package/direct-resource inventory, project package-contained resource inventory, native package filter state, and runtime command/tool inventory. Package-contained resources are reported so dashboard package-resource picking can stay Pi-native. Verbose status may also note known-project entries whose saved paths no longer exist; those notes are informational only and Construct does not prune the known-project index automatically.
 
 ## `/construct scan`
 
@@ -137,7 +137,7 @@ Controls:
 - type to search/filter;
 - Space selects rows; on a loadout row, Space selects that recipe's selectable package rows instead of selecting the loadout row itself;
 - row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused loadout recipe, `[!]` means read-only, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
-- Right Arrow on a package row unfolds read-only package-contained resources inline using Pi's native resolver; Left Arrow folds. `i` still opens a detail panel. These views do not write filters yet;
+- Right Arrow on a package row unfolds package-contained resources inline using Pi's native resolver; Left Arrow folds. Space on child rows changes target enabled state, and Enter previews/writes native Pi package filters. `i` still opens a detail panel;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
 - in TUI, use a quiet title with the package/version string and a count line like `1 active | 0 disabled | 3 available | 0 unloaded`;
@@ -146,7 +146,7 @@ Controls:
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the footer short and two-line: controls first, then `[!] read-only · [·] recipe item`;
 - Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for packages this is a whole-package toggle, and for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
-- package disable/enable remains a whole-package toggle for unfiltered or whole-package-disabled packages. Construct now refuses this toggle when a package already has partial Pi package filters, rather than silently clobbering resource-level selections; package-row resource picking is planned as the native Pi-filter path for intentional partial changes;
+- package disable/enable remains a whole-package toggle for unfiltered or whole-package-disabled packages. Construct now refuses this toggle when a package already has partial Pi package filters, rather than silently clobbering resource-level selections; package-row child selection is the native Pi-filter path for intentional partial changes;
 - Enter on a focused saved loadout with no selected rows is activate-only: it installs available package sources and enables disabled package sources, but does not disable/remove active member packages, remove packages outside the recipe, or exact-match the project to the recipe;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;

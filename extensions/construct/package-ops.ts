@@ -12,7 +12,9 @@ import {
 	removeMatchingConstructPackageItems,
 	removeMatchingPackageDeclaration,
 	setDirectResourceEnabled,
+	setMatchingPackageResourceFilters,
 	setMatchingPackageResourcesDisabled,
+	type PackageResourceFilterUpdate,
 } from "./project-settings.js";
 import { rememberKnownProject } from "./projects.js";
 import { isObject } from "./json.js";
@@ -181,6 +183,38 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 		try {
 			const construct = await readJson(paths.projectConstructPath);
 			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, true));
+			await rememberKnownProject({ cwd: paths.cwd });
+		} catch (error) {
+			return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
+}
+
+export async function setPackageResourceFiltersInProject(
+	paths: ConstructPaths,
+	input: { source: string; id?: string; filters: PackageResourceFilterUpdate; selectedCount: number },
+): Promise<DisablePackageResult> {
+	let backupPath: string | undefined;
+	try {
+		const updated = await setMatchingPackageResourceFilters(paths, input.source, input.filters);
+		backupPath = updated.backupPath;
+		if (!updated.updated) {
+			return {
+				ok: false,
+				backupPath,
+				error: updated.settingsMissing ? ".pi/settings.json is missing." : `No matching package declaration found for ${input.source}.`,
+			};
+		}
+	} catch (error) {
+		return { ok: false, backupPath, error: `Construct package resource filter update failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+	}
+
+	if (input.id) {
+		try {
+			const construct = await readJson(paths.projectConstructPath);
+			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, input.selectedCount > 0));
 			await rememberKnownProject({ cwd: paths.cwd });
 		} catch (error) {
 			return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: error instanceof Error ? error.message : String(error) };

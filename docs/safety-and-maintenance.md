@@ -17,7 +17,7 @@
 - **Tool name collisions:** extensions can override built-in tools or each other. Construct should warn clearly in future doctor/status output.
 - **Package duplication:** the same package can exist globally and project-locally. Pi's package identity rules make the project entry win, but users need visibility.
 - **Settings merge surprises:** project settings override/merge with global settings. Construct should show Unloaded/project-declared state clearly.
-- **Resource filters:** package object filters can disable resources in subtle ways. Construct package rows are whole-package toggles only for unfiltered or whole-package-disabled declarations; already-partial package filters must not be silently replaced.
+- **Resource filters:** package object filters can disable resources in subtle ways. Construct package rows are whole-package toggles only for unfiltered or whole-package-disabled declarations; already-partial package filters must not be silently replaced. Resource-level child selections intentionally write native Pi package filters after preview and backup.
 - **Reload lifecycle:** after changing settings, old extension instances continue until reload completes. Treat `ctx.reload()` as terminal for the command handler.
 - **Trust boundary confusion:** project trust is Pi's responsibility and is not a sandbox.
 - **Non-interactive mode:** print/json modes cannot prompt. Keep them read-only or explicit.

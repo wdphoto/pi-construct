@@ -79,17 +79,16 @@ Status: complete enough for the next read-only dashboard drill-down.
    - If a package has partial filters, Construct now refuses the whole-package toggle rather than silently replacing them.
    - The future package resource picker is the route for intentional resource-level changes.
 
-## Stage 2 — read-only dashboard drill-down
+## Stage 2 — dashboard drill-down
 
-Status: implemented as a read-only inline unfold plus `i` detail inspection on package rows.
+Status: implemented as inline unfold plus `i` detail inspection on package rows.
 
 Key model:
 
 - focused package row + Right Arrow unfolds package resources inline;
 - focused package row or child + Left Arrow folds;
 - focused package row + `i` opens package resource details;
-- Enter/Esc returns from detail panel to dashboard;
-- no filter changes yet.
+- Enter/Esc returns from detail panel to dashboard.
 
 Panel content:
 
@@ -97,38 +96,39 @@ Panel content:
 - grouped resources: Extensions, Skills, Prompts, Themes;
 - enabled/disabled markers from Pi resolver;
 - package-relative paths;
-- read-only note that future picking writes Pi filters in `.pi/settings.json`.
-
-This validates navigation, grouping, and row-to-resource mapping before settings edits.
+- package filter write note for details.
 
 ## Stage 3 — write-enabled package picker
 
-Turn the drill-down into a picker.
+Status: first implementation landed in the dashboard inline scaffold.
 
 Flow:
 
 1. User focuses a package row.
-2. Opens package resource picker.
-3. Selects exact resources to keep enabled.
+2. Presses Right Arrow to unfold package resources.
+3. Uses Space on child rows to choose exact target resources to keep enabled.
 4. Construct previews changes:
    - package source;
    - enabled counts by type;
    - disabled counts by type;
-   - backup path note;
+   - backup note;
    - reload needed note.
 5. On confirm:
    - backup `.pi/settings.json`;
    - re-read settings;
    - write object-form package filters using exact package-relative paths;
    - preserve unrelated package declaration fields;
-   - leave `.pi/construct.json` package-level metadata unchanged except maybe timestamp if needed;
+   - preserve unrelated package declaration fields;
+   - update package-level Construct metadata only to keep the advisory enabled flag aligned when all resources are disabled or some are enabled;
    - show progress/result/reload flow.
 
 Filter encoding:
 
 - selected resources use plain exact relative paths, e.g. `skills/foo/SKILL.md`;
 - empty arrays disable all resources of that kind;
-- omitted keys mean package defaults, but the picker will probably write all four keys for explicit selected-state clarity.
+- omitted keys mean package defaults;
+- when all currently visible resources of a kind are selected, Construct clears that key back to Pi defaults;
+- when no resources are selected for a package, Construct writes all four keys as empty arrays so the package is whole-package disabled.
 
 Important Pi detail:
 
@@ -160,7 +160,7 @@ Coverage targets:
 
 ## Open questions
 
-- Dashboard key: `i`, right arrow, Enter-on-package with submenu, or another TUI-native pattern?
+- Should the dashboard show a clearer dirty/target marker for child rows after Space changes a resource target?
 - Should partially filtered packages get their own dashboard row copy/state, or just a description badge?
 - Should picker write all four resource filter arrays or only arrays touched by the user?
 - Should `r` remove remain package-level only from the dashboard, with resource-level remove unavailable?

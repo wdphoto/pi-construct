@@ -88,7 +88,7 @@ Plan: `docs/package-resource-picker-plan.md`. Research: `docs/package-resource-p
 - [x] Add package filter reader/planner module and smoke coverage.
 - [x] Recalibrate whole-package toggles so partial filters are not silently clobbered.
 - [x] Add read-only dashboard package-row drill-down.
-- [ ] Add write-enabled package resource picker that writes Pi package filters after confirmation.
+- [x] Add write-enabled package resource picker that writes Pi package filters after confirmation.
 - [ ] Defer saved-loadout filter recipes until there is explicit product demand.
 
 ## Later

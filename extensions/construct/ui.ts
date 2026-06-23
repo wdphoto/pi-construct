@@ -194,7 +194,7 @@ export interface CheckboxPickerOptions {
 		remove?: boolean;
 	};
 	removeConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
-	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction) => CheckboxPickerConfirmation | undefined;
+	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction, changedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
 	inspectKey?: string;
 	onSubmit?: (
@@ -202,6 +202,7 @@ export interface CheckboxPickerOptions {
 		update: (title: string, lines: string[]) => void,
 		signal: AbortSignal,
 		action: CheckboxPickerSubmitAction,
+		changedIds: string[],
 	) => Promise<CheckboxPickerApplyResult>;
 }
 
@@ -224,6 +225,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 	return ctx.ui.custom<CheckboxPickerResult | undefined>((tui, theme, keybindings, done) => {
 		const checked = new Set(options.initialSelection === "empty" ? [] : items.filter((item) => item.checked).map((item) => item.id));
+		const changed = new Set<string>();
 		let query = "";
 		let selected = 0;
 		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "done" = "pick";
@@ -231,6 +233,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		const itemById = new Map(items.map((item) => [item.id, item]));
 		const hasTreeItems = items.some((item) => item.expandable || item.parentId);
 		let submittedIds: string[] | undefined;
+		let submittedChangedIds: string[] = [];
 		let confirmationAction: CheckboxPickerSubmitAction = "remove";
 		let confirmationTitle = "Remove from this project?";
 		let confirmationLines: string[] = [];
@@ -456,6 +459,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function startConfirmation(action: CheckboxPickerSubmitAction, confirmation: CheckboxPickerConfirmation, ids: string[]): void {
 			submittedIds = ids;
+			submittedChangedIds = [...changed];
 			confirmationAction = action;
 			confirmationTitle = confirmation.title;
 			confirmationLines = confirmation.lines;
@@ -480,7 +484,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function startRemove(): void {
 			const ids = selectedIds();
-			const confirmation = options.removeConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "remove");
+			const confirmation = options.removeConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "remove", [...changed]);
 			if (!confirmation) {
 				startSubmit("remove", ids);
 				return;
@@ -490,6 +494,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function startSubmit(action: CheckboxPickerSubmitAction, idsOverride?: string[]): void {
 			submittedIds = idsOverride ?? selectedIds();
+			submittedChangedIds = [...changed];
 			if (!options.onSubmit) {
 				close({ selectedIds: submittedIds, submitAction: action });
 				return;
@@ -502,7 +507,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			setApplyState("Applying Construct changes", ["Preparing changes…"]);
 			void (async () => {
 				try {
-					const result = await options.onSubmit!(submittedIds ?? [], setApplyState, abort.signal, action);
+					const result = await options.onSubmit!(submittedIds ?? [], setApplyState, abort.signal, action, submittedChangedIds);
 					phase = "done";
 					applyConfirmHint = result.confirmHint ?? "Press Enter/Esc to return to session";
 					applyConfirmAction = result.confirmAction;
@@ -634,10 +639,12 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						for (const id of targetIds) {
 							if (allTargetsChecked) checked.delete(id);
 							else checked.add(id);
+							changed.add(id);
 						}
 					} else if (!item.quickSelectIds) {
 						if (checked.has(item.id)) checked.delete(item.id);
 						else checked.add(item.id);
+						changed.add(item.id);
 					}
 				}
 				invalidate();
@@ -647,7 +654,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (keybindings.matches(data, "tui.select.confirm")) {
 				const item = selectedItem();
 				const ids = checked.size === 0 && item?.confirmOnFocus && !item.disabled ? [item.id] : selectedIds();
-				const confirmation = options.submitConfirmation?.(ids, "confirm");
+				const confirmation = options.submitConfirmation?.(ids, "confirm", [...changed]);
 				if (confirmation) startConfirmation("confirm", confirmation, ids);
 				else startSubmit("confirm", ids);
 				return;

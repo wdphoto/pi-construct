@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, DirectResourceSummary } from "../types.js";
+import type { ConstructPaths, DirectResourceKind, DirectResourceSummary } from "../types.js";
 import { deriveId } from "../catalog.js";
 import { collectProjectPackageResources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory } from "../project-inventory.js";
@@ -7,6 +7,8 @@ import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { formatPackageSourceLabel } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
+import { packageResourceFilterKeys, type PackageResourceFilterKey } from "../package-filters.js";
+import { setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 
@@ -447,6 +449,21 @@ function resourcesForPackage(item: DashboardPackage, packageResources: PackageRe
 	return packageResources?.resources.filter((resource) => resourceMatchesPackage(resource, item)) ?? [];
 }
 
+const packageFilterKeyForKind: Record<DirectResourceKind, PackageResourceFilterKey> = {
+	extension: "extensions",
+	skill: "skills",
+	prompt: "prompts",
+	theme: "themes",
+};
+
+function packageResourceChildRowId(item: DashboardPackage, resource: PackageResourceSummary): string {
+	return rowId("package-resource", item.rowId, resource.kind, resource.packageRelativePath);
+}
+
+function resourceLabel(resource: PackageResourceSummary): string {
+	return `${resourcePlural(resource.kind).slice(0, -1)} ${resource.name}`;
+}
+
 function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
 	if (!packageResources) {
 		return {
@@ -487,18 +504,19 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 	for (const kind of directResourceKinds) {
 		const kindResources = resources.filter((resource) => resource.kind === kind);
 		for (const resource of kindResources) {
+			const editable = item.section === "Active" || item.section === "Disabled";
 			children.push({
-				id: rowId("package-resource", item.rowId, resource.kind, resource.packageRelativePath),
+				id: packageResourceChildRowId(item, resource),
 				parentId: item.rowId,
 				depth: 1,
-				label: `${resourcePlural(resource.kind).slice(0, -1)} ${resource.name}`,
+				label: resourceLabel(resource),
 				value: resource.packageRelativePath,
-				description: "Package-contained resource. Read-only here until package resource picking lands.",
-				checked: false,
-				disabled: true,
+				description: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.",
+				checked: resource.enabled,
+				disabled: !editable,
 				stateText: resource.enabled ? "✓" : "–",
 				stateTone: resource.enabled ? "success" : "muted",
-				marker: "   ",
+				marker: editable ? undefined : "   ",
 			});
 		}
 	}
@@ -533,6 +551,82 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 	return items;
 }
 
+interface PackageResourceFilterPlan {
+	item: DashboardPackage;
+	resources: PackageResourceSummary[];
+	selectedPaths: Set<string>;
+	filters: Partial<Record<PackageResourceFilterKey, string[] | null>>;
+	selectedCount: number;
+}
+
+function packageResourceFilterPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, selectedIds: string[], changedIds: string[]): PackageResourceFilterPlan[] {
+	if (!packageResources || changedIds.length === 0) return [];
+	const selected = new Set(selectedIds);
+	const changed = new Set(changedIds);
+	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled"));
+	const changedPackages = new Set<string>();
+	for (const item of packageItems) {
+		for (const resource of resourcesForPackage(item, packageResources)) {
+			if (changed.has(packageResourceChildRowId(item, resource))) changedPackages.add(item.rowId);
+		}
+	}
+
+	const plans: PackageResourceFilterPlan[] = [];
+	for (const item of packageItems) {
+		if (!changedPackages.has(item.rowId)) continue;
+		const resources = resourcesForPackage(item, packageResources);
+		if (resources.length === 0) continue;
+		const selectedPaths = new Set<string>();
+		for (const resource of resources) {
+			if (selected.has(packageResourceChildRowId(item, resource))) selectedPaths.add(resource.packageRelativePath);
+		}
+		const filters: Partial<Record<PackageResourceFilterKey, string[] | null>> = {};
+		if (selectedPaths.size === 0) {
+			for (const key of packageResourceFilterKeys) filters[key] = [];
+		} else {
+			for (const kind of directResourceKinds) {
+				const kindResources = resources.filter((resource) => resource.kind === kind);
+				if (kindResources.length === 0) continue;
+				const selectedKindPaths = kindResources.filter((resource) => selectedPaths.has(resource.packageRelativePath)).map((resource) => resource.packageRelativePath).sort();
+				filters[packageFilterKeyForKind[kind]] = selectedKindPaths.length === kindResources.length ? null : selectedKindPaths;
+			}
+		}
+		plans.push({ item, resources, selectedPaths, filters, selectedCount: selectedPaths.size });
+	}
+	return plans;
+}
+
+function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): CheckboxPickerConfirmation | undefined {
+	if (plans.length === 0) return undefined;
+	const lines = [
+		`This will update native Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`,
+		"It edits this project's .pi/settings.json after creating a backup.",
+		"No package files are copied and no saved loadout recipe is changed.",
+		"Package row selections are ignored while resource-level changes are pending.",
+		"",
+	];
+	for (const plan of plans.slice(0, 6)) {
+		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`);
+		for (const kind of directResourceKinds) {
+			const kindResources = plan.resources.filter((resource) => resource.kind === kind);
+			if (kindResources.length === 0) continue;
+			const selectedCount = kindResources.filter((resource) => plan.selectedPaths.has(resource.packageRelativePath)).length;
+			lines.push(`  ${resourcePlural(kind)}: ${selectedCount}/${kindResources.length}`);
+		}
+	}
+	if (plans.length > 6) lines.push(`…and ${plans.length - 6} more`);
+	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
+}
+
+function packageResourceProgressLines(plans: PackageResourceFilterPlan[], complete = 0, failures: string[] = []): string[] {
+	return [
+		`${complete}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} complete`,
+		"",
+		...plans.map((plan, index) => `${index < complete ? "✓" : " "} Filter ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} resources`),
+		...failures.map((failure) => `! ${failure}`),
+	];
+}
+
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
@@ -542,7 +636,6 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 
 	const pickerItems = dashboardPickerItems(packages, packageResources);
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
-		initialSelection: "empty",
 		titleBold: false,
 		subtitle: dashboardPickerSubtitle(packages, projectMetadataMissing),
 		confirmHint: "Enter applies/runs",
@@ -550,19 +643,54 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select · Enter apply/run · → unfold package · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold package · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, packageResources) : undefined;
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
-		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),
-		onSubmit: async (ids, update, signal, submitAction) => {
+		submitConfirmation: (ids, action, changedIds) => {
+			if (action !== "confirm") return undefined;
+			return packageResourceFilterConfirmation(packageResourceFilterPlans(packages, packageResources, ids, changedIds)) ?? disableConfirmationFor(packages, ids);
+		},
+		onSubmit: async (ids, update, signal, submitAction, changedIds) => {
 			const selected = new Set(ids);
 			const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
 			const directItems = packages.filter((item): item is DashboardDirectResource => item.type === "direct");
 			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.rowId)) : [];
+			const resourcePlans = submitAction === "confirm" ? packageResourceFilterPlans(packages, packageResources, ids, changedIds) : [];
+			if (resourcePlans.length > 0) {
+				const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Package Resources", update, signal);
+				if (!ready) return { title: "Package resource update cancelled", lines: ["No files were changed."] };
+
+				const failures: string[] = [];
+				let complete = 0;
+				let needsReload = false;
+				update("Applying package resource filters", packageResourceProgressLines(resourcePlans));
+				for (const plan of resourcePlans) {
+					if (signal.aborted) break;
+					const result = await setPackageResourceFiltersInProject(paths, { source: plan.item.source, id: plan.item.managed ? plan.item.id : undefined, filters: plan.filters, selectedCount: plan.selectedCount });
+					if (result.needsReload) needsReload = true;
+					if (!result.ok) failures.push(`${plan.item.label}: ${result.error ?? "unknown error"}`);
+					complete += 1;
+					update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures));
+				}
+				const changed = resourcePlans.length - failures.length;
+				return {
+					title: signal.aborted ? (changed > 0 ? "Package resource update cancelled after partial changes" : "Package resource update cancelled") : failures.length > 0 ? "Package resource filters applied with errors" : "Package resource filters applied",
+					confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+					confirmAction: needsReload ? "reload" : undefined,
+					lines: [
+						signal.aborted ? "Cancelled before remaining changes." : undefined,
+						changed > 0 ? `Updated package filters: ${changed}` : undefined,
+						...resourcePlans.filter((plan) => !failures.some((failure) => failure.startsWith(`${plan.item.label}:`))).map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						failures.length > 0 ? `Failures: ${failures.length}` : undefined,
+						...failures.map((failure) => `! ${failure}`),
+						needsReload ? "Reload Pi to use the updated package resource filters." : undefined,
+					].filter((line): line is string => line !== undefined),
+				};
+			}
 			const steps: DashboardStep[] = [];
 			const scheduled = new Set<string>();
 			function addStep(action: DashboardAction, item: DashboardOperationItem): void {

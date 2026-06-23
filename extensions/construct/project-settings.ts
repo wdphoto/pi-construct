@@ -334,6 +334,20 @@ function packageEntryWithEnabledResources(entry: unknown, source: string): unkno
 	return keys.length === 1 && next.source === source ? source : next;
 }
 
+export type PackageResourceFilterUpdate = Partial<Record<(typeof packageResourceFilterKeys)[number], string[] | null>>;
+
+function packageEntryWithResourceFilters(entry: unknown, source: string, filters: PackageResourceFilterUpdate): unknown {
+	const next: JsonObject = isObject(entry) ? { ...entry, source } : { source };
+	for (const key of packageResourceFilterKeys) {
+		if (!Object.prototype.hasOwnProperty.call(filters, key)) continue;
+		const value = filters[key];
+		if (value === null) delete next[key];
+		else next[key] = [...new Set(value ?? [])].sort();
+	}
+	const keys = Object.keys(next);
+	return keys.length === 1 && next.source === source ? source : next;
+}
+
 export async function setMatchingPackageResourcesDisabled(
 	paths: ConstructPaths,
 	source: string,
@@ -365,6 +379,38 @@ export async function setMatchingPackageResourcesDisabled(
 	settings.packages = nextPackages;
 	await writeJson(paths.projectSettingsPath, settings);
 	return { updated: true, backupPath, settingsMissing: false };
+}
+
+export async function setMatchingPackageResourceFilters(
+	paths: ConstructPaths,
+	source: string,
+	filters: PackageResourceFilterUpdate,
+	options: { backupPath?: string } = {},
+): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean; matchedSource?: string }> {
+	const settingsRead = await readJson(paths.projectSettingsPath);
+	if (settingsRead.state === "missing") return { updated: false, settingsMissing: true };
+
+	const settings = readSettingsObject(settingsRead);
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	const nextPackages = [];
+	let updated = false;
+	let matchedSource: string | undefined;
+	for (const entry of packages) {
+		const rawSource = packageSource(entry);
+		if (!rawSource || !(await targetSourceMatches(paths, source, rawSource))) {
+			nextPackages.push(entry);
+			continue;
+		}
+		updated = true;
+		matchedSource = rawSource;
+		nextPackages.push(packageEntryWithResourceFilters(entry, rawSource, filters));
+	}
+	if (!updated) return { updated: false, settingsMissing: false };
+
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
+	settings.packages = nextPackages;
+	await writeJson(paths.projectSettingsPath, settings);
+	return { updated: true, backupPath, settingsMissing: false, matchedSource };
 }
 
 function directResourceSettingsPath(resource: DirectResourceSummary): string | undefined {
