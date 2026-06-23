@@ -144,6 +144,10 @@ export interface CheckboxPickerItem {
 	relatedIds?: string[];
 	quickSelectIds?: string[];
 	confirmOnFocus?: boolean;
+	parentId?: string;
+	depth?: number;
+	expandable?: boolean;
+	expandedByDefault?: boolean;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -223,6 +227,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let query = "";
 		let selected = 0;
 		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "done" = "pick";
+		const expanded = new Set(items.filter((item) => item.expandedByDefault).map((item) => item.id));
+		const itemById = new Map(items.map((item) => [item.id, item]));
+		const hasTreeItems = items.some((item) => item.expandable || item.parentId);
 		let submittedIds: string[] | undefined;
 		let confirmationAction: CheckboxPickerSubmitAction = "remove";
 		let confirmationTitle = "Remove from this project?";
@@ -261,8 +268,26 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText].filter(Boolean).join(" ");
 		}
 
+		function ancestorsExpanded(item: CheckboxPickerItem): boolean {
+			let parentId = item.parentId;
+			while (parentId) {
+				if (!expanded.has(parentId)) return false;
+				parentId = itemById.get(parentId)?.parentId;
+			}
+			return true;
+		}
+
 		function filteredItems(): CheckboxPickerItem[] {
-			return items.filter((item) => fuzzyMatches(searchableText(item), query));
+			return items.filter((item) => ancestorsExpanded(item) && fuzzyMatches(searchableText(item), query));
+		}
+
+		function displayLabel(item: CheckboxPickerItem): string {
+			return `${"  ".repeat(Math.max(0, item.depth ?? 0))}${item.label}`;
+		}
+
+		function expansionMarker(item: CheckboxPickerItem): string {
+			if (item.expandable) return expanded.has(item.id) ? "▾" : "▸";
+			return item.parentId ? "└" : " ";
 		}
 
 		function renderLegendItem(item: CheckboxPickerLegendItem): string {
@@ -366,7 +391,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const end = Math.min(start + maxVisible, visibleItems.length);
 			const focusedItem = visibleItems[selected];
 			const relatedIds = relatedIdsFor(focusedItem);
-			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
+			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(displayLabel(item)))));
 			const stateTexts = visibleItems.map((item) => item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? ""));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
 			let previousSection: string | undefined;
@@ -379,14 +404,15 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 				const isSelected = index === selected;
 				const cursor = isSelected ? "> " : "  ";
-				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
+				const label = displayLabel(item);
+				const paddedLabel = label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(label)));
 
 				const stateText = item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? "");
 				const isRelated = relatedIds.has(item.id) && !checked.has(item.id) && !item.relatedIds?.includes(item.id);
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
-					const prefix = `${cursor}${selectMarker} `;
+					const prefix = `${cursor}${selectMarker} ${hasTreeItems ? `${expansionMarker(item)} ` : ""}`;
 					if (options.colorRowsByState) {
 						let bodyText = truncateToWidth(`${paddedState}  ${paddedLabel}  ${item.value}`, Math.max(0, width - visibleWidth(prefix)));
 						if (!item.disabled && isSelected && options.highlightFocused !== false) bodyText = theme.bold(bodyText);
@@ -400,7 +426,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 
 				const marker = item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
-				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
+				let line = `${cursor}${marker} ${hasTreeItems ? `${expansionMarker(item)} ` : ""}${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
 				else if (isSelected && options.highlightFocused !== false) line = theme.bold(line);
 				lines.push(truncateToWidth(line, width));
@@ -560,6 +586,26 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				if (visibleCount > 0) selected = selected === visibleCount - 1 ? 0 : selected + 1;
 				invalidate();
 				tui.requestRender();
+				return;
+			}
+			if (keybindings.matches(data, "tui.editor.cursorRight") || data === "\u001b[C") {
+				const item = selectedItem();
+				if (item?.expandable && !expanded.has(item.id)) {
+					expanded.add(item.id);
+					invalidate();
+					tui.requestRender();
+				}
+				return;
+			}
+			if (keybindings.matches(data, "tui.editor.cursorLeft") || data === "\u001b[D") {
+				const item = selectedItem();
+				const collapseId = item?.expandable && expanded.has(item.id) ? item.id : item?.parentId;
+				if (collapseId) {
+					expanded.delete(collapseId);
+					selected = Math.max(0, filteredItems().findIndex((candidate) => candidate.id === collapseId));
+					invalidate();
+					tui.requestRender();
+				}
 				return;
 			}
 			if (options.inspect && data.toLowerCase() === (options.inspectKey ?? "i").toLowerCase()) {

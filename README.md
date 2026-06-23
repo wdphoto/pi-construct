@@ -66,7 +66,7 @@ Unloaded
 
 ✓ active · – disabled · + available · ◇ unloaded
 
-Space selects · Enter applies/runs · i inspects package resources · r removes · Esc cancels
+Space selects · Enter applies/runs · → unfolds package resources · ← folds · i details · r removes · Esc cancels
 ```
 
 In the live TUI, the dashboard title includes the package/version string, followed by a quiet count line. Row content is color-coded by state: saved/loadout and active use the heading accent, disabled is muted, available is yellow, and unloaded/read-only is gray. The cursor and checkbox markers stay plain; the focused row content is bold.
@@ -83,7 +83,7 @@ States:
 
 Use `/construct load` to adopt unloaded package declarations into Construct. Direct project resources (`.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, `.pi/extensions/`) can be adopted into project-local Construct metadata without adding those project-local files to the portable library or saved/share snippets; after adoption, dashboard Enter toggles them with Pi-native resource filters.
 
-Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections. On a package row, `i` opens a read-only Pi-resolved resource inspection panel.
+Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections. On a package row, Right Arrow unfolds read-only Pi-resolved package resources inline; `i` opens the detail panel.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 

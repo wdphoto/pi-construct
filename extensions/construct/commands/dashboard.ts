@@ -322,7 +322,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · i inspects package resources · r removes selected from project · Esc cancels.",
+		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → unfolds package resources · ← folds · i details · r removes selected from project · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing),
 	);
@@ -443,6 +443,10 @@ function resourceMatchesPackage(resource: PackageResourceSummary, item: Dashboar
 	);
 }
 
+function resourcesForPackage(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): PackageResourceSummary[] {
+	return packageResources?.resources.filter((resource) => resourceMatchesPackage(resource, item)) ?? [];
+}
+
 function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
 	if (!packageResources) {
 		return {
@@ -451,7 +455,7 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 			lines: ["Package resources were not collected for this dashboard session."],
 		};
 	}
-	const resources = packageResources.resources.filter((resource) => resourceMatchesPackage(resource, item));
+	const resources = resourcesForPackage(item, packageResources);
 	const lines = [
 		`Package: ${item.label}`,
 		`Source: ${item.source}`,
@@ -476,6 +480,59 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 	return { title: `Package resources: ${item.label}`, confirmHint: "Press Enter/Esc to return", lines };
 }
 
+function packageResourceChildren(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerItem[] {
+	const resources = resourcesForPackage(item, packageResources);
+	if (resources.length === 0) return [];
+	const children: CheckboxPickerItem[] = [];
+	for (const kind of directResourceKinds) {
+		const kindResources = resources.filter((resource) => resource.kind === kind);
+		for (const resource of kindResources) {
+			children.push({
+				id: rowId("package-resource", item.rowId, resource.kind, resource.packageRelativePath),
+				parentId: item.rowId,
+				depth: 1,
+				label: `${resourcePlural(resource.kind).slice(0, -1)} ${resource.name}`,
+				value: resource.packageRelativePath,
+				description: "Package-contained resource. Read-only here until package resource picking lands.",
+				checked: false,
+				disabled: true,
+				stateText: resource.enabled ? "✓" : "–",
+				stateTone: resource.enabled ? "success" : "muted",
+				marker: "   ",
+			});
+		}
+	}
+	return children;
+}
+
+function dashboardPickerItems(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined): CheckboxPickerItem[] {
+	const items: CheckboxPickerItem[] = [];
+	for (const item of packages) {
+		const children = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
+		items.push({
+			id: item.rowId,
+			label: item.label,
+			value: item.type === "package" ? item.displaySource : item.value,
+			description: item.description,
+			section: sectionLabel(item.section),
+			sectionTone: sectionTone(item.section),
+			checked: false,
+			disabled: item.disabled,
+			stateIcon: stateIcon(item.section),
+			stateLabel: stateLabel(item.section),
+			stateText: stateIcon(item.section),
+			stateTone: stateTone(item.section),
+			marker: item.section === "Unloaded" ? "[!]" : undefined,
+			relatedIds: item.type === "saved" ? item.relatedIds : undefined,
+			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
+			confirmOnFocus: item.type === "saved",
+			expandable: children.length > 0,
+		});
+		items.push(...children);
+	}
+	return items;
+}
+
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
@@ -483,24 +540,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		return;
 	}
 
-	const pickerItems: CheckboxPickerItem[] = packages.map((item) => ({
-		id: item.rowId,
-		label: item.label,
-		value: item.type === "package" ? item.displaySource : item.value,
-		description: item.description,
-		section: sectionLabel(item.section),
-		sectionTone: sectionTone(item.section),
-		checked: false,
-		disabled: item.disabled,
-		stateIcon: stateIcon(item.section),
-		stateLabel: stateLabel(item.section),
-		stateText: stateIcon(item.section),
-		stateTone: stateTone(item.section),
-		marker: item.section === "Unloaded" ? "[!]" : undefined,
-		relatedIds: item.type === "saved" ? item.relatedIds : undefined,
-		quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
-		confirmOnFocus: item.type === "saved",
-	}));
+	const pickerItems = dashboardPickerItems(packages, packageResources);
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
@@ -510,7 +550,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select · Enter apply/run · i inspect package · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select · Enter apply/run · → unfold package · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);

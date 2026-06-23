@@ -81,12 +81,14 @@ Status: complete enough for the next read-only dashboard drill-down.
 
 ## Stage 2 — read-only dashboard drill-down
 
-Status: implemented as a read-only `i` inspection panel on package rows.
+Status: implemented as a read-only inline unfold plus `i` detail inspection on package rows.
 
 Key model:
 
-- focused package row + `i` opens package resources;
-- Enter/Esc returns to dashboard;
+- focused package row + Right Arrow unfolds package resources inline;
+- focused package row or child + Left Arrow folds;
+- focused package row + `i` opens package resource details;
+- Enter/Esc returns from detail panel to dashboard;
 - no filter changes yet.
 
 Panel content:
