@@ -64,9 +64,9 @@ See `CHANGELOG.md` for version-by-version detail.
 Completed as a small no-new-command cleanup pass. The goal was to turn remaining product questions into explicit documented decisions, not to add feature surface.
 
 - [x] Decide and document package filter restoration policy.
-  - Decision: keep Construct package toggles whole-package only for now.
+  - Decision: keep Construct package toggles whole-package only for unfiltered or whole-package-disabled declarations for now.
   - Do not snapshot/restore partial Pi package filters yet.
-  - Docs and dashboard confirmation copy are explicit: disabling a package writes empty resource filters; enabling removes those filters; users needing partial package resource selection should use Pi settings directly for now.
+  - Construct refuses whole-package toggles for already-partial package filters instead of silently clobbering native resource-level selections.
 - [x] Decide and document saved-loadout direct-resource policy.
   - Decision: keep saved loadouts/share snippets package-source-only.
   - Direct project-local resources remain project-local Construct metadata only.
@@ -85,8 +85,8 @@ Plan: `docs/package-resource-picker-plan.md`. Research: `docs/package-resource-p
 
 - [x] Research Pi-native package resource plucking through package filters.
 - [x] Add read-only `/construct status full` visibility for project package-contained resources.
-- [ ] Add package filter reader/planner module and tests.
-- [ ] Recalibrate whole-package toggles so partial filters are not silently clobbered.
+- [x] Add package filter reader/planner module and smoke coverage.
+- [x] Recalibrate whole-package toggles so partial filters are not silently clobbered.
 - [ ] Add read-only dashboard package-row drill-down.
 - [ ] Add write-enabled package resource picker that writes Pi package filters after confirmation.
 - [ ] Defer saved-loadout filter recipes until there is explicit product demand.

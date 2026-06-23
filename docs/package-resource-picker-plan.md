@@ -60,7 +60,9 @@ Likely policy:
 
 ## Stage 1 — model and safety groundwork
 
-1. Add a package filter reader/planner module.
+Status: complete enough for the next read-only dashboard drill-down.
+
+1. Add a package filter reader/planner module. ✅
    - Parse package declaration object filters.
    - Classify package filter state:
      - unfiltered/all-default;
@@ -69,13 +71,13 @@ Likely policy:
      - invalid/unknown.
    - Keep planner pure and testable.
 
-2. Update inventory vocabulary.
+2. Update inventory vocabulary. ✅
    - Preserve existing active/disabled/available/unloaded dashboard sections for now.
    - Add internal package filter detail so dashboard copy can warn when a package is partially filtered.
 
-3. Protect existing toggles.
-   - If a package has partial filters, disabling/enabling should require explicit copy that says filters will be replaced, or should route to the resource picker instead.
-   - Do not silently clear partial filters.
+3. Protect existing toggles. ✅
+   - If a package has partial filters, Construct now refuses the whole-package toggle rather than silently replacing them.
+   - The future package resource picker is the route for intentional resource-level changes.
 
 ## Stage 2 — read-only dashboard drill-down
 

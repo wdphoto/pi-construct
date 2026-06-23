@@ -85,6 +85,8 @@ export interface PackageDeclarationSummary {
 	form: "string" | "object" | "invalid";
 	enabled: boolean;
 	disabledByFilters?: boolean;
+	filterState: "unfiltered" | "whole-package-disabled" | "partially-filtered" | "invalid";
+	filterDescription: string;
 }
 
 export interface ManagedItemSummary {

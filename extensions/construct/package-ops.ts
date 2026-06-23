@@ -129,7 +129,17 @@ export async function disablePackageResourcesInProject(paths: ConstructPaths, in
 	try {
 		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, true);
 		backupPath = updated.backupPath;
-		if (!updated.updated) return { ok: false, backupPath, error: updated.settingsMissing ? ".pi/settings.json is missing." : `No matching package declaration found for ${input.source}.` };
+		if (!updated.updated) {
+			return {
+				ok: false,
+				backupPath,
+				error: updated.blockedByPartialFilters
+					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not replace them with whole-package disable filters; use package resource picking instead.`
+					: updated.settingsMissing
+						? ".pi/settings.json is missing."
+						: `No matching package declaration found for ${input.source}.`,
+			};
+		}
 	} catch (error) {
 		return { ok: false, backupPath, error: `Construct disable failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
 	}
@@ -152,7 +162,17 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 	try {
 		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, false);
 		backupPath = updated.backupPath;
-		if (!updated.updated) return { ok: false, backupPath, error: updated.settingsMissing ? ".pi/settings.json is missing." : `No matching package declaration found for ${input.source}.` };
+		if (!updated.updated) {
+			return {
+				ok: false,
+				backupPath,
+				error: updated.blockedByPartialFilters
+					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not clear them with whole-package enable; use package resource picking instead.`
+					: updated.settingsMissing
+						? ".pi/settings.json is missing."
+						: `No matching package declaration found for ${input.source}.`,
+			};
+		}
 	} catch (error) {
 		return { ok: false, backupPath, error: `Construct enable failed during settings edit.\n${error instanceof Error ? error.message : String(error)}` };
 	}

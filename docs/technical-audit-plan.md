@@ -212,7 +212,7 @@ Files: `project-settings.ts`, `docs/architecture.md`, `docs/commands-and-ux.md`
 
 Disabling a package overwrites package resource filters with `[]`; enabling removes those filter keys. This intentionally treats Construct as package-level on/off, but users who had partial filters lose that partial filter shape.
 
-Decision: keep option 1 for now. Package rows are whole-package loadout toggles; disabling writes empty package resource filter arrays and enabling removes those all-empty filter keys. Construct does not snapshot/restore arbitrary prior partial filters. Users who need partial package resource selection should edit Pi settings directly.
+Decision: keep option 1 for now, with a native-filter safety guard. Package rows are whole-package loadout toggles for unfiltered or whole-package-disabled declarations; disabling writes empty package resource filter arrays and enabling removes those all-empty filter keys. Construct does not snapshot/restore arbitrary prior partial filters, and refuses to replace already-partial package filters with whole-package toggles.
 
 Deferred options:
 

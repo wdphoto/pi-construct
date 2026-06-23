@@ -156,6 +156,8 @@ function packageResourceGroupLines(packageResources: PackageResourceInventory | 
 async function packageDeclarationLine(pkg: ProjectInventory["packageDeclarations"][number], settingsDir: string): Promise<string> {
 	const details: string[] = [pkg.form];
 	if (pkg.disabledByFilters) details.push("disabled by filters");
+	else if (pkg.filterState === "partially-filtered") details.push(pkg.filterDescription);
+	else if (pkg.filterState === "invalid") details.push(pkg.filterDescription);
 	if (pkg.form !== "invalid" && pkg.source.trim()) {
 		const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
 		if (normalized !== pkg.source) details.push(`normalized ${normalized}`);

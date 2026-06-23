@@ -17,6 +17,8 @@ export interface ManagedPackageInventoryItem {
 	matchSources: string[];
 	declared: boolean;
 	disabledByFilters: boolean;
+	filterState?: PackageDeclarationSummary["filterState"];
+	filterDescription?: string;
 	state: Exclude<InventoryPackageState, "unloaded">;
 	drift?: string;
 }
@@ -27,6 +29,8 @@ export interface UnloadedPackageInventoryItem {
 	source: string;
 	matchSources: string[];
 	disabledByFilters?: boolean;
+	filterState?: PackageDeclarationSummary["filterState"];
+	filterDescription?: string;
 }
 
 export interface ProjectInventory {
@@ -77,12 +81,15 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			const matchSources = managedPackageSources(metadata);
 			const declared = matchSources.some((candidate) => packageSources.declaredSources.has(candidate));
 			const disabledByFilters = matchSources.some((candidate) => packageSources.disabledSources.has(candidate));
+			const declaration = packageDeclarations.find((pkg) => matchSources.includes(pkg.source));
 			return {
 				metadata,
 				source: metadata.source,
 				matchSources,
 				declared,
 				disabledByFilters,
+				filterState: declaration?.filterState,
+				filterDescription: declaration?.filterDescription,
 				state: packageState(declared, disabledByFilters),
 				drift: metadata.drift,
 			};
@@ -100,6 +107,8 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			source,
 			matchSources: [declaration.source, source],
 			disabledByFilters: declaration.disabledByFilters,
+			filterState: declaration.filterState,
+			filterDescription: declaration.filterDescription,
 		});
 	}
 	const directResources = options.directResources === false ? { resources: [], warnings: [] } : await collectDirectProjectResources(ctx, paths, projectConstruct);

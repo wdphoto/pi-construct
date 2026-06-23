@@ -3,6 +3,7 @@ import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
+import { analyzePackageFilters, packageFiltersArePartial, packageFiltersDisableWholePackage, packageResourceFilterKeys } from "./package-filters.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary, packageSourceIdentity } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
@@ -19,8 +20,6 @@ export function looksLikePackageSource(value: string): boolean {
 	);
 }
 
-const packageResourceFilterKeys = ["extensions", "skills", "prompts", "themes"] as const;
-
 const directResourceSettingsKeys = {
 	extension: "extensions",
 	skill: "skills",
@@ -29,8 +28,7 @@ const directResourceSettingsKeys = {
 } as const;
 
 export function packageResourcesDisabled(entry: unknown): boolean {
-	if (!isObject(entry) || typeof entry.source !== "string") return false;
-	return packageResourceFilterKeys.every((key) => Array.isArray(entry[key]) && entry[key].length === 0);
+	return packageFiltersDisableWholePackage(entry);
 }
 
 export function getPackages(settings: JsonReadResult): PackageDeclarationSummary[] {
@@ -39,13 +37,21 @@ export function getPackages(settings: JsonReadResult): PackageDeclarationSummary
 	if (!Array.isArray(packages)) return [];
 
 	return packages.map((entry): PackageDeclarationSummary => {
+		const filters = analyzePackageFilters(entry);
 		if (typeof entry === "string") {
-			return { source: entry, form: "string", enabled: true, disabledByFilters: false };
+			return { source: entry, form: "string", enabled: true, disabledByFilters: false, filterState: filters.state, filterDescription: filters.description };
 		}
 		if (isObject(entry) && typeof entry.source === "string") {
-			return { source: entry.source, form: "object", enabled: true, disabledByFilters: packageResourcesDisabled(entry) };
+			return {
+				source: entry.source,
+				form: "object",
+				enabled: filters.state !== "invalid",
+				disabledByFilters: filters.state === "whole-package-disabled",
+				filterState: filters.state,
+				filterDescription: filters.description,
+			};
 		}
-		return { source: "<invalid package declaration>", form: "invalid", enabled: false, disabledByFilters: false };
+		return { source: "<invalid package declaration>", form: "invalid", enabled: false, disabledByFilters: false, filterState: "invalid", filterDescription: filters.description };
 	});
 }
 
@@ -333,7 +339,7 @@ export async function setMatchingPackageResourcesDisabled(
 	source: string,
 	disabled: boolean,
 	options: { backupPath?: string } = {},
-): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean }> {
+): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean; blockedByPartialFilters?: boolean; blockedSource?: string }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { updated: false, settingsMissing: true };
 
@@ -346,6 +352,9 @@ export async function setMatchingPackageResourcesDisabled(
 		if (!rawSource || !(await targetSourceMatches(paths, source, rawSource))) {
 			nextPackages.push(entry);
 			continue;
+		}
+		if (packageFiltersArePartial(entry)) {
+			return { updated: false, settingsMissing: false, blockedByPartialFilters: true, blockedSource: rawSource };
 		}
 		updated = true;
 		nextPackages.push(disabled ? packageEntryWithDisabledResources(entry, rawSource) : packageEntryWithEnabledResources(entry, rawSource));

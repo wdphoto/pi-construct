@@ -139,6 +139,15 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const drift = managed.drift;
 		const missingDeclarationDrift = !managed.declared && item.enabled !== undefined;
 		if (drift) warnings.push(`${item.id} drift: ${drift}`);
+		const packageDescription = managed.declared
+			? managed.filterState === "partially-filtered"
+				? "Filtered package. Construct will not replace partial Pi filters with whole-package toggles; r removes."
+				: managed.disabledByFilters
+					? "Disabled package. Enter enables the whole package; r removes."
+					: "Active package. Enter disables the whole package; r removes."
+			: missingDeclarationDrift
+				? "Drifted package. Enter restores."
+				: "Available package. Enter installs.";
 		packages.push({
 			type: "package",
 			rowId: rowId("managed", item.id, source),
@@ -151,13 +160,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			managed: true,
 			disabledByFilters: managed.disabledByFilters,
 			matchSources: uniqueSorted([source, ...managed.matchSources]),
-			description: managed.declared
-				? managed.disabledByFilters
-					? "Disabled package. Enter enables the whole package; r removes."
-					: "Active package. Enter disables the whole package; r removes."
-				: missingDeclarationDrift
-					? "Drifted package. Enter restores."
-					: "Available package. Enter installs.",
+			description: packageDescription,
 		});
 	}
 
@@ -189,7 +192,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			disabled: true,
 			disabledByFilters: pkg.disabledByFilters,
 			matchSources: uniqueSorted(pkg.matchSources),
-			description: "Read-only package. Run /construct load to adopt it.",
+			description: pkg.filterState === "partially-filtered" ? "Read-only filtered package. Run /construct load to adopt it." : "Read-only package. Run /construct load to adopt it.",
 		});
 	}
 

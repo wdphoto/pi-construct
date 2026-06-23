@@ -204,6 +204,23 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"enabled in Construct metadata, disabled by package filters"* ]]
 
+printf '== partial package filters are recognized ==\n'
+python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [{
+    "source": source,
+    "skills": ["skills/helper/SKILL.md"],
+}]}, indent=2) + "\n")
+PY
+STATUS_FULL_OUTPUT="$(run_pi_approved '/construct status full')"
+[[ "$STATUS_FULL_OUTPUT" == *"partially filtered (skills 1)"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"Package-contained resources: 4 (project packages only)"* ]]
+
 printf '== no implicit adoption ==\n'
 python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
 import json

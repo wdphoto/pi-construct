@@ -83,7 +83,7 @@ States:
 
 Use `/construct load` to adopt unloaded package declarations into Construct. Direct project resources (`.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, `.pi/extensions/`) can be adopted into project-local Construct metadata without adding those project-local files to the portable library or saved/share snippets; after adoption, dashboard Enter toggles them with Pi-native resource filters.
 
-Package disable/enable is a whole-package toggle. Disabling a package writes empty Pi package resource filters; enabling clears those filters. Construct does not snapshot partial package filters yet, so edit Pi settings directly if you need package-internal resource selection.
+Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 

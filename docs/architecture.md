@@ -154,7 +154,7 @@ For package rows, disabling keeps the package declaration in `.pi/settings.json`
 }
 ```
 
-Enabling a package clears those all-empty filter keys and may collapse `{ "source": "..." }` back to string form. Decision: Construct does not snapshot and restore arbitrary prior partial filters; package rows are whole-package loadout toggles. Users who need partial package resource selection should edit Pi settings directly for now.
+Enabling a package clears those all-empty filter keys and may collapse `{ "source": "..." }` back to string form. Decision: Construct does not snapshot and restore arbitrary prior partial filters. Package rows are whole-package loadout toggles only when the package is unfiltered or whole-package disabled; if a declaration already has partial Pi package filters, Construct refuses the whole-package toggle instead of overwriting those native resource-level selections.
 
 For adopted direct project resources, disabling/enabling writes top-level Pi filter overrides such as `-skills/review/SKILL.md` or `+skills/review/SKILL.md` in the matching resource array. Construct never deletes direct resource files.
 
