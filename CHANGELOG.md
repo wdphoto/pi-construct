@@ -6,8 +6,18 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.18 - 2026-06-23
+
 ### Added
 - Document why scan does not crawl old package cache skills/extensions and how to distinguish package-provided resources from direct project resources.
+- Show package/version copy such as `pi-construct@0.0.18` in dashboard and status headers for easier bug reports.
+
+### Changed
+- Polish the `/construct` loadout dashboard wording, markers, footer, row colors, and loadout vocabulary.
+- Show unloaded active package declarations as `[!]` read-only rows in the dashboard until explicitly loaded into Construct.
+- Update saved loadout recipe rows to use `Loadouts` and `[·] recipe item` wording.
+- Make `/construct save <loadout-name>` show active Construct-managed packages as already included, and active unloaded package declarations as optional load/include rows in TUI.
+- Group `/construct save` summaries into included, loaded, and not-included sections, including direct project-local resource warnings.
 
 ## 0.0.17 - 2026-06-23
 

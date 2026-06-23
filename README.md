@@ -17,7 +17,7 @@ Run:
 Example:
 
 ```text
-pi-construct@0.0.17
+pi-construct@0.0.18
 ===================
 Project: /Users/you/site
 2 active · 1 disabled · 3 available · 1 unloaded
