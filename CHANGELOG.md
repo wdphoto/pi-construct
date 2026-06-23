@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Fixed
+- Report disabled Construct metadata that is missing from `.pi/settings.json` as drift in `/construct status` and `/construct scan`.
+
 ## 0.0.16 - 2026-06-22
 
 ### Changed

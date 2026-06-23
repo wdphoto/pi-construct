@@ -6,7 +6,7 @@ import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandC
 import { deriveId, parseCatalog } from "../catalog.js";
 import { loadProjectResourcesIntoConstruct } from "./load.js";
 import { describeJsonReadIssue, isObject, readJson } from "../json.js";
-import { getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, getManagedItems, getPackages } from "../project-settings.js";
 import { directResourceKey, directResourceKinds, directResourceName } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import type { ConstructPaths, DirectResourceKind, JsonReadResult, PackageDeclarationSummary } from "../types.js";
@@ -296,10 +296,13 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 	const packages = getPackages(settings);
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const managedSources = await managedPackageSources(construct, paths);
+	const packageSourceSets = await collectPackageSourceSets(packages, settingsDir);
+	const managedSummaries = await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources);
 	const managedDirectKeys = managedDirectResourceKeys(construct, projectDir);
 	const warnings: string[] = [];
 	if (settings.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectSettingsPath))}`, settings));
 	if (construct.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectConstructPath))}`, construct));
+	warnings.push(...managedSummaries.filter((item) => item.drift).map((item) => `${item.id} drift: ${item.drift}`));
 
 	const unloadedPackages: ScanPackageFinding[] = [];
 	const seenPackageKeys = new Set<string>();

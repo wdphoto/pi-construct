@@ -179,6 +179,46 @@ PY
 OUTPUT="$(construct_pi "$HOME_D" "$PROJECT_D" '/construct status' 2>&1)"
 grep -Fq 'drift: enabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
 
+printf '== drift: metadata disabled but settings missing source ==\n'
+HOME_E="$TMP/home-disabled-drift"
+PROJECT_E="$TMP/project-disabled-drift"
+mkdir -p "$HOME_E/.pi/agent" "$PROJECT_E/.pi"
+python3 - "$HOME_E" "$PROJECT_E" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2]).resolve()
+(home / ".pi/agent/trust.json").write_text(json.dumps({str(project): True}, indent=2) + "\n")
+PY
+cat > "$PROJECT_E/.pi/settings.json" <<'JSON'
+{
+  "packages": []
+}
+JSON
+python3 - "$PROJECT_E" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/construct.json").write_text(json.dumps({
+  "version": 1,
+  "managedBy": "the-construct",
+  "items": {
+    "construct-invalid-drift-package": {
+      "kind": "package",
+      "source": source,
+      "enabled": False
+    }
+  }
+}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct status' 2>&1)"
+grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
+OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct scan .' 2>&1)"
+grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
+
 printf '== normalized local path does not drift ==\n'
 HOME_F="$TMP/home-normalized-status"
 PROJECT_F="$TMP/project-normalized-status"

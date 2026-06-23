@@ -102,6 +102,7 @@ export async function getManagedItems(
 				const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
 				if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
 				if (enabled === true && disabledByFilters) drift = "enabled in Construct metadata, disabled by package filters";
+				if (enabled === false && !declared) drift = "disabled in Construct metadata, missing from .pi/settings.json";
 				if (enabled === false && declared && !disabledByFilters) drift = "disabled in Construct metadata, still active in .pi/settings.json";
 			}
 		} else if (typeof value.path === "string") {
