@@ -93,7 +93,7 @@ export async function getManagedItems(
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
 	const summaries: ManagedItemSummary[] = [];
 	const seenPackageKeys = new Set<string>();
-	for (const [id, value] of Object.entries(construct.data.items)) {
+	for (const [id, value] of Object.entries(construct.data.items).sort(([a], [b]) => a.localeCompare(b))) {
 		if (!isObject(value)) {
 			summaries.push({ id, kind: "unknown", drift: "invalid metadata" });
 			continue;
@@ -102,10 +102,13 @@ export async function getManagedItems(
 		const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
 		let source: string | undefined;
 		let drift: string | undefined;
+		let matchSources: string[] | undefined;
+		let identityKey: string | undefined;
 		if (kind === "package") {
 			const identity = await managedPackageSourceIdentity(value, paths);
 			source = identity.displaySource;
-			const identityKey = identity.normalizedInstallSource ?? source;
+			matchSources = [...identity.matchSources];
+			identityKey = identity.normalizedInstallSource ?? source;
 			if (identityKey) {
 				if (seenPackageKeys.has(identityKey)) continue;
 				seenPackageKeys.add(identityKey);
@@ -118,7 +121,7 @@ export async function getManagedItems(
 		} else if (typeof value.path === "string") {
 			source = value.path;
 		}
-		summaries.push({ id, kind, source, enabled, drift });
+		summaries.push({ id, kind, source, enabled, drift, matchSources, identityKey });
 	}
 	return summaries;
 }

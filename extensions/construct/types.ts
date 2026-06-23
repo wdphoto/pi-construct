@@ -94,4 +94,6 @@ export interface ManagedItemSummary {
 	source?: string;
 	enabled?: boolean;
 	drift?: string;
+	matchSources?: string[];
+	identityKey?: string;
 }

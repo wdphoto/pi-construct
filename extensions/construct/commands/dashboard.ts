@@ -2,10 +2,9 @@ import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js";
-import { isObject, readJson } from "../json.js";
+import { readJson } from "../json.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
-import { managedPackageSourceIdentity } from "../sources.js";
-import { collectPackageSourceSets, getPackages, packageMetadataDrift } from "../project-settings.js";
+import { collectPackageSourceSets, getManagedItems, getPackages, packageMetadataDrift } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -118,29 +117,6 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function managedPackages(paths: ConstructPaths): Promise<Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean }>> {
-	const construct = await readJson(paths.projectConstructPath);
-	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
-	const items: Array<{ id: string; source: string; matchSources: Set<string>; enabled?: boolean; identityKey: string }> = [];
-	for (const [id, value] of Object.entries(construct.data.items)) {
-		if (!isObject(value) || value.kind !== "package") continue;
-		const identity = await managedPackageSourceIdentity(value, paths);
-		if (!identity.displaySource) continue;
-		items.push({
-			id,
-			source: identity.displaySource,
-			matchSources: identity.matchSources,
-			enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
-			identityKey: identity.normalizedInstallSource ?? identity.displaySource,
-		});
-	}
-	const deduped = new Map<string, (typeof items)[number]>();
-	for (const item of items.sort((a, b) => a.id.localeCompare(b.id))) {
-		if (!deduped.has(item.identityKey)) deduped.set(item.identityKey, item);
-	}
-	return [...deduped.values()];
-}
-
 async function projectPackageSourceSets(paths: ConstructPaths): Promise<{
 	packages: ReturnType<typeof getPackages>;
 	declaredSources: Set<string>;
@@ -155,8 +131,9 @@ async function projectPackageSourceSets(paths: ConstructPaths): Promise<{
 async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[] }> {
 	const { paths, catalog, warnings } = await loadCatalog(ctx);
 	const project = await projectPackageSourceSets(paths);
-	const managed = await managedPackages(paths);
-	const managedSources = new Set(managed.flatMap((item) => [...item.matchSources]));
+	const constructRead = await readJson(paths.projectConstructPath);
+	const managed = (await getManagedItems(constructRead, project.declaredSources, paths, project.disabledSources)).filter((item) => item.kind === "package" && item.source);
+	const managedSources = new Set(managed.flatMap((item) => item.matchSources ?? []));
 	const packages: DashboardItem[] = [];
 
 	for (const profile of catalog.profiles) {
@@ -180,23 +157,26 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	}
 
 	for (const item of managed) {
-		const declared = [...item.matchSources].some((source) => project.declaredSources.has(source));
-		const disabledByFilters = [...item.matchSources].some((source) => project.disabledSources.has(source));
+		const source = item.source;
+		if (!source) continue;
+		const matchSources = item.matchSources ?? [];
+		const declared = matchSources.some((candidate) => project.declaredSources.has(candidate));
+		const disabledByFilters = matchSources.some((candidate) => project.disabledSources.has(candidate));
 		const drift = packageMetadataDrift(item.enabled, declared, disabledByFilters);
 		const missingDeclarationDrift = !declared && item.enabled !== undefined;
 		if (drift) warnings.push(`${item.id} drift: ${drift}`);
 		packages.push({
 			type: "package",
-			rowId: rowId("managed", item.id, item.source),
+			rowId: rowId("managed", item.id, source),
 			id: item.id,
 			label: item.id,
-			source: item.source,
-			displaySource: compactSource(item.source),
+			source,
+			displaySource: compactSource(source),
 			section: declared ? (disabledByFilters ? "Disabled" : "Active") : "Available",
 			checked: false,
 			managed: true,
 			disabledByFilters,
-			matchSources: uniqueSorted([item.source, ...item.matchSources]),
+			matchSources: uniqueSorted([source, ...matchSources]),
 			description: declared
 				? disabledByFilters
 					? "Active in this project, but package resources are disabled by Pi filters. Press Enter to enable selected packages, or r to remove them from this project."
@@ -244,7 +224,6 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
-	const constructRead = await readJson(paths.projectConstructPath);
 	const directResources = await collectDirectProjectResources(ctx, paths, constructRead);
 	warnings.push(...directResources.warnings);
 	for (const resource of directResources.resources) {
