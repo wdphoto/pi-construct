@@ -6,6 +6,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.20 - 2026-06-23
+
 ### Added
 - Show read-only project package internals in `/construct status full` as groundwork for future dashboard package-resource inspection.
 - Add native Pi package-filter analysis so Construct can recognize unfiltered, whole-package-disabled, partial, and invalid package filter states.
