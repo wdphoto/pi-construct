@@ -26,7 +26,7 @@ The current implementation inventories and toggles packages plus direct project 
      ```bash
      pi install <source> -l --approve
      ```
-   - For Available package child-resource selection, cache-inspects remembered sources with Pi's temporary resolver without network/download during dashboard build, then installs project-local and writes package filters for selected resources when the user unfolds and confirms.
+   - For Available package child-resource selection, cache-inspects remembered sources with Pi's temporary resolver without network/download during dashboard build, lets focused unknown Available rows inspect/cache on Right Arrow, then installs project-local and writes package filters for selected resources when the user unfolds and confirms.
    - Disables installed/active sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
    - Enables disabled sources by clearing those all-empty package resource filters.
    - Toggles Construct-managed direct resources by writing Pi-native top-level `+path` / `-path` filters in `.pi/settings.json`.
@@ -37,6 +37,7 @@ The current implementation inventories and toggles packages plus direct project 
    - Falls back to conservative `.pi/settings.json` edits only when needed.
    - Backs up `.pi/settings.json` before direct edits.
    - Re-reads relevant project/Construct JSON after idle waits or long-running package operations before merging metadata.
+   - Matches package declarations with Pi-like source identity keys for npm, git, and local paths, so equivalent git spellings are one package in dashboard state and filter writes while the original project declaration string is preserved.
 
 4. **Construct library layer**
    - User-local file: `~/.pi/agent/construct/catalog.json`.
@@ -157,7 +158,7 @@ For package rows, disabling keeps the package declaration in `.pi/settings.json`
 
 Enabling a package clears those all-empty filter keys and may collapse `{ "source": "..." }` back to string form. Decision: Construct does not snapshot and restore arbitrary prior partial filters. Package rows are whole-package loadout toggles only when the package is unfiltered or whole-package disabled; if a declaration already has partial Pi package filters, Construct refuses the whole-package toggle instead of overwriting those native resource-level selections.
 
-For intentional partial package selection, the dashboard unfolds package rows with Right Arrow and writes exact package-relative path filters from child resource selections. Active and Disabled rows use Pi's project package resolver; Available rows are cache-inspected with Pi's temporary package resolver without network/download during dashboard build, show the normal collapsed arrow only when multiple resources are already known, start child selections unchecked, and become project-local package declarations only after confirmation. Resource-level selection writes an explicit allowlist across all package resource kinds: selected current resources are listed, unselected current resources are omitted, and currently absent kinds get empty arrays so future package-added resources remain disabled until selected. If no package resources are selected, Construct writes all four package resource keys as empty arrays so the package is whole-package disabled. Construct never copies package-contained files into project `.pi/` resource folders.
+For intentional partial package selection, the dashboard unfolds package rows with Right Arrow and writes exact package-relative path filters from child resource selections. Active and Disabled rows use Pi's project package resolver; Available rows are cache-inspected with Pi's temporary package resolver without network/download during dashboard build, show the normal collapsed arrow only when multiple resources are already known, allow focused unknown rows to inspect/cache on Right Arrow, start child selections unchecked, and become project-local package declarations only after confirmation. Resource-level selection writes an explicit allowlist across all package resource kinds: selected current resources are listed, unselected current resources are omitted, and currently absent kinds get empty arrays so future package-added resources remain disabled until selected. If no package resources are selected, Construct writes all four package resource keys as empty arrays so the package is whole-package disabled. Construct never copies package-contained files into project `.pi/` resource folders.
 
 For adopted direct project resources, disabling/enabling writes top-level Pi filter overrides such as `-skills/review/SKILL.md` or `+skills/review/SKILL.md` in the matching resource array. Construct never deletes direct resource files.
 

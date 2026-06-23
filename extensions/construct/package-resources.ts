@@ -4,7 +4,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DirectResourceKind } from "./types.js";
 import type { ProjectInventory } from "./project-inventory.js";
 import { directResourceKinds, directResourceName, resourcePlural } from "./resources.js";
-import { normalizeSourceForLibrary } from "./sources.js";
+import { normalizeSourceForLibrary, packageSourceIdentityKey, packageSourceMatchValues } from "./sources.js";
 
 const resolvedResourceKeys = {
 	extension: "extensions",
@@ -26,6 +26,7 @@ function relativeIfInside(base: string, path: string): string | undefined {
 export interface PackageResourceSummary {
 	packageSource: string;
 	packageNormalizedSource?: string;
+	packageIdentityKey?: string;
 	packageManagedId?: string;
 	packageManaged: boolean;
 	kind: DirectResourceKind;
@@ -45,8 +46,7 @@ async function managedPackageIdsBySource(inventory: ProjectInventory): Promise<M
 	const settingsDir = dirname(inventory.paths.projectSettingsPath);
 	for (const item of inventory.managedPackages) {
 		for (const source of item.matchSources) {
-			ids.set(source, item.metadata.id);
-			ids.set(await normalizeSourceForLibrary(source, settingsDir), item.metadata.id);
+			for (const match of await packageSourceMatchValues(source, settingsDir)) ids.set(match, item.metadata.id);
 		}
 	}
 	return ids;
@@ -69,11 +69,13 @@ async function resolvedResourcesForInventory(input: {
 		for (const entry of input.resolved[resolvedResourceKeys[kind]]) {
 			if (entry.metadata.origin !== "package" || entry.metadata.scope !== input.scope) continue;
 			const normalizedSource = await normalizeSourceForLibrary(entry.metadata.source, settingsDir);
-			const managedId = managedIds.get(entry.metadata.source) ?? managedIds.get(normalizedSource);
+			const identityKey = packageSourceIdentityKey(entry.metadata.source, normalizedSource);
+			const managedId = managedIds.get(entry.metadata.source) ?? managedIds.get(normalizedSource) ?? (identityKey ? managedIds.get(identityKey) : undefined);
 			const relativePath = packageRelativePath(entry);
 			resources.push({
 				packageSource: entry.metadata.source,
 				packageNormalizedSource: normalizedSource === entry.metadata.source ? undefined : normalizedSource,
+				packageIdentityKey: identityKey,
 				packageManagedId: managedId,
 				packageManaged: managedId !== undefined,
 				kind,

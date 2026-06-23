@@ -4,7 +4,7 @@ import { deriveId } from "../catalog.js";
 import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory } from "../project-inventory.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
-import { formatPackageSourceLabel } from "../sources.js";
+import { formatPackageSourceLabel, packageSourceIdentityKey } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { type PackageResourceFilterKey } from "../package-filters.js";
@@ -109,7 +109,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory; inventory: Awaited<ReturnType<typeof collectProjectInventory>> }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
 	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
@@ -243,7 +243,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	}
 	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings, projectMetadataMissing, packageResources };
+	return { paths, packages, warnings, projectMetadataMissing, packageResources, inventory };
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -424,7 +424,9 @@ function operationFromSource(source: string): DashboardOperationItem {
 }
 
 function packageMatchesSource(item: DashboardPackage, source: string): boolean {
-	return item.source === source || item.matchSources.includes(source);
+	if (item.source === source || item.matchSources.includes(source)) return true;
+	const identityKey = packageSourceIdentityKey(source);
+	return identityKey !== undefined && item.matchSources.includes(identityKey);
 }
 
 function packageStateRank(section: PackageDashboardSection): number {
@@ -451,7 +453,8 @@ function resourceMatchesPackage(resource: PackageResourceSummary, item: Dashboar
 	return (
 		resource.packageManagedId === item.id ||
 		item.matchSources.includes(resource.packageSource) ||
-		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource))
+		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource)) ||
+		(resource.packageIdentityKey !== undefined && item.matchSources.includes(resource.packageIdentityKey))
 	);
 }
 
@@ -474,6 +477,37 @@ function resourceLabel(resource: PackageResourceSummary): string {
 	return `${resourcePlural(resource.kind).slice(0, -1)} ${resource.name}`;
 }
 
+function packageResourceParentPath(path: string): string | undefined {
+	const index = path.lastIndexOf("/");
+	if (index <= 0) return undefined;
+	return path.slice(0, index);
+}
+
+function packageResourceEntrypointNote(resource: PackageResourceSummary): string | undefined {
+	if (resource.kind === "extension" && (resource.packageRelativePath.endsWith("/index.ts") || resource.packageRelativePath.endsWith("/index.js"))) {
+		const parent = packageResourceParentPath(resource.packageRelativePath);
+		if (parent) return `Pi treats ${parent}/ as one extension entrypoint (${resource.packageRelativePath}).`;
+	}
+	if (resource.kind === "skill" && resource.packageRelativePath.endsWith("/SKILL.md")) {
+		const parent = packageResourceParentPath(resource.packageRelativePath);
+		if (parent) return `Pi treats ${parent}/ as one skill root (${resource.packageRelativePath}).`;
+	}
+	return undefined;
+}
+
+function packageResourceDisplayPath(resource: PackageResourceSummary): string {
+	if (packageResourceEntrypointNote(resource)) {
+		const parent = packageResourceParentPath(resource.packageRelativePath);
+		if (parent) return `${parent}/`;
+	}
+	return resource.packageRelativePath;
+}
+
+function packageResourceInspectionPath(resource: PackageResourceSummary): string {
+	const displayPath = packageResourceDisplayPath(resource);
+	return displayPath === resource.packageRelativePath ? displayPath : `${displayPath} (${resource.packageRelativePath})`;
+}
+
 function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
 	const resources = resourcesForPackage(item, packageResources);
 	if (item.section === "Available" && resources.length === 0) {
@@ -481,9 +515,9 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 			title: `Package resources: ${item.label}`,
 			confirmHint: "Press Enter/Esc to return",
 			lines: [
-				"This Available package has not been inspected yet.",
-				"Press Right Arrow on the package row to ask Pi to resolve package-contained resources.",
-				"For git or npm sources, that inspection may clone/cache the package before showing results.",
+				"No cached package-contained resource list is available for this package yet.",
+				"Construct does not show an unfold arrow until it has a resource list.",
+				"Press Right Arrow to ask Pi to inspect/cache it now, or press Enter to install the whole package.",
 			],
 		};
 	}
@@ -511,7 +545,7 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 		if (kindResources.length === 0) continue;
 		lines.push("", `${resourcePlural(kind)} (${kindResources.length})`);
 		for (const resource of kindResources) {
-			lines.push(`- ${resource.enabled ? "[x]" : "[ ]"} ${resource.name} — ${resource.packageRelativePath}`);
+			lines.push(`- ${resource.enabled ? "[x]" : "[ ]"} ${resource.name} — ${packageResourceInspectionPath(resource)}`);
 		}
 	}
 	if (packageResources.warnings.length > 0) {
@@ -529,16 +563,18 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 		for (const resource of kindResources) {
 			const editable = item.section === "Active" || item.section === "Disabled" || item.section === "Available";
 			const available = item.section === "Available";
+			const actionDescription =
+				item.section === "Available"
+					? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters."
+					: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.";
+			const entrypointNote = packageResourceEntrypointNote(resource);
 			children.push({
 				id: packageResourceChildRowId(item, resource),
 				parentId: item.rowId,
 				depth: 1,
 				label: resourceLabel(resource),
-				value: resource.packageRelativePath,
-				description:
-					item.section === "Available"
-						? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters."
-						: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.",
+				value: packageResourceDisplayPath(resource),
+				description: entrypointNote ? `${entrypointNote}\n${actionDescription}` : actionDescription,
 				checked: available ? false : resource.enabled,
 				disabled: !editable,
 				stateText: available ? "+" : resource.enabled ? "✓" : "–",
@@ -550,16 +586,33 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 	return children;
 }
 
+function packageResourceRowDescription(item: DashboardPackage, resourceCount: number): string | undefined {
+	const base = item.description;
+	if (item.section === "Available") {
+		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} cached Pi resource entries; Enter installs the whole package.`;
+		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use i for the exact path.`;
+		return `${base}\nNo cached package resource list is available yet. Right Arrow scans this package with Pi; Enter installs the whole package.`;
+	}
+	if (item.section === "Active" || item.section === "Disabled") {
+		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.`;
+		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use i for the exact path.`;
+		return `${base}\nNo package-contained resources resolved for this package.`;
+	}
+	return base;
+}
+
 function dashboardPickerItems(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined): CheckboxPickerItem[] {
 	const items: CheckboxPickerItem[] = [];
 	for (const item of packages) {
+		const resources = item.type === "package" ? resourcesForPackage(item, packageResources) : [];
 		const children = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
 		const visibleChildren = children.length > 1 ? children : [];
+		const lazyAvailableChildren = item.type === "package" && item.section === "Available" && resources.length === 0;
 		items.push({
 			id: item.rowId,
 			label: item.label,
 			value: item.type === "package" ? item.displaySource : item.value,
-			description: item.description,
+			description: item.type === "package" ? packageResourceRowDescription(item, resources.length) : item.description,
 			section: sectionLabel(item.section),
 			sectionTone: sectionTone(item.section),
 			checked: false,
@@ -573,6 +626,8 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 			confirmOnFocus: item.type === "saved",
 			expandable: visibleChildren.length > 0,
+			lazyChildren: lazyAvailableChildren,
+			hideLazyMarker: lazyAvailableChildren,
 		});
 		items.push(...visibleChildren);
 	}
@@ -661,7 +716,7 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
+	const { paths, packages, warnings, projectMetadataMissing, packageResources, inventory } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
 		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
 		return;
@@ -682,6 +737,34 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, sessionPackageResources) : undefined;
+		},
+		loadChildren: async (focusedItem) => {
+			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
+			if (!packageItem || packageItem.section !== "Available") return [];
+			const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, [packageItem.source]);
+			sessionPackageResources.resources.push(...availableResources.resources);
+			for (const warning of availableResources.warnings) sessionPackageResources.warnings.push(warning);
+			const resources = resourcesForPackage(packageItem, sessionPackageResources);
+			const children = packageResourceChildren(packageItem, sessionPackageResources);
+			if (resources.length > 1) return children;
+			const emptyLines =
+				resources.length === 1
+					? [
+						"Inspected: one package resource entry found, so this stays a whole-package row.",
+						`${resourceLabel(resources[0])}: ${packageResourceInspectionPath(resources[0])}`,
+						"Select the package row and press Enter to install it normally.",
+					]
+					: ["Inspected: no package-contained resources resolved.", "Select the package row and press Enter to install it normally."];
+			return {
+				children: [],
+				quietEmpty: true,
+				emptyDescription: emptyLines.join("\n"),
+				empty: {
+					title: `Package resources: ${packageItem.label}`,
+					confirmHint: "Press Enter/Esc to return",
+					lines: emptyLines,
+				},
+			};
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action, changedIds) => {

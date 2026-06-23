@@ -7,7 +7,7 @@ import { getPaths } from "./paths.js";
 import { collectPackageSourceSets, getManagedItems, getPackages, type PackageSourceSets } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources } from "./resources.js";
-import { normalizeSourceForLibrary } from "./sources.js";
+import { normalizeSourceForLibrary, packageSourceMatchValues } from "./sources.js";
 
 export type InventoryPackageState = "active" | "disabled" | "available" | "unloaded";
 
@@ -73,7 +73,13 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 	const catalog = parseCatalog(userCatalog);
 	const knownProjects = parseKnownProjects(userProjects);
 	const packageDeclarations = getPackages(projectSettings);
-	const packageSources = await collectPackageSourceSets(packageDeclarations, dirname(paths.projectSettingsPath));
+	const settingsDir = dirname(paths.projectSettingsPath);
+	const packageSources = await collectPackageSourceSets(packageDeclarations, settingsDir);
+	const packageDeclarationsByMatch = new Map<string, PackageDeclarationSummary>();
+	for (const declaration of packageDeclarations) {
+		if (declaration.form === "invalid" || !declaration.source.trim()) continue;
+		for (const match of await packageSourceMatchValues(declaration.source, settingsDir)) packageDeclarationsByMatch.set(match, declaration);
+	}
 	const managedItems = await getManagedItems(projectConstruct, packageSources.declaredSources, paths, packageSources.disabledSources);
 	const managedPackages = managedItems
 		.filter((item): item is ManagedItemSummary & { source: string } => item.kind === "package" && typeof item.source === "string" && item.source.length > 0)
@@ -81,7 +87,7 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			const matchSources = managedPackageSources(metadata);
 			const declared = matchSources.some((candidate) => packageSources.declaredSources.has(candidate));
 			const disabledByFilters = matchSources.some((candidate) => packageSources.disabledSources.has(candidate));
-			const declaration = packageDeclarations.find((pkg) => matchSources.includes(pkg.source));
+			const declaration = matchSources.map((match) => packageDeclarationsByMatch.get(match)).find((pkg): pkg is PackageDeclarationSummary => pkg !== undefined);
 			return {
 				metadata,
 				source: metadata.source,
@@ -95,17 +101,22 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			};
 		});
 	const managedSources = new Set(managedPackages.flatMap((item) => item.matchSources));
-	const availableCatalogPackages = catalog.data.items.filter((item) => !managedSources.has(item.source) && !packageSources.declaredSources.has(item.source));
+	const availableCatalogPackages: CatalogItem[] = [];
+	for (const item of catalog.data.items) {
+		const matches = await packageSourceMatchValues(item.source, settingsDir);
+		if (!matches.some((match) => managedSources.has(match) || packageSources.declaredSources.has(match))) availableCatalogPackages.push(item);
+	}
 	const unloadedPackageDeclarations: UnloadedPackageInventoryItem[] = [];
 	for (const declaration of packageDeclarations) {
 		if (declaration.form === "invalid" || !declaration.enabled || !declaration.source.trim()) continue;
-		const source = await normalizeSourceForLibrary(declaration.source, dirname(paths.projectSettingsPath));
-		if (managedSources.has(declaration.source) || managedSources.has(source)) continue;
+		const source = await normalizeSourceForLibrary(declaration.source, settingsDir);
+		const matchSources = await packageSourceMatchValues(declaration.source, settingsDir);
+		if (matchSources.some((match) => managedSources.has(match))) continue;
 		unloadedPackageDeclarations.push({
 			declaration,
 			rawSource: declaration.source,
 			source,
-			matchSources: [declaration.source, source],
+			matchSources,
 			disabledByFilters: declaration.disabledByFilters,
 			filterState: declaration.filterState,
 			filterDescription: declaration.filterDescription,

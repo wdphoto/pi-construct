@@ -1,12 +1,13 @@
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, DirectResourceSummary, DirectResourceKind, JsonObject } from "../types.js";
 import { dirname } from "node:path";
-import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog } from "../catalog.js";
+import { deriveId, findCatalogItem, findCatalogItemForSource, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog } from "../catalog.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
 import { parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
+import { packageSourceMatchValues } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 interface LoadCandidate {
@@ -42,10 +43,10 @@ function constructManagedPackageStates(inventory: ProjectInventory): Map<string,
 async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ adoptable: LoadCandidate[]; alreadyManaged: LoadCandidate[] }> {
 	const { paths } = inventory;
 	const managedPackageStates = constructManagedPackageStates(inventory);
+	const settingsDir = dirname(paths.projectSettingsPath);
 	const catalogItemsBySource = new Map<string, string>();
 	for (const item of inventory.catalog.data.items) {
-		catalogItemsBySource.set(item.source, item.id);
-		catalogItemsBySource.set(await normalizeSourceForLibrary(item.source, dirname(paths.projectSettingsPath)), item.id);
+		for (const match of await packageSourceMatchValues(item.source, settingsDir)) catalogItemsBySource.set(match, item.id);
 	}
 
 	const seen = new Set<string>();
@@ -53,14 +54,17 @@ async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ ado
 	const alreadyManaged: LoadCandidate[] = [];
 	for (const pkg of inventory.packageDeclarations) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
-		const source = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
-		if (seen.has(source)) continue;
-		seen.add(source);
-		const catalogId = catalogItemsBySource.get(pkg.source) ?? catalogItemsBySource.get(source);
+		const source = await normalizeSourceForLibrary(pkg.source, settingsDir);
+		const matches = await packageSourceMatchValues(pkg.source, settingsDir);
+		const seenKey = matches.at(-1) ?? source;
+		if (seen.has(seenKey)) continue;
+		seen.add(seenKey);
+		const catalogId = matches.map((match) => catalogItemsBySource.get(match)).find((id): id is string => id !== undefined);
 		const candidate: LoadCandidate = { kind: "package", id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined, disabledByFilters: pkg.disabledByFilters };
-		const managedState = managedPackageStates.has(pkg.source) ? managedPackageStates.get(pkg.source) : managedPackageStates.get(source);
-		if (managedState === false && !pkg.disabledByFilters) adoptable.push(candidate);
-		else if (managedState !== undefined || managedPackageStates.has(pkg.source) || managedPackageStates.has(source)) alreadyManaged.push(candidate);
+		const managedMatch = matches.map((match) => managedPackageStates.get(match)).find((state) => state !== undefined);
+		const managedKnown = managedMatch !== undefined || matches.some((match) => managedPackageStates.has(match));
+		if (managedMatch === false && !pkg.disabledByFilters) adoptable.push(candidate);
+		else if (managedKnown) alreadyManaged.push(candidate);
 		else adoptable.push(candidate);
 	}
 	return {
@@ -113,11 +117,9 @@ async function candidateMatchesQuery(paths: Awaited<ReturnType<typeof getPaths>>
 	}
 	if (candidate.source === query) return true;
 	const settingsDir = dirname(paths.projectSettingsPath);
-	const normalized = new Set([
-		await normalizeSourceForLibrary(query, settingsDir),
-		await normalizeSourceForLibrary(query, paths.cwd),
-	]);
-	return normalized.has(candidate.source);
+	const queryMatches = new Set([...(await packageSourceMatchValues(query, settingsDir)), ...(await packageSourceMatchValues(query, paths.cwd))]);
+	const candidateMatches = await packageSourceMatchValues(candidate.source, settingsDir);
+	return candidateMatches.some((match) => queryMatches.has(match));
 }
 
 function candidateKey(candidate: AnyLoadCandidate): string {
@@ -197,7 +199,7 @@ export async function loadSourcesIntoConstruct(
 		let construct = parseProjectConstruct(constructRead);
 		let nextMetadataChanged = 0;
 		for (const source of selectedSources) {
-			const item = addedBySource.get(source) ?? findCatalogItem(catalog.items, source);
+			const item = addedBySource.get(source) ?? (await findCatalogItemForSource(catalog.items, source, dirname(paths.projectSettingsPath))) ?? findCatalogItem(catalog.items, source);
 			const itemId = await uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source, source, paths);
 			const enabled = options.enabledBySource?.get(source);
 			construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });

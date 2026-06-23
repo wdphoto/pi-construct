@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
 import { analyzePackageFilters, packageFiltersArePartial, packageFiltersDisableWholePackage, packageResourceFilterKeys } from "./package-filters.js";
-import { managedPackageSourceIdentity, normalizeSourceForLibrary, packageSourceIdentity } from "./sources.js";
+import { managedPackageSourceIdentity, packageSourceIdentity, packageSourceMatchValues } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
 	return (
@@ -67,8 +67,8 @@ export async function collectPackageSourceSets(packages: PackageDeclarationSumma
 	const disabledSources = new Set<string>();
 	for (const pkg of packages) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
-		const normalized = await normalizeSourceForLibrary(pkg.source, settingsDir);
-		for (const source of [pkg.source, normalized]) {
+		const matches = await packageSourceMatchValues(pkg.source, settingsDir);
+		for (const source of matches) {
 			declaredSources.add(source);
 			if (pkg.disabledByFilters) disabledSources.add(source);
 			else activeSources.add(source);
@@ -311,13 +311,9 @@ export function readSettingsObject(settings: JsonReadResult): JsonObject {
 
 async function targetSourceMatches(paths: ConstructPaths, source: string, rawSource: string): Promise<boolean> {
 	const settingsDir = dirname(paths.projectSettingsPath);
-	const targetMatches = new Set([
-		source,
-		await normalizeSourceForLibrary(source, settingsDir),
-		await normalizeSourceForLibrary(source, paths.cwd),
-	]);
-	const normalized = await normalizeSourceForLibrary(rawSource, settingsDir);
-	return targetMatches.has(rawSource) || targetMatches.has(normalized);
+	const targetMatches = new Set([...(await packageSourceMatchValues(source, settingsDir)), ...(await packageSourceMatchValues(source, paths.cwd))]);
+	const rawMatches = await packageSourceMatchValues(rawSource, settingsDir);
+	return rawMatches.some((candidate) => targetMatches.has(candidate));
 }
 
 function packageEntryWithDisabledResources(entry: unknown, source: string): JsonObject {

@@ -27,6 +27,83 @@ export async function normalizeSourceForLibrary(source: string, baseDir: string)
 	return realpath(absolute).catch(() => absolute);
 }
 
+function parseNpmPackageName(source: string): string | undefined {
+	if (!source.startsWith("npm:")) return undefined;
+	const spec = source.slice("npm:".length).trim();
+	if (!spec) return undefined;
+	if (spec.startsWith("@")) {
+		const slash = spec.indexOf("/");
+		if (slash < 0) return spec;
+		const versionAt = spec.indexOf("@", slash + 1);
+		return versionAt > 0 ? spec.slice(0, versionAt) : spec;
+	}
+	const versionAt = spec.indexOf("@");
+	return versionAt > 0 ? spec.slice(0, versionAt) : spec;
+}
+
+function trimGitPath(path: string): string {
+	let next = path.replace(/^\/+/, "").split(/[?#]/, 1)[0] ?? "";
+	const refAt = next.lastIndexOf("@");
+	if (refAt > next.lastIndexOf("/")) next = next.slice(0, refAt);
+	next = next.replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+	return next;
+}
+
+function parseGitIdentity(source: string): { host: string; path: string } | undefined {
+	const trimmed = source.trim();
+	const hasGitPrefix = trimmed.startsWith("git:");
+	let value = hasGitPrefix ? trimmed.slice("git:".length).trim() : trimmed;
+	if (!value) return undefined;
+
+	const scpLike = value.match(/^(?:ssh:\/\/)?git@([^/:]+)[:/](.+)$/);
+	if (scpLike) {
+		const host = scpLike[1]?.toLowerCase();
+		const path = trimGitPath(scpLike[2] ?? "");
+		return host && path.split("/").length >= 2 ? { host, path } : undefined;
+	}
+
+	if (/^(https?|ssh|git):\/\//i.test(value)) {
+		try {
+			const parsed = new URL(value);
+			const host = parsed.hostname.toLowerCase();
+			const path = trimGitPath(parsed.pathname);
+			return host && path.split("/").length >= 2 ? { host, path } : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	if (!hasGitPrefix) return undefined;
+	if (value.startsWith("github:")) value = `github.com/${value.slice("github:".length)}`;
+	const hostPath = value.match(/^([^/:]+(?:\.[^/:]+)*|localhost)[:/](.+)$/);
+	if (!hostPath) return undefined;
+	const host = hostPath[1]?.toLowerCase();
+	const path = trimGitPath(hostPath[2] ?? "");
+	return host && path.split("/").length >= 2 ? { host, path } : undefined;
+}
+
+export function packageSourceIdentityKey(source: string, normalizedLocalSource?: string): string | undefined {
+	const trimmed = source.trim();
+	if (!trimmed) return undefined;
+	const npmName = parseNpmPackageName(trimmed);
+	if (npmName) return `npm:${npmName}`;
+	const git = parseGitIdentity(trimmed);
+	if (git) return `git:${git.host}/${git.path}`;
+	if (isLocalPathSource(trimmed)) return `local:${(normalizedLocalSource ?? trimmed).replace(/\/+$/, "")}`;
+	return undefined;
+}
+
+export async function packageSourceMatchValues(source: string, baseDir: string): Promise<string[]> {
+	const trimmed = source.trim();
+	if (!trimmed) return [];
+	const values = new Set<string>([trimmed]);
+	const normalized = await normalizeSourceForLibrary(trimmed, baseDir);
+	values.add(normalized);
+	const key = packageSourceIdentityKey(trimmed, normalized);
+	if (key) values.add(key);
+	return [...values];
+}
+
 export interface ManagedPackageSourceIdentity {
 	declaredSource?: string;
 	requestedSource?: string;
@@ -46,13 +123,17 @@ export async function packageSourceIdentity(declaredSource: string | undefined, 
 
 	const declaredNormalizedSource = declared ? await normalizeSourceForLibrary(declared, settingsDir) : undefined;
 	const requestedNormalizedSource = requested ? await normalizeSourceForLibrary(requested, paths.cwd) : undefined;
+	const declaredIdentityKey = declared ? packageSourceIdentityKey(declared, declaredNormalizedSource) : undefined;
+	const requestedIdentityKey = requested ? packageSourceIdentityKey(requested, requestedNormalizedSource) : undefined;
 	if (declared) {
 		matchSources.add(declared);
 		if (declaredNormalizedSource) matchSources.add(declaredNormalizedSource);
+		if (declaredIdentityKey) matchSources.add(declaredIdentityKey);
 	}
 	if (requested) {
 		matchSources.add(requested);
 		if (requestedNormalizedSource) matchSources.add(requestedNormalizedSource);
+		if (requestedIdentityKey) matchSources.add(requestedIdentityKey);
 	}
 
 	return {
@@ -60,7 +141,7 @@ export async function packageSourceIdentity(declaredSource: string | undefined, 
 		requestedSource: requested,
 		installSource,
 		displaySource,
-		normalizedInstallSource: requestedNormalizedSource ?? declaredNormalizedSource ?? installSource,
+		normalizedInstallSource: requestedIdentityKey ?? declaredIdentityKey ?? requestedNormalizedSource ?? declaredNormalizedSource ?? installSource,
 		matchSources,
 	};
 }

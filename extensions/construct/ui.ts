@@ -149,6 +149,7 @@ export interface CheckboxPickerItem {
 	expandable?: boolean;
 	expandedByDefault?: boolean;
 	lazyChildren?: boolean;
+	hideLazyMarker?: boolean;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -301,7 +302,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function expansionMarker(item: CheckboxPickerItem): string {
-			if (item.expandable || item.lazyChildren) return expanded.has(item.id) ? "▾" : "▸";
+			if (item.expandable || item.lazyChildren) {
+				if (item.lazyChildren && item.hideLazyMarker && !item.expandable) return " ";
+				return expanded.has(item.id) ? "▾" : "▸";
+			}
 			return item.parentId ? "└" : " ";
 		}
 
@@ -529,7 +533,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				loadingPanelVisible = true;
 				setApplyState(`Inspecting ${item.label}`, [
 					"Resolving package-contained resources with Pi.",
-					"For Available packages, this may clone/cache package sources before showing child rows.",
+					"This may take a moment for sources Pi is allowed to inspect.",
 					"Press Esc to return to the dashboard; already-started Pi resolution may still finish in the background.",
 				]);
 			}, 200);

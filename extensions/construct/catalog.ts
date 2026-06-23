@@ -5,7 +5,7 @@ import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js"
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
 export { isLocalPathSource, normalizeSourceForLibrary } from "./sources.js";
-import { normalizeSourceForLibrary } from "./sources.js";
+import { normalizeSourceForLibrary, packageSourceMatchValues } from "./sources.js";
 
 export function parseCatalog(catalog: JsonReadResult): { data: CatalogData; warnings: string[] } {
 	const warnings: string[] = [];
@@ -130,6 +130,16 @@ export function findCatalogItem(items: CatalogItem[], query: string): CatalogIte
 	return items.find((item) => item.id === query || item.source === query || item.name === query);
 }
 
+export async function findCatalogItemForSource(items: CatalogItem[], source: string, baseDir: string): Promise<CatalogItem | undefined> {
+	const sourceMatches = new Set(await packageSourceMatchValues(source, baseDir));
+	for (const item of items) {
+		if (item.source === source || sourceMatches.has(item.source)) return item;
+		const itemMatches = await packageSourceMatchValues(item.source, baseDir);
+		if (itemMatches.some((candidate) => sourceMatches.has(candidate))) return item;
+	}
+	return undefined;
+}
+
 export function formatCatalogItem(item: CatalogItem): string {
 	const name = item.name ? ` (${item.name})` : "";
 	const description = item.description ? ` — ${item.description}` : "";
@@ -169,20 +179,25 @@ export async function addSourcesToCatalog(
 		return { added: [], alreadyKnown: 0, warnings: [`Skipped Construct library load because catalog has warnings; fix ${paths.userCatalogPath} first.`, ...warnings] };
 	}
 
-	const existingSources = new Set(catalog.items.map((item) => item.source));
+	const baseDir = dirname(paths.projectSettingsPath);
+	const existingSources = new Set<string>();
+	for (const item of catalog.items) {
+		for (const match of await packageSourceMatchValues(item.source, baseDir)) existingSources.add(match);
+	}
 	const nextItems = [...catalog.items];
 	const added: CatalogItem[] = [];
 	let alreadyKnown = 0;
 	for (const source of sources) {
 		if (!source) continue;
-		if (existingSources.has(source)) {
+		const matches = await packageSourceMatchValues(source, baseDir);
+		if (matches.some((match) => existingSources.has(match))) {
 			alreadyKnown += 1;
 			continue;
 		}
 		const item: CatalogItem = { id: uniqueId(deriveId(source), nextItems), kind: "package", source };
 		nextItems.push(item);
 		added.push(item);
-		existingSources.add(source);
+		for (const match of matches) existingSources.add(match);
 	}
 
 	if (added.length > 0) {
