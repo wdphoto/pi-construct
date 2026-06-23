@@ -8,6 +8,8 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ### Fixed
 - Report disabled Construct metadata that is missing from `.pi/settings.json` as drift in `/construct status` and `/construct scan`.
+- Show drifted Construct metadata as a first-class `/construct scan` section instead of burying it in warnings.
+- Warn on the dashboard when available rows are actually stale project metadata missing from `.pi/settings.json`.
 - Re-arm disabled project metadata from `/construct load` when the matching package declaration is active in `.pi/settings.json`.
 
 ## 0.0.16 - 2026-06-22

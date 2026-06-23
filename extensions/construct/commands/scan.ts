@@ -29,6 +29,13 @@ interface ScanResourceFinding {
 	relativePath: string;
 }
 
+interface ScanDriftFinding {
+	id: string;
+	kind: string;
+	source?: string;
+	message: string;
+}
+
 interface ScanProject {
 	path: string;
 	realPath: string;
@@ -37,6 +44,7 @@ interface ScanProject {
 	packages: PackageDeclarationSummary[];
 	unloadedPackages: ScanPackageFinding[];
 	unloadedResources: ScanResourceFinding[];
+	driftedMetadata: ScanDriftFinding[];
 	warnings: string[];
 }
 
@@ -174,6 +182,11 @@ function formatResourceFinding(resource: ScanResourceFinding): string {
 	return `${resource.kind} ${resource.name} — ${resource.relativePath}`;
 }
 
+function formatDriftFinding(finding: ScanDriftFinding): string {
+	const source = finding.source ? ` ${finding.source}` : "";
+	return `${finding.kind} ${finding.id}${source} — ${finding.message}`;
+}
+
 async function directChildren(dir: string): Promise<import("node:fs").Dirent[]> {
 	try {
 		return await readdir(dir, { withFileTypes: true });
@@ -302,7 +315,9 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 	const warnings: string[] = [];
 	if (settings.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectSettingsPath))}`, settings));
 	if (construct.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectConstructPath))}`, construct));
-	warnings.push(...managedSummaries.filter((item) => item.drift).map((item) => `${item.id} drift: ${item.drift}`));
+	const driftedMetadata = managedSummaries
+		.filter((item) => item.drift)
+		.map((item) => ({ id: item.id, kind: item.kind, source: item.source, message: item.drift! }));
 
 	const unloadedPackages: ScanPackageFinding[] = [];
 	const seenPackageKeys = new Set<string>();
@@ -336,6 +351,7 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 		packages,
 		unloadedPackages,
 		unloadedResources,
+		driftedMetadata,
 		warnings,
 	};
 }
@@ -352,8 +368,10 @@ function formatProjectPath(display: ScanDisplayContext, project: Pick<ScanProjec
 
 function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippedProjects: SkippedProject[], warnings: string[]): string {
 	const projectsWithUnloaded = projects.filter(projectHasUnloaded);
+	const projectsWithDrift = projects.filter((project) => project.driftedMetadata.length > 0);
 	const unloadedPackageCount = projects.reduce((sum, project) => sum + project.unloadedPackages.length, 0);
 	const unloadedResourceCount = projects.reduce((sum, project) => sum + project.unloadedResources.length, 0);
+	const driftedMetadataCount = projects.reduce((sum, project) => sum + project.driftedMetadata.length, 0);
 	const lines = [
 		"Construct scan",
 		"==============",
@@ -363,6 +381,7 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 		`Projects with unloaded resources: ${projectsWithUnloaded.length}`,
 		`Unloaded package declarations: ${unloadedPackageCount}`,
 		`Unloaded direct resources: ${unloadedResourceCount}`,
+		`Drifted Construct metadata: ${driftedMetadataCount}`,
 		"Scope: trusted project-local .pi resources only; user/global skill and package caches are not scanned.",
 	];
 
@@ -373,6 +392,16 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 			lines.push(formatProjectPath(display, project));
 			for (const pkg of project.unloadedPackages) lines.push(`- package ${formatPackageFinding(pkg)}`);
 			for (const resource of project.unloadedResources) lines.push(`- ${formatResourceFinding(resource)}`);
+			lines.push("");
+		}
+		while (lines.at(-1) === "") lines.pop();
+	}
+
+	if (projectsWithDrift.length > 0) {
+		lines.push("", "Drifted Construct metadata", "--------------------------");
+		for (const project of projectsWithDrift) {
+			lines.push(formatProjectPath(display, project));
+			for (const finding of project.driftedMetadata) lines.push(`- ${formatDriftFinding(finding)}`);
 			lines.push("");
 		}
 		while (lines.at(-1) === "") lines.pop();

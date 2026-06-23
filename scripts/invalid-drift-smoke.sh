@@ -217,6 +217,10 @@ PY
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct status' 2>&1)"
 grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct scan .' 2>&1)"
+grep -Fq 'Drifted Construct metadata: 1' <<<"$OUTPUT"
+grep -Fq 'Drifted Construct metadata' <<<"$OUTPUT"
+grep -Fq 'disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
+OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct' 2>&1)"
 grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
 
 printf '== load re-arms disabled metadata with active settings ==\n'

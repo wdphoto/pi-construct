@@ -182,6 +182,10 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	for (const item of managed) {
 		const declared = [...item.matchSources].some((source) => project.declaredSources.has(source));
 		const disabledByFilters = [...item.matchSources].some((source) => project.disabledSources.has(source));
+		const missingDeclarationDrift = !declared && item.enabled !== undefined;
+		if (missingDeclarationDrift) {
+			warnings.push(`${item.id} drift: ${item.enabled ? "enabled" : "disabled"} in Construct metadata, missing from .pi/settings.json`);
+		}
 		packages.push({
 			type: "package",
 			rowId: rowId("managed", item.id, item.source),
@@ -198,7 +202,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 				? disabledByFilters
 					? "Active in this project, but package resources are disabled by Pi filters. Press Enter to enable selected packages, or r to remove them from this project."
 					: "Active in this project. Press Enter to disable selected packages, or r to remove them from this project."
-				: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
+				: missingDeclarationDrift
+					? "Drift: Construct metadata exists, but .pi/settings.json has no matching package declaration. Press Enter to install/restore selected packages."
+					: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
 		});
 	}
 
