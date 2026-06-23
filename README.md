@@ -179,7 +179,7 @@ Notes:
 - `.pi/settings.json` is the source of truth.
 - `.pi/construct.json` is advisory metadata for Construct's UI.
 - `~/.pi/agent/construct/catalog.json` is your user-local Construct library and saved-loadout store.
-- `~/.pi/agent/construct/projects.json` is a user-local index of projects Construct has touched; assignment counts are informational only.
+- `~/.pi/agent/construct/projects.json` is a user-local index of projects Construct has touched; assignment counts and missing-path notes in `/construct status full` are informational only.
 
 ## Remove Construct
 

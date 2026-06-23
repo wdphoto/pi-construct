@@ -228,11 +228,12 @@ Files: `projects.ts`, `docs/product-model.md`, `docs/architecture.md`
 
 Known-project assignment counts currently track package declarations only. That is okay because counts are informational and used mostly around unload/library cleanup. But direct resources are now first-class dashboard/status rows, so future “known projects” language can become misleading if reused around direct resources.
 
-Recommendation:
+Decision:
 
 - Keep package-only counts for now.
 - Avoid showing known-project counts on direct-resource rows until the index stores resource refs.
 - `/construct scan` now reports conservative findings and does not expand the known-project index implicitly.
+- `/construct status full` reports missing known-project paths as informational notes, but Construct does not prune the index automatically and does not add a doctor command yet.
 
 ### A11 — Project scan can easily become the next bloat source
 

@@ -69,9 +69,9 @@ Do this as a small no-new-command cleanup pass. The goal is to turn remaining pr
   - Decision: keep saved loadouts/share snippets package-source-only.
   - Direct project-local resources remain project-local Construct metadata only.
   - Do not design a portable direct-resource export/import format yet.
-- [ ] Add stale known-project visibility without adding a command.
+- [x] Add stale known-project visibility without adding a command.
   - Do not add `/construct doctor` yet.
-  - Add lightweight missing-path notes to `/construct status full` for known-project entries whose paths no longer exist.
+  - `/construct status full` shows lightweight missing-path notes for known-project entries whose paths no longer exist.
   - Do not prune known-project entries automatically yet.
 
 ## Later

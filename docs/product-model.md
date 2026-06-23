@@ -96,6 +96,8 @@ Known-project index:
 ~/.pi/agent/construct/projects.json
 ```
 
+Known-project entries are informational. `/construct status full` may report entries whose stored paths are missing, but Construct does not prune this file automatically.
+
 Project metadata:
 
 ```text

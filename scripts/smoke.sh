@@ -212,6 +212,32 @@ printf '== saved loadout list ==\n'
 LIST_OUTPUT="$(run_pi '/construct list')"
 [[ "$LIST_OUTPUT" == *"Saved Construct loadouts"* ]]
 
+printf '== stale known-project visibility ==\n'
+python3 - "$HOME_DIR" "$TMP/missing-project" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+missing = pathlib.Path(sys.argv[2])
+projects_path = home / ".pi/agent/construct/projects.json"
+projects_path.parent.mkdir(parents=True, exist_ok=True)
+try:
+    data = json.loads(projects_path.read_text())
+except FileNotFoundError:
+    data = {"version": 1, "projects": []}
+data.setdefault("projects", []).append({
+    "path": str(missing),
+    "realPath": str(missing),
+    "packages": ["npm:missing-fixture"],
+    "updatedAt": "2026-06-22T00:00:00.000Z",
+})
+projects_path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+STATUS_FULL_OUTPUT="$(run_pi '/construct status full')"
+[[ "$STATUS_FULL_OUTPUT" == *"Known-project missing paths: 1 (not pruned automatically)"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"Missing known project:"* ]]
+
 printf '== project scan ==\n'
 SCAN_TRUST_OUTPUT="$(run_pi '/construct scan')"
 [[ "$SCAN_TRUST_OUTPUT" == *"Construct scan"* ]]

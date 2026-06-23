@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, JsonReadResult, KnownProjectEntry, KnownProjectsData } from "./types.js";
@@ -99,4 +100,36 @@ export function knownProjectCountForSources(counts: Map<string, number>, sources
 	let count = 0;
 	for (const source of sources) count = Math.max(count, counts.get(source) ?? 0);
 	return count;
+}
+
+export interface MissingKnownProjectEntry {
+	project: KnownProjectEntry;
+	checkedPaths: string[];
+}
+
+async function pathIsDefinitelyMissing(path: string): Promise<boolean> {
+	try {
+		await stat(path);
+		return false;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		return code === "ENOENT" || code === "ENOTDIR";
+	}
+}
+
+export async function missingKnownProjectEntries(data: KnownProjectsData): Promise<MissingKnownProjectEntry[]> {
+	const missing: MissingKnownProjectEntry[] = [];
+	for (const project of data.projects) {
+		const checkedPaths = [...new Set([project.realPath, project.path].filter((path): path is string => typeof path === "string" && path.trim().length > 0))];
+		if (checkedPaths.length === 0) continue;
+		let maybeExists = false;
+		for (const path of checkedPaths) {
+			if (!(await pathIsDefinitelyMissing(path))) {
+				maybeExists = true;
+				break;
+			}
+		}
+		if (!maybeExists) missing.push({ project, checkedPaths });
+	}
+	return missing;
 }

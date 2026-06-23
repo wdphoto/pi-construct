@@ -22,6 +22,10 @@ No separate public toggle/library/catalog/reload command family for now. After d
 
 User-facing copy should prefer **library** over **catalog** except when naming the file path.
 
+## `/construct status`
+
+Status is read-only. `/construct status` gives a compact current-project summary, and `/construct status full` gives diagnostics for JSON files, Construct library state, project package/direct-resource inventory, and runtime command/tool inventory. Verbose status may also note known-project entries whose saved paths no longer exist; those notes are informational only and Construct does not prune the known-project index automatically.
+
 ## `/construct scan`
 
 Scan finds unloaded resources in local project folders. Print mode is read-only; TUI mode can load selected findings into Construct.

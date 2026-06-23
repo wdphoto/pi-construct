@@ -101,7 +101,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Saving over an existing loadout never appends or merges; TUI asks before replacing.
 - `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.
 - Saved loadouts appear as compact `◆` rows in `/construct`; focusing one marks member package rows with `[·]`, Enter on a focused saved row runs it through the dashboard progress/result/reload flow, and Space on a saved row quick-selects its member package rows for normal package actions. Saved rows are recipe/spotlight rows only; disable/remove stays on package rows.
-- Known-project assignment counts are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects.
+- Known-project assignment counts and status-full missing-path notes are informational only. They should help users understand cleanup/refactor impact, but unload should not block or hard-warn because it does not delete/disable resources from those projects. Do not prune known-project entries automatically.
 - `/construct share <saved-name>` prints a small shareable JSON loadout snippet first. Clipboard can come later only through a safe/public path; do not depend on Pi internal clipboard helpers.
 - `/construct wipe <saved-name>` removes only the saved loadout recipe; it never edits project files, disables/uninstalls packages, removes package sources from the Construct library, or reloads Pi.
 - `/construct import <json>` validates and previews pasted snippets; TUI asks before writing, non-TUI previews only.

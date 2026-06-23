@@ -100,6 +100,7 @@ Manual TUI import write check:
 Expected:
 
 - `/construct status full` reports trusted project-local `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and `.pi/themes/` resources.
+- `/construct status full` reports missing known-project paths from `~/.pi/agent/construct/projects.json` as informational notes and does not prune them automatically.
 - `/construct` shows those direct resources as rows: Unloaded/read-only before adoption, Active/Disabled and selectable after metadata adoption.
 - `/construct load` adopts direct project resources into `.pi/construct.json` metadata only and does not add project-local files to the user library, saved loadouts, or share snippets.
 - Enter on adopted direct resources writes Pi-native top-level `+path` / `-path` filters in `.pi/settings.json` and updates `.pi/construct.json` enabled state.

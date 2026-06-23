@@ -5,6 +5,7 @@ import { describeRead } from "./json.js";
 import { CONSTRUCT_TITLE } from "./metadata.js";
 import { collectProjectInventory, type ProjectInventory } from "./project-inventory.js";
 import { formatList } from "./project-settings.js";
+import { missingKnownProjectEntries } from "./projects.js";
 import { directResourceKinds, resourcePlural } from "./resources.js";
 import { normalizeSourceForLibrary } from "./sources.js";
 
@@ -158,6 +159,12 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 	const catalogPreview = inventory.catalog.data.items.slice(0, 5).map(formatCatalogItem);
 	const profilePreview = inventory.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
 	const knownProjectPreview = inventory.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
+	const missingKnownProjects = await missingKnownProjectEntries(inventory.knownProjects.data);
+	const missingKnownProjectPreview = missingKnownProjects.slice(0, 5).map(({ project, checkedPaths }) => {
+		const lastSeen = project.updatedAt ? `, last seen ${project.updatedAt}` : "";
+		const checked = checkedPaths.length > 1 ? `; checked ${checkedPaths.join(", ")}` : "";
+		return `! Missing known project: ${project.realPath ?? project.path} (${compactCount(project.packages.length, "package")}${lastSeen}${checked})`;
+	});
 	const commandCounts = countBy(data.commands, (command) => command.source);
 	const activeToolNames = new Set(data.activeTools);
 	const activeTools = data.tools.filter((tool) => activeToolNames.has(tool.name));
@@ -201,6 +208,9 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		...inventory.catalog.warnings.map((warning) => `! ${warning}`),
 		`Known projects: ${inventory.knownProjects.data.projects.length}`,
 		...formatList(knownProjectPreview, "no known projects indexed"),
+		missingKnownProjects.length > 0 ? `Known-project missing paths: ${missingKnownProjects.length} (not pruned automatically)` : undefined,
+		...missingKnownProjectPreview,
+		missingKnownProjects.length > missingKnownProjectPreview.length ? `! …and ${missingKnownProjects.length - missingKnownProjectPreview.length} more missing known-project paths` : undefined,
 		...inventory.knownProjects.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Project Pi state",
