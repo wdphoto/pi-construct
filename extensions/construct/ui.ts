@@ -148,8 +148,6 @@ export interface CheckboxPickerItem {
 	depth?: number;
 	expandable?: boolean;
 	expandedByDefault?: boolean;
-	lazyChildren?: boolean;
-	hideLazyMarker?: boolean;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -241,7 +239,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "loading" | "done" = "pick";
 		const expanded = new Set(items.filter((item) => item.expandedByDefault).map((item) => item.id));
 		let itemById = new Map(items.map((item) => [item.id, item]));
-		const hasTreeItems = items.some((item) => item.expandable || item.lazyChildren || item.parentId);
+		const hasTreeItems = items.some((item) => item.expandable || item.parentId);
 		let submittedIds: string[] | undefined;
 		let submittedChangedIds: string[] = [];
 		let confirmationAction: CheckboxPickerSubmitAction = "remove";
@@ -302,10 +300,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function expansionMarker(item: CheckboxPickerItem): string {
-			if (item.expandable || item.lazyChildren) {
-				if (item.lazyChildren && item.hideLazyMarker && !item.expandable) return " ";
-				return expanded.has(item.id) ? "▾" : "▸";
-			}
+			if (item.expandable) return expanded.has(item.id) ? "▾" : "▸";
 			return item.parentId ? "└" : " ";
 		}
 
@@ -552,7 +547,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 					const newChildren = children.filter((child) => !existingIds.has(child.id));
 					if (newChildren.length > 0) {
 						item.expandable = true;
-						item.lazyChildren = false;
 						const parentIndex = items.findIndex((candidate) => candidate.id === item.id);
 						items.splice(parentIndex >= 0 ? parentIndex + 1 : items.length, 0, ...newChildren);
 						for (const child of newChildren) {
@@ -568,7 +562,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						return;
 					}
 					item.expandable = false;
-					item.lazyChildren = false;
 					if (emptyDescription) item.description = emptyDescription;
 					if (quietEmpty) {
 						phase = "pick";
@@ -716,10 +709,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 			if (keybindings.matches(data, "tui.editor.cursorRight") || matchesKey(data, Key.right)) {
 				const item = selectedItem();
-				if (item?.lazyChildren && options.loadChildren) {
-					startLoadChildren(item);
-					return;
-				}
 				if (item?.expandable && !expanded.has(item.id)) {
 					const hasLoadedChildren = items.some((candidate) => candidate.parentId === item.id);
 					if (!hasLoadedChildren && options.loadChildren) {

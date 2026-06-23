@@ -66,7 +66,7 @@ Unloaded
 
 ✓ active · – disabled · + available · ◇ unloaded
 
-Space selects · Enter applies/runs · → inspects/unfolds package resources · ← folds · i details · r removes · Esc cancels
+Space selects · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes · Esc cancels
 ```
 
 In the live TUI, the dashboard title includes the package/version string, followed by a quiet count line. Row content is color-coded by state: saved/loadout and active use the heading accent, disabled is muted, available is yellow, and unloaded/read-only is gray. The cursor and checkbox markers stay plain; the focused row content is bold.
@@ -85,7 +85,7 @@ Use `/construct load` to adopt unloaded package declarations into Construct. Dir
 
 Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections.
 
-On a package row with multiple Pi-resolved resources, Right Arrow unfolds package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. `Available` rows only show the collapsed arrow when Construct already has a cached Pi resource list with multiple resources; focused unknown Available rows can still use Right Arrow to ask Pi to inspect/cache resources, then unfold if multiple entries are found. Single-resource packages stay whole-package rows. Resource-level selection writes an explicit allowlist, so future package-added resources stay disabled until selected; use whole-package Enter when you want Pi's default package behavior. Equivalent source spellings are matched as one package for dashboard state, but exact project declarations are preserved. No package files are copied, and saved loadout recipes stay package-source-only.
+On a package row with multiple Pi-resolved resources, Right Arrow unfolds package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. `Available` rows only show the collapsed arrow when Construct already has a cached Pi resource list with multiple resources; unknown Available rows with no cached multi-resource list have no hidden Right Arrow action and install as whole-package rows with Enter. Single-resource packages stay whole-package rows. Resource-level selection writes an explicit allowlist, so future package-added resources stay disabled until selected; use whole-package Enter when you want Pi's default package behavior. Equivalent source spellings are matched as one package for dashboard state, but exact project declarations are preserved. No package files are copied, and saved loadout recipes stay package-source-only.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 

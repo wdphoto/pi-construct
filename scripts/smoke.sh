@@ -126,6 +126,8 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Unloaded"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"No Construct metadata yet"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"→ unfolds known package resources"* ]]
+[[ "$DASHBOARD_OUTPUT" != *"inspects/unfolds"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
 STATUS_FULL_OUTPUT="$(run_pi '/construct status full')"
@@ -172,6 +174,8 @@ printf '== dashboard sees managed package ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"→ unfolds known package resources"* ]]
+[[ "$DASHBOARD_OUTPUT" != *"inspects/unfolds"* ]]
 STATUS_FULL_OUTPUT="$(run_pi_approved '/construct status full')"
 [[ "$STATUS_FULL_OUTPUT" == *"Package-contained resources: 4 (project packages only)"* ]]
 [[ "$STATUS_FULL_OUTPUT" == *"extensions: 1"* ]]

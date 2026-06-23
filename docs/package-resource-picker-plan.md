@@ -44,7 +44,7 @@ Likely policy:
 ## Constraints for first implementation
 
 - Project packages use `DefaultPackageManager.resolve()` and `scope === "project"`.
-- Available packages may be cache-inspected with Pi's temporary package resolver during dashboard build, but without network/download. If the cache scan finds multiple resources, Right Arrow opens the child picker immediately; if no cached list exists, Right Arrow on the focused row may ask Pi to inspect/cache resources before deciding whether to open children. If inspection finds zero or one resource, keep the package as a whole-package row.
+- Available packages may be cache-inspected with Pi's temporary package resolver during dashboard build, but without network/download. If the cache scan finds multiple resources, Right Arrow opens the child picker immediately; if no cached multi-resource list exists, the row has no hidden Right Arrow action and Enter installs the whole package. Zero-, one-resource, and unknown packages stay whole-package rows.
 - No remote package browsing outside remembered Construct package sources.
 - No saved-loadout filter recipes.
 - No share/import of filter selections.
@@ -82,7 +82,7 @@ Status: complete enough for the next read-only dashboard drill-down.
 
 ## Stage 2 — dashboard drill-down
 
-Status: implemented as inline unfold for installed package rows plus cache-inspected and focused-on-demand Available package rows.
+Status: implemented as inline unfold for installed package rows plus cache-inspected Available package rows with no hidden on-demand inspection.
 
 Key model:
 
@@ -101,7 +101,7 @@ Panel content:
 
 ## Stage 3 — write-enabled package picker
 
-Status: first implementation landed in the dashboard inline scaffold, including cache-inspected and focused-on-demand install-with-filters for Available package rows. The dashboard now hides the unfold affordance for packages with zero or one resolved package resource.
+Status: first implementation landed in the dashboard inline scaffold, including cache-inspected install-with-filters for Available package rows when multiple resources are already known. The dashboard now hides the unfold affordance and Right Arrow action for packages with zero, one, or unknown resolved package resources.
 
 Flow:
 

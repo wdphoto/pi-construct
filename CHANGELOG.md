@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Changed
+- Remove the hidden Right Arrow inspection action from Available package rows that do not already have a cached multi-resource list; those rows now stay plain whole-package install rows.
+
 ## 0.0.20 - 2026-06-23
 
 ### Added

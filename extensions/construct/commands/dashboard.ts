@@ -109,7 +109,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory; inventory: Awaited<ReturnType<typeof collectProjectInventory>> }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
 	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
@@ -243,7 +243,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	}
 	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings, projectMetadataMissing, packageResources, inventory };
+	return { paths, packages, warnings, projectMetadataMissing, packageResources };
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -333,7 +333,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → inspects/unfolds package resources · ← folds · i details · r removes selected from project · Esc cancels.",
+		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes selected from project · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing),
 	);
@@ -516,8 +516,8 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 			confirmHint: "Press Enter/Esc to return",
 			lines: [
 				"No cached package-contained resource list is available for this package yet.",
-				"Construct does not show an unfold arrow until it has a resource list.",
-				"Press Right Arrow to ask Pi to inspect/cache it now, or press Enter to install the whole package.",
+				"Construct does not show an unfold arrow or run Right Arrow inspection until it already has a multi-resource list.",
+				"Press Enter to install the whole package with Pi's normal defaults.",
 			],
 		};
 	}
@@ -591,7 +591,7 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 	if (item.section === "Available") {
 		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} cached Pi resource entries; Enter installs the whole package.`;
 		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use i for the exact path.`;
-		return `${base}\nNo cached package resource list is available yet. Right Arrow scans this package with Pi; Enter installs the whole package.`;
+		return `${base}\nNo cached package resource list is available yet, so there is no dropdown. Enter installs the whole package.`;
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
 		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.`;
@@ -607,7 +607,6 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 		const resources = item.type === "package" ? resourcesForPackage(item, packageResources) : [];
 		const children = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
 		const visibleChildren = children.length > 1 ? children : [];
-		const lazyAvailableChildren = item.type === "package" && item.section === "Available" && resources.length === 0;
 		items.push({
 			id: item.rowId,
 			label: item.label,
@@ -626,8 +625,6 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 			confirmOnFocus: item.type === "saved",
 			expandable: visibleChildren.length > 0,
-			lazyChildren: lazyAvailableChildren,
-			hideLazyMarker: lazyAvailableChildren,
 		});
 		items.push(...visibleChildren);
 	}
@@ -716,7 +713,7 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings, projectMetadataMissing, packageResources, inventory } = await buildDashboardPackages(ctx);
+	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
 		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
 		return;
@@ -732,39 +729,11 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → inspect/unfold package · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, sessionPackageResources) : undefined;
-		},
-		loadChildren: async (focusedItem) => {
-			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
-			if (!packageItem || packageItem.section !== "Available") return [];
-			const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, [packageItem.source]);
-			sessionPackageResources.resources.push(...availableResources.resources);
-			for (const warning of availableResources.warnings) sessionPackageResources.warnings.push(warning);
-			const resources = resourcesForPackage(packageItem, sessionPackageResources);
-			const children = packageResourceChildren(packageItem, sessionPackageResources);
-			if (resources.length > 1) return children;
-			const emptyLines =
-				resources.length === 1
-					? [
-						"Inspected: one package resource entry found, so this stays a whole-package row.",
-						`${resourceLabel(resources[0])}: ${packageResourceInspectionPath(resources[0])}`,
-						"Select the package row and press Enter to install it normally.",
-					]
-					: ["Inspected: no package-contained resources resolved.", "Select the package row and press Enter to install it normally."];
-			return {
-				children: [],
-				quietEmpty: true,
-				emptyDescription: emptyLines.join("\n"),
-				empty: {
-					title: `Package resources: ${packageItem.label}`,
-					confirmHint: "Press Enter/Esc to return",
-					lines: emptyLines,
-				},
-			};
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action, changedIds) => {
