@@ -297,8 +297,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function expansionMarker(item: CheckboxPickerItem): string {
-			if (item.expandable) return expanded.has(item.id) ? "▾" : "▸";
-			if (item.lazyChildren) return "?";
+			if (item.expandable || item.lazyChildren) return expanded.has(item.id) ? "▾" : "▸";
 			return item.parentId ? "└" : " ";
 		}
 
@@ -713,10 +712,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 			if (options.inspect && data.toLowerCase() === (options.inspectKey ?? "i").toLowerCase()) {
 				const item = selectedItem();
-				if (item?.lazyChildren && !items.some((candidate) => candidate.parentId === item.id) && options.loadChildren) {
-					startLoadChildren(item);
-					return;
-				}
 				const inspection = item ? options.inspect(item) : undefined;
 				if (inspection) {
 					startInspect(inspection);

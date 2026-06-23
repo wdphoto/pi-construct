@@ -10,7 +10,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Show read-only project package internals in `/construct status full` as groundwork for future dashboard package-resource inspection.
 - Add native Pi package-filter analysis so Construct can recognize unfiltered, whole-package-disabled, partial, and invalid package filter states.
 - Add dashboard package resource picking: Right Arrow unfolds Pi-resolved package-contained resources inline, Space changes resource target state, and Enter writes native Pi package filters after preview/backup.
-- Allow Available package rows to show a `?` inspection marker and install with only selected package-contained resources enabled; Construct lazily uses Pi's temporary resolver only after the user presses Right Arrow on an Available row, then installs project-local and writes native package filters.
+- Allow Available package rows to use the normal collapsed arrow for lazy inspection and install with only selected package-contained resources enabled; Construct uses Pi's temporary resolver only after the user presses Right Arrow on an Available row, then installs project-local and writes native package filters.
 - Hide package-resource child pickers and unfold affordances for packages with zero or one resolved resource so simple packages stay as whole-package rows.
 
 ### Changed
