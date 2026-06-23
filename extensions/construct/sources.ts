@@ -1,10 +1,22 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ConstructPaths, JsonObject } from "./types.js";
 
 export function isLocalPathSource(source: string): boolean {
 	return source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~");
+}
+
+export function formatPackageSourceLabel(source: string): string {
+	const trimmed = source.trim().replace(/\/+$/, "");
+	const githubUrl = trimmed.match(/^https?:\/\/github\.com\/([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (githubUrl) return `github:${githubUrl[1]}`;
+	const gitGithub = trimmed.match(/^git:(?:github\.com[:/])?([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (gitGithub) return `github:${gitGithub[1]}`;
+	const sshGithub = trimmed.match(/^git@github\.com:([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
+	if (sshGithub) return `github:${sshGithub[1]}`;
+	if (isLocalPathSource(trimmed)) return `local:${basename(trimmed) || trimmed}`;
+	return source;
 }
 
 export async function normalizeSourceForLibrary(source: string, baseDir: string): Promise<string> {

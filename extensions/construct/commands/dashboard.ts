@@ -3,6 +3,7 @@ import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId } from "../catalog.js";
 import { collectProjectInventory } from "../project-inventory.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
+import { formatPackageSourceLabel } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -57,17 +58,6 @@ const dashboardSections: DashboardSection[] = ["Saved", "Active", "Disabled", "A
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
-}
-
-function compactSource(source: string): string {
-	const trimmed = source.trim().replace(/\/+$/, "");
-	const githubUrl = trimmed.match(/^https?:\/\/github\.com\/([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
-	if (githubUrl) return `github:${githubUrl[1]}`;
-	const gitGithub = trimmed.match(/^git:(?:github\.com[:/])?([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
-	if (gitGithub) return `github:${gitGithub[1]}`;
-	const sshGithub = trimmed.match(/^git@github\.com:([^/?#]+\/[^/?#]+?)(?:\.git)?(?:[?#].*)?$/);
-	if (sshGithub) return `github:${sshGithub[1]}`;
-	return source;
 }
 
 function itemSortValue(item: DashboardItem): string {
@@ -154,7 +144,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: item.id,
 			label: item.id,
 			source,
-			displaySource: compactSource(source),
+			displaySource: formatPackageSourceLabel(source),
 			section: managed.state === "active" ? "Active" : managed.state === "disabled" ? "Disabled" : "Available",
 			checked: false,
 			managed: true,
@@ -177,7 +167,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: item.id,
 			label: item.id,
 			source: item.source,
-			displaySource: compactSource(item.source),
+			displaySource: formatPackageSourceLabel(item.source),
 			section: "Available",
 			checked: false,
 			matchSources: [item.source],
@@ -192,7 +182,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			id: `unloaded:${pkg.source}`,
 			label: deriveId(pkg.source),
 			source: pkg.source,
-			displaySource: compactSource(pkg.source),
+			displaySource: formatPackageSourceLabel(pkg.source),
 			section: "Unloaded",
 			checked: false,
 			disabled: true,
@@ -405,7 +395,7 @@ function operationFromDirect(item: DashboardDirectResource): DashboardOperationI
 }
 
 function operationFromSource(source: string): DashboardOperationItem {
-	return { id: deriveId(source), label: deriveId(source), source, displaySource: compactSource(source) };
+	return { id: deriveId(source), label: deriveId(source), source, displaySource: formatPackageSourceLabel(source) };
 }
 
 function packageMatchesSource(item: DashboardPackage, source: string): boolean {

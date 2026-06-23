@@ -134,6 +134,7 @@ Controls:
 - make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
 - in TUI, use a quiet title with the package/version string and a count line like `1 active | 0 disabled | 3 available | 0 unloaded`;
 - color row content by state while keeping cursor/checkbox markers plain: Loadouts/Saved and Active heading accent, Disabled muted, Available warning/yellow, Unloaded/read-only muted gray; bold the focused row content;
+- show compact package source labels in rows where possible, e.g. `github:owner/repo` or `local:<dir>`, while keeping exact source strings in saved metadata and write operations;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the footer short and two-line: controls first, then `[!] read-only · [·] recipe item`;
 - Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;

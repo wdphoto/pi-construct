@@ -60,7 +60,7 @@ See `CHANGELOG.md` for version-by-version detail.
 ## Later
 
 - [x] Lazy-load heavier Construct command modules from the entrypoint so completions/unknown commands stay light.
-- [ ] Polish package source labels, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
+- [x] Polish package source labels in the dashboard, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
 - [ ] Keep package enable/disable whole-package for now; consider filter snapshots only if users need partial package-filter restoration.
 - [ ] Review when saved loadouts/share snippets should include portable direct resources; current decision is package-source-only.
 - [ ] Optional local-file packaging/export for `.pi/extensions`, prompts, skills, and themes.
