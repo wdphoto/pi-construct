@@ -81,12 +81,12 @@ Status: complete enough for the next read-only dashboard drill-down.
 
 ## Stage 2 — read-only dashboard drill-down
 
-Add package-row inspection without writes.
+Status: implemented as a read-only `i` inspection panel on package rows.
 
-Possible key model:
+Key model:
 
 - focused package row + `i` opens package resources;
-- Esc returns to dashboard;
+- Enter/Esc returns to dashboard;
 - no filter changes yet.
 
 Panel content:
@@ -95,7 +95,7 @@ Panel content:
 - grouped resources: Extensions, Skills, Prompts, Themes;
 - enabled/disabled markers from Pi resolver;
 - package-relative paths;
-- footer: “Read-only for now; Pi filters live in .pi/settings.json.”
+- read-only note that future picking writes Pi filters in `.pi/settings.json`.
 
 This validates navigation, grouping, and row-to-resource mapping before settings edits.
 

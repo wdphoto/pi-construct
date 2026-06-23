@@ -1,10 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId } from "../catalog.js";
+import { collectProjectPackageResources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory } from "../project-inventory.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { formatPackageSourceLabel } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
+import { directResourceKinds, resourcePlural } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 
@@ -105,7 +107,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
 	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
@@ -227,8 +229,10 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		}
 	}
 
+	const packageResources = ctx.mode === "tui" ? await collectProjectPackageResources(ctx, inventory) : undefined;
+	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings, projectMetadataMissing };
+	return { paths, packages, warnings, projectMetadataMissing, packageResources };
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -318,7 +322,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
+		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · i inspects package resources · r removes selected from project · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing),
 	);
@@ -431,8 +435,49 @@ function actionForSavedSource(item: DashboardPackage | undefined): DashboardActi
 	return item.disabledByFilters ? "Enable" : undefined;
 }
 
+function resourceMatchesPackage(resource: PackageResourceSummary, item: DashboardPackage): boolean {
+	return (
+		resource.packageManagedId === item.id ||
+		item.matchSources.includes(resource.packageSource) ||
+		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource))
+	);
+}
+
+function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
+	if (!packageResources) {
+		return {
+			title: `Package resources: ${item.label}`,
+			confirmHint: "Press Enter/Esc to return",
+			lines: ["Package resources were not collected for this dashboard session."],
+		};
+	}
+	const resources = packageResources.resources.filter((resource) => resourceMatchesPackage(resource, item));
+	const lines = [
+		`Package: ${item.label}`,
+		`Source: ${item.source}`,
+		"",
+		"Read-only for now. This view uses Pi's native package resource resolver; future picking will write Pi package filters in .pi/settings.json.",
+	];
+	if (resources.length === 0) {
+		lines.push("", "No package-contained resources resolved for this package.");
+		return { title: `Package resources: ${item.label}`, confirmHint: "Press Enter/Esc to return", lines };
+	}
+	for (const kind of directResourceKinds) {
+		const kindResources = resources.filter((resource) => resource.kind === kind);
+		if (kindResources.length === 0) continue;
+		lines.push("", `${resourcePlural(kind)} (${kindResources.length})`);
+		for (const resource of kindResources) {
+			lines.push(`- ${resource.enabled ? "[x]" : "[ ]"} ${resource.name} — ${resource.packageRelativePath}`);
+		}
+	}
+	if (packageResources.warnings.length > 0) {
+		lines.push("", ...packageResources.warnings.map((warning) => `! ${warning}`));
+	}
+	return { title: `Package resources: ${item.label}`, confirmHint: "Press Enter/Esc to return", lines };
+}
+
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings, projectMetadataMissing } = await buildDashboardPackages(ctx);
+	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
 		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
 		return;
@@ -465,8 +510,12 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select · Enter apply/run · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
+		footerHint: "  Space select · Enter apply/run · i inspect package · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
+		inspect: (focusedItem) => {
+			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
+			return packageItem ? packageResourceInspection(packageItem, packageResources) : undefined;
+		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),
 		onSubmit: async (ids, update, signal, submitAction) => {

@@ -191,6 +191,8 @@ export interface CheckboxPickerOptions {
 	};
 	removeConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction) => CheckboxPickerConfirmation | undefined;
+	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
+	inspectKey?: string;
 	onSubmit?: (
 		selectedIds: string[],
 		update: (title: string, lines: string[]) => void,
@@ -220,12 +222,13 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		const checked = new Set(options.initialSelection === "empty" ? [] : items.filter((item) => item.checked).map((item) => item.id));
 		let query = "";
 		let selected = 0;
-		let phase: "pick" | "confirmSubmit" | "applying" | "done" = "pick";
+		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "done" = "pick";
 		let submittedIds: string[] | undefined;
 		let confirmationAction: CheckboxPickerSubmitAction = "remove";
 		let confirmationTitle = "Remove from this project?";
 		let confirmationLines: string[] = [];
 		let confirmationHint = "Press Enter to remove · Esc cancels";
+		let confirmationTone: CheckboxPickerTone = "warning";
 		let confirmationScroll = 0;
 		let applyTitle = "Applying changes…";
 		let applyLines: string[] = ["Preparing changes…"];
@@ -298,14 +301,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const maxVisible = 16;
 			const window = scrollWindow(confirmationLines, confirmationScroll, maxVisible);
 			confirmationScroll = window.scroll;
-			const lines = [theme.fg("warning", theme.bold(confirmationTitle)), ""];
+			const lines = [styleTone(confirmationTone, theme.bold(confirmationTitle)), ""];
 			for (const line of window.visible) {
 				if (line.startsWith("!")) lines.push(theme.fg("warning", line));
 				else if (line.trimStart().startsWith("`")) lines.push(theme.fg("accent", line));
 				else lines.push(line);
 			}
 			if (window.rangeLabel) lines.push("", theme.fg("muted", `  ${window.rangeLabel}`));
-			lines.push("", theme.fg("warning", `  ${confirmationHint}`));
+			lines.push("", styleTone(confirmationTone, `  ${confirmationHint}`));
 			return truncateLines(lines, width);
 		}
 
@@ -330,7 +333,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function render(width: number): string[] {
-			if (phase === "confirmSubmit") return renderConfirmation(width);
+			if (phase === "confirmSubmit" || phase === "inspect") return renderConfirmation(width);
 			if (phase !== "pick") return renderApply(width);
 			if (cachedLines && cachedWidth === width) return cachedLines;
 			const visibleItems = filteredItems();
@@ -431,8 +434,20 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			confirmationTitle = confirmation.title;
 			confirmationLines = confirmation.lines;
 			confirmationHint = confirmation.confirmHint ?? (action === "remove" ? "Press Enter to remove · Esc cancels" : "Press Enter to apply · Esc cancels");
+			confirmationTone = "warning";
 			confirmationScroll = 0;
 			phase = "confirmSubmit";
+			invalidate();
+			tui.requestRender();
+		}
+
+		function startInspect(inspection: CheckboxPickerConfirmation): void {
+			confirmationTitle = inspection.title;
+			confirmationLines = inspection.lines;
+			confirmationHint = inspection.confirmHint ?? "Press Enter/Esc to return";
+			confirmationTone = "accent";
+			confirmationScroll = 0;
+			phase = "inspect";
 			invalidate();
 			tui.requestRender();
 		}
@@ -476,7 +491,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function handleInput(data: string): void {
 			if (phase !== "pick") {
-				if (phase === "confirmSubmit") {
+				if (phase === "confirmSubmit" || phase === "inspect") {
 					if (keybindings.matches(data, "tui.select.up")) {
 						confirmationScroll = Math.max(0, confirmationScroll - 1);
 						invalidate();
@@ -490,6 +505,12 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						return;
 					}
 					if (keybindings.matches(data, "tui.select.confirm")) {
+						if (phase === "inspect") {
+							phase = "pick";
+							invalidate();
+							tui.requestRender();
+							return;
+						}
 						startSubmit(confirmationAction, submittedIds);
 						return;
 					}
@@ -540,6 +561,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				invalidate();
 				tui.requestRender();
 				return;
+			}
+			if (options.inspect && data.toLowerCase() === (options.inspectKey ?? "i").toLowerCase()) {
+				const item = selectedItem();
+				const inspection = item ? options.inspect(item) : undefined;
+				if (inspection) {
+					startInspect(inspection);
+					return;
+				}
 			}
 			if (data === "\u007f" || data === "\b") {
 				if (query) {

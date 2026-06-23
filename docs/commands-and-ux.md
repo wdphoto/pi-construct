@@ -137,6 +137,7 @@ Controls:
 - type to search/filter;
 - Space selects rows; on a loadout row, Space selects that recipe's selectable package rows instead of selecting the loadout row itself;
 - row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused loadout recipe, `[!]` means read-only, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
+- `i` on a package row opens a read-only package-contained resource inspection panel using Pi's native resolver. It does not write filters yet;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
 - in TUI, use a quiet title with the package/version string and a count line like `1 active | 0 disabled | 3 available | 0 unloaded`;
