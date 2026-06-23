@@ -282,11 +282,7 @@ function sectionLabel(section: DashboardSection): string {
 	return section === "Saved" ? "Loadouts" : section;
 }
 
-function sectionTone(section: DashboardSection): CheckboxPickerTone {
-	if (section === "Active") return "green";
-	if (section === "Disabled") return "mutedGreen";
-	if (section === "Available") return "warning";
-	if (section === "Unloaded") return "muted";
+function sectionTone(_section: DashboardSection): CheckboxPickerTone {
 	return "accent";
 }
 
