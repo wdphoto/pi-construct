@@ -26,6 +26,7 @@ interface DashboardPackage extends DashboardOperationItem {
 	disabled?: boolean;
 	description?: string;
 	disabledByFilters?: boolean;
+	filterState?: "unfiltered" | "whole-package-disabled" | "partially-filtered" | "invalid";
 	matchSources: string[];
 }
 
@@ -163,6 +164,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: false,
 			managed: true,
 			disabledByFilters: managed.disabledByFilters,
+			filterState: managed.filterState,
 			matchSources: uniqueSorted([source, ...managed.matchSources]),
 			description: packageDescription,
 		});
@@ -195,6 +197,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			checked: false,
 			disabled: true,
 			disabledByFilters: pkg.disabledByFilters,
+			filterState: pkg.filterState,
 			matchSources: uniqueSorted(pkg.matchSources),
 			description: pkg.filterState === "partially-filtered" ? "Read-only filtered package. Run /construct load to adopt it." : "Read-only package. Run /construct load to adopt it.",
 		});
@@ -340,10 +343,15 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	return lines.join("\n");
 }
 
+function packageWholeToggleBlocked(item: DashboardPackage): boolean {
+	return item.filterState === "partially-filtered" || item.filterState === "invalid";
+}
+
 function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardItem): DashboardAction | undefined {
 	if (item.type !== "package" && item.type !== "direct") return undefined;
 	if (action === "confirm") {
 		if (item.type === "package" && item.section === "Available") return "Install";
+		if (item.type === "package" && packageWholeToggleBlocked(item)) return undefined;
 		if (item.section === "Active") return "Disable";
 		if (item.section === "Disabled") return "Enable";
 		return undefined;
@@ -352,7 +360,15 @@ function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardItem
 	return undefined;
 }
 
-function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
+function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackages: DashboardPackage[] = []): string[] {
+	if (action === "confirm" && blockedPartialPackages.length > 0) {
+		return [
+			"No whole-package changes were applied.",
+			`${blockedPartialPackages.length} selected package${blockedPartialPackages.length === 1 ? " already has" : "s already have"} partial Pi package filters, so Construct will not toggle the whole package row.`,
+			"Use Right Arrow to unfold the package, Space to change individual child resources, then Enter to write package filters.",
+			"Use r if you want to remove the package declaration from this project.",
+		];
+	}
 	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to load/adopt them into Construct."];
 	return [
 		"No active or disabled project packages were selected to remove.",
@@ -391,7 +407,9 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 
 function disableConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
 	const selected = new Set(ids);
-	const disableTargets = packages.filter((item): item is DashboardPackage | DashboardDirectResource => (item.type === "package" || item.type === "direct") && selected.has(item.rowId) && item.section === "Active");
+	const disableTargets = packages.filter(
+		(item): item is DashboardPackage | DashboardDirectResource => (item.type === "package" || item.type === "direct") && selected.has(item.rowId) && item.section === "Active" && (item.type !== "package" || !packageWholeToggleBlocked(item)),
+	);
 	if (disableTargets.length === 0) return undefined;
 	const preview = disableTargets.slice(0, 8).map((item) => `- ${item.label}: ${item.type === "package" ? item.source : item.resource.displayPath}`);
 	const extra = disableTargets.length > preview.length ? [`…and ${disableTargets.length - preview.length} more`] : [];
@@ -826,6 +844,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				}
 			}
 			if (steps.length === 0) {
+				const blockedPartialPackages = submitAction === "confirm" ? packageItems.filter((item) => !item.disabled && selected.has(item.rowId) && packageWholeToggleBlocked(item)) : [];
 				if (selectedSaved.length > 0) {
 					return {
 						title: "Saved loadout already active",
@@ -836,7 +855,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 						],
 					};
 				}
-				return { title: "No Construct changes selected", lines: noChangeLines(submitAction) };
+				return { title: blockedPartialPackages.length > 0 ? "Filtered package row not toggled" : "No Construct changes selected", lines: noChangeLines(submitAction, blockedPartialPackages) };
 			}
 
 			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Loadout", update, signal);
