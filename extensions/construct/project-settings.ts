@@ -71,6 +71,19 @@ export async function collectPackageSourceSets(packages: PackageDeclarationSumma
 	return { declaredSources, activeSources, disabledSources };
 }
 
+export function packageMetadataDrift(enabled: boolean | undefined, declared: boolean, disabledByFilters: boolean): string | undefined {
+	if (enabled === true && !declared) return "enabled in Construct metadata, missing from .pi/settings.json";
+	if (enabled === true && disabledByFilters) return "enabled in Construct metadata, disabled by package filters";
+	if (enabled === false && !declared) return "disabled in Construct metadata, missing from .pi/settings.json";
+	if (enabled === false && declared && !disabledByFilters) return "disabled in Construct metadata, still active in .pi/settings.json";
+	return undefined;
+}
+
+export function formatManagedItemDrift(item: ManagedItemSummary): string {
+	const source = item.source ? ` ${item.source}` : "";
+	return `${item.kind} ${item.id}${source} — ${item.drift ?? "drift"}`;
+}
+
 export async function getManagedItems(
 	construct: JsonReadResult,
 	packageSources: Set<string>,
@@ -100,10 +113,7 @@ export async function getManagedItems(
 			if (source) {
 				const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
 				const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
-				if (enabled === true && !declared) drift = "enabled in Construct metadata, missing from .pi/settings.json";
-				if (enabled === true && disabledByFilters) drift = "enabled in Construct metadata, disabled by package filters";
-				if (enabled === false && !declared) drift = "disabled in Construct metadata, missing from .pi/settings.json";
-				if (enabled === false && declared && !disabledByFilters) drift = "disabled in Construct metadata, still active in .pi/settings.json";
+				drift = packageMetadataDrift(enabled, declared, disabledByFilters);
 			}
 		} else if (typeof value.path === "string") {
 			source = value.path;

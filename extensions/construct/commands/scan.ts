@@ -6,10 +6,10 @@ import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandC
 import { deriveId, parseCatalog } from "../catalog.js";
 import { loadProjectResourcesIntoConstruct } from "./load.js";
 import { describeJsonReadIssue, isObject, readJson } from "../json.js";
-import { collectPackageSourceSets, getManagedItems, getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages } from "../project-settings.js";
 import { directResourceKey, directResourceKinds, directResourceName } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
-import type { ConstructPaths, DirectResourceKind, JsonReadResult, PackageDeclarationSummary } from "../types.js";
+import type { ConstructPaths, DirectResourceKind, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "../types.js";
 import { pickCheckboxes, setConstructStatus, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 const ignoredDirectoryNames = new Set(["node_modules", ".git", "dist", "build"]);
@@ -29,13 +29,6 @@ interface ScanResourceFinding {
 	relativePath: string;
 }
 
-interface ScanDriftFinding {
-	id: string;
-	kind: string;
-	source?: string;
-	message: string;
-}
-
 interface ScanProject {
 	path: string;
 	realPath: string;
@@ -44,7 +37,7 @@ interface ScanProject {
 	packages: PackageDeclarationSummary[];
 	unloadedPackages: ScanPackageFinding[];
 	unloadedResources: ScanResourceFinding[];
-	driftedMetadata: ScanDriftFinding[];
+	driftedMetadata: ManagedItemSummary[];
 	warnings: string[];
 }
 
@@ -182,11 +175,6 @@ function formatResourceFinding(resource: ScanResourceFinding): string {
 	return `${resource.kind} ${resource.name} — ${resource.relativePath}`;
 }
 
-function formatDriftFinding(finding: ScanDriftFinding): string {
-	const source = finding.source ? ` ${finding.source}` : "";
-	return `${finding.kind} ${finding.id}${source} — ${finding.message}`;
-}
-
 async function directChildren(dir: string): Promise<import("node:fs").Dirent[]> {
 	try {
 		return await readdir(dir, { withFileTypes: true });
@@ -315,9 +303,7 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 	const warnings: string[] = [];
 	if (settings.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectSettingsPath))}`, settings));
 	if (construct.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectConstructPath))}`, construct));
-	const driftedMetadata = managedSummaries
-		.filter((item) => item.drift)
-		.map((item) => ({ id: item.id, kind: item.kind, source: item.source, message: item.drift! }));
+	const driftedMetadata = managedSummaries.filter((item) => item.drift);
 
 	const unloadedPackages: ScanPackageFinding[] = [];
 	const seenPackageKeys = new Set<string>();
@@ -401,7 +387,7 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 		lines.push("", "Drifted Construct metadata", "--------------------------");
 		for (const project of projectsWithDrift) {
 			lines.push(formatProjectPath(display, project));
-			for (const finding of project.driftedMetadata) lines.push(`- ${formatDriftFinding(finding)}`);
+			for (const finding of project.driftedMetadata) lines.push(`- ${formatManagedItemDrift(finding)}`);
 			lines.push("");
 		}
 		while (lines.at(-1) === "") lines.pop();

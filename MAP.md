@@ -51,6 +51,13 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.
 
+## v0.0.x — inventory/reconciliation cleanup
+
+- [x] Centralize package metadata drift wording so scan, status, and dashboard stay aligned.
+- [ ] Extract a small project inventory module that returns one reconciled list of package/direct-resource rows: saved, active, disabled, available, unloaded, and drifted.
+- [ ] Make dashboard, status, scan, and load consume that reconciled inventory instead of recomputing state locally.
+- [ ] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
+
 ## Later
 
 - [ ] Consider lazy imports for heavier Construct modules if command code grows.

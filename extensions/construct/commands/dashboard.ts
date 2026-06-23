@@ -5,7 +5,7 @@ import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js"
 import { isObject, readJson } from "../json.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { managedPackageSourceIdentity } from "../sources.js";
-import { collectPackageSourceSets, getPackages } from "../project-settings.js";
+import { collectPackageSourceSets, getPackages, packageMetadataDrift } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -182,10 +182,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	for (const item of managed) {
 		const declared = [...item.matchSources].some((source) => project.declaredSources.has(source));
 		const disabledByFilters = [...item.matchSources].some((source) => project.disabledSources.has(source));
+		const drift = packageMetadataDrift(item.enabled, declared, disabledByFilters);
 		const missingDeclarationDrift = !declared && item.enabled !== undefined;
-		if (missingDeclarationDrift) {
-			warnings.push(`${item.id} drift: ${item.enabled ? "enabled" : "disabled"} in Construct metadata, missing from .pi/settings.json`);
-		}
+		if (drift) warnings.push(`${item.id} drift: ${drift}`);
 		packages.push({
 			type: "package",
 			rowId: rowId("managed", item.id, item.source),
