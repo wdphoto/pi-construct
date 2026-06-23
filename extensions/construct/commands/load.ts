@@ -4,10 +4,9 @@ import { dirname } from "node:path";
 import { deriveId, findCatalogItem, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog } from "../catalog.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
-import { getPackages, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
-import { collectDirectProjectResources } from "../resources.js";
+import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
+import { parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
-import { managedPackageSourceIdentity } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 interface LoadCandidate {
@@ -32,25 +31,19 @@ interface LoadArgs {
 	queries: string[];
 }
 
-async function constructManagedPackageStates(paths: Awaited<ReturnType<typeof getPaths>>): Promise<Map<string, boolean | undefined>> {
-	const construct = await readJson(paths.projectConstructPath);
+function constructManagedPackageStates(inventory: ProjectInventory): Map<string, boolean | undefined> {
 	const sources = new Map<string, boolean | undefined>();
-	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return sources;
-	for (const value of Object.values(construct.data.items)) {
-		if (!isObject(value) || value.kind !== "package") continue;
-		const identity = await managedPackageSourceIdentity(value, paths);
-		const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-		for (const source of identity.matchSources) sources.set(source, enabled);
+	for (const item of inventory.managedPackages) {
+		for (const source of item.matchSources) sources.set(source, item.metadata.enabled);
 	}
 	return sources;
 }
 
-export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: LoadCandidate[]; alreadyManaged: LoadCandidate[] }> {
-	const settings = await readJson(paths.projectSettingsPath);
-	const managedPackageStates = await constructManagedPackageStates(paths);
-	const { catalog } = await loadCatalog({ cwd: paths.cwd });
+async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ adoptable: LoadCandidate[]; alreadyManaged: LoadCandidate[] }> {
+	const { paths } = inventory;
+	const managedPackageStates = constructManagedPackageStates(inventory);
 	const catalogItemsBySource = new Map<string, string>();
-	for (const item of catalog.items) {
+	for (const item of inventory.catalog.data.items) {
 		catalogItemsBySource.set(item.source, item.id);
 		catalogItemsBySource.set(await normalizeSourceForLibrary(item.source, dirname(paths.projectSettingsPath)), item.id);
 	}
@@ -58,7 +51,7 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 	const seen = new Set<string>();
 	const adoptable: LoadCandidate[] = [];
 	const alreadyManaged: LoadCandidate[] = [];
-	for (const pkg of getPackages(settings)) {
+	for (const pkg of inventory.packageDeclarations) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
 		const source = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
 		if (seen.has(source)) continue;
@@ -76,12 +69,10 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 	};
 }
 
-async function projectDirectLoadCandidates(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] }> {
-	const constructRead = await readJson(paths.projectConstructPath);
-	const direct = await collectDirectProjectResources(ctx, paths, constructRead);
+function projectDirectLoadCandidates(inventory: ProjectInventory): { adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] } {
 	const adoptable: DirectLoadCandidate[] = [];
 	const alreadyManaged: DirectLoadCandidate[] = [];
-	for (const resource of direct.resources) {
+	for (const resource of inventory.directResources.resources) {
 		const candidate: DirectLoadCandidate = {
 			kind: resource.kind,
 			id: `${resource.kind}:${resource.name}`,
@@ -95,7 +86,19 @@ async function projectDirectLoadCandidates(ctx: Pick<ExtensionCommandContext, "c
 	return {
 		adoptable: adoptable.sort((a, b) => a.id.localeCompare(b.id) || a.displayPath.localeCompare(b.displayPath)),
 		alreadyManaged: alreadyManaged.sort((a, b) => a.id.localeCompare(b.id) || a.displayPath.localeCompare(b.displayPath)),
-		warnings: direct.warnings,
+		warnings: inventory.directResources.warnings,
+	};
+}
+
+async function collectLoadCandidates(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">): Promise<{ paths: Awaited<ReturnType<typeof getPaths>>; adoptable: AnyLoadCandidate[]; alreadyManaged: AnyLoadCandidate[]; directWarnings: string[] }> {
+	const inventory = await collectProjectInventory(ctx);
+	const packageCandidates = await projectLoadCandidates(inventory);
+	const directCandidates = projectDirectLoadCandidates(inventory);
+	return {
+		paths: inventory.paths,
+		adoptable: [...packageCandidates.adoptable, ...directCandidates.adoptable],
+		alreadyManaged: [...packageCandidates.alreadyManaged, ...directCandidates.alreadyManaged],
+		directWarnings: directCandidates.warnings,
 	};
 }
 
@@ -317,15 +320,10 @@ export async function loadProjectResourcesIntoConstruct(projectDir: string, quer
 		throw new Error([`Cannot load because Construct library catalog has structural warnings. Fix ${paths.userCatalogPath} first.`, ...catalogCheck.warnings].join("\n"));
 	}
 
-	const packageCandidates = await projectLoadCandidates(paths);
-	const directCandidates = await projectDirectLoadCandidates(projectCtx, paths);
-	const candidates = {
-		adoptable: [...packageCandidates.adoptable, ...directCandidates.adoptable],
-		alreadyManaged: [...packageCandidates.alreadyManaged, ...directCandidates.alreadyManaged],
-	};
+	const candidates = await collectLoadCandidates(projectCtx);
 	const found = await findLoadCandidates(paths, candidates, queries);
 	const selectionWarnings = [
-		...directCandidates.warnings,
+		...candidates.directWarnings,
 		...found.alreadyManaged.map((query) => `Already Construct-managed here: ${query}`),
 		...found.missing.map((query) => `Not an unloaded project resource: ${query}`),
 	];
@@ -396,13 +394,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	let candidates: { adoptable: AnyLoadCandidate[]; alreadyManaged: AnyLoadCandidate[]; directWarnings: string[] };
 	try {
-		const packageCandidates = await projectLoadCandidates(paths);
-		const directCandidates = await projectDirectLoadCandidates(ctx, paths);
-		candidates = {
-			adoptable: [...packageCandidates.adoptable, ...directCandidates.adoptable],
-			alreadyManaged: [...packageCandidates.alreadyManaged, ...directCandidates.alreadyManaged],
-			directWarnings: directCandidates.warnings,
-		};
+		candidates = await collectLoadCandidates(ctx);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct load failed.\n${message}`);
@@ -463,13 +455,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	try {
-		const freshPackageCandidates = await projectLoadCandidates(paths);
-		const freshDirectCandidates = await projectDirectLoadCandidates(ctx, paths);
-		const freshCandidates: { adoptable: AnyLoadCandidate[]; alreadyManaged: AnyLoadCandidate[]; directWarnings: string[] } = {
-			adoptable: [...freshPackageCandidates.adoptable, ...freshDirectCandidates.adoptable],
-			alreadyManaged: [...freshPackageCandidates.alreadyManaged, ...freshDirectCandidates.alreadyManaged],
-			directWarnings: freshDirectCandidates.warnings,
-		};
+		const freshCandidates = await collectLoadCandidates(ctx);
 		selectionWarnings.push(...freshCandidates.directWarnings);
 		const selectedBeforeWait = new Set(selectedCandidates.map(candidateKey));
 		const freshSelected = freshCandidates.adoptable.filter((candidate) => selectedBeforeWait.has(candidateKey(candidate)));

@@ -53,7 +53,7 @@ The current implementation inventories and toggles packages plus direct project 
    - Tracks Construct-managed package items and enabled state.
 
 7. **Inventory layer**
-   - `project-inventory.ts` is a read-only module that reconciles user library state, known projects, `.pi/settings.json`, `.pi/construct.json`, managed package metadata, unloaded package declarations, available library packages, and direct project resources for dashboard/status callers.
+   - `project-inventory.ts` is a read-only module that reconciles user library state, known projects, `.pi/settings.json`, `.pi/construct.json`, managed package metadata, unloaded package declarations, available library packages, and direct project resources for dashboard, status, save, and load candidate-discovery callers.
    - Reads `.pi/settings.json` for project package declarations.
    - Reads `.pi/construct.json` for advisory state.
    - Uses Pi's exported `DefaultPackageManager.resolve()` and `SettingsManager` to inventory direct project extensions, skills, prompt templates, and themes with Pi's own discovery/trust/filter semantics.
