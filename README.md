@@ -2,7 +2,7 @@
 
 # The Construct
 
-The Construct is a global extension for [Pi](https://pi.dev) that manages project-level loadouts.
+The Construct is a **global** extension for [Pi](https://pi.dev) that manages project-level loadouts.
 
 Run `/construct`, tap **Space** to select a resource, then hit **Enter** to apply. Life is good.
 
@@ -80,6 +80,8 @@ States:
 | `Unloaded` | declared/discovered in this project, not loaded into Construct | read-only | read-only |
 
 Use `/construct load` to adopt unloaded package declarations into Construct. Direct project resources (`.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, `.pi/extensions/`) can be adopted into project-local Construct metadata without adding those project-local files to the portable library or saved/share snippets; after adoption, dashboard Enter toggles them with Pi-native resource filters.
+
+Package disable/enable is a whole-package toggle. Disabling a package writes empty Pi package resource filters; enabling clears those filters. Construct does not snapshot partial package filters yet, so edit Pi settings directly if you need package-internal resource selection.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 

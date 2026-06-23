@@ -61,10 +61,10 @@ See `CHANGELOG.md` for version-by-version detail.
 
 Do this as a small no-new-command cleanup pass. The goal is to turn remaining product questions into explicit documented decisions, not to add feature surface.
 
-- [ ] Decide and document package filter restoration policy.
-  - Recommended decision: keep Construct package toggles whole-package only for now.
+- [x] Decide and document package filter restoration policy.
+  - Decision: keep Construct package toggles whole-package only for now.
   - Do not snapshot/restore partial Pi package filters yet.
-  - Make docs and any relevant confirmation copy explicit: disabling a package writes empty resource filters; enabling removes those filters; users needing partial package resource selection should use Pi settings directly for now.
+  - Docs and dashboard confirmation copy are explicit: disabling a package writes empty resource filters; enabling removes those filters; users needing partial package resource selection should use Pi settings directly for now.
 - [ ] Decide and document saved-loadout direct-resource policy.
   - Recommended decision: keep saved loadouts/share snippets package-source-only.
   - Direct project-local resources remain project-local Construct metadata only.

@@ -61,6 +61,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 - Construct remembers package source strings and project-local direct-resource metadata; it does not invent arbitrary install scripts.
 - Saved loadouts and shared snippets are package-source data for now, not executable scripts.
 - Project-local direct resources are not saved/shared or portable to other projects until Construct has a safe copy/export/package flow.
+- Package enable/disable is whole-package only for now. Construct does not snapshot partial Pi package filters; users who need partial package resource selection should edit Pi settings directly.
 - Construct does not write secrets, tokens, API keys, or auth material.
 
 ## Active command surface

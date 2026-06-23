@@ -152,8 +152,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			matchSources: uniqueSorted([source, ...managed.matchSources]),
 			description: managed.declared
 				? managed.disabledByFilters
-					? "Disabled package. Enter enables; r removes."
-					: "Active package. Enter disables; r removes."
+					? "Disabled package. Enter enables the whole package; r removes."
+					: "Active package. Enter disables the whole package; r removes."
 				: missingDeclarationDrift
 					? "Drifted package. Enter restores."
 					: "Available package. Enter installs.",
@@ -378,6 +378,8 @@ function disableConfirmationFor(packages: DashboardItem[], ids: string[]): Check
 		lines: [
 			`This will disable ${disableTargets.length} active project resource${disableTargets.length === 1 ? "" : "s"} by writing Pi resource filters.`,
 			"It edits .pi/settings.json after creating a backup.",
+			"Package rows are whole-package toggles: Construct sets package extension/skill/prompt/theme filters to empty arrays and does not snapshot partial filters.",
+			"If you need partial package resource selection, edit Pi settings directly before using Construct's whole-package toggle.",
 			"It does not uninstall packages, remove package declarations, or forget Construct library items.",
 			"",
 			...preview,

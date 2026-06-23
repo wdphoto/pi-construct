@@ -92,6 +92,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `/construct status full` and `/construct` report direct project resources using Pi's native resolver; `/construct load` can adopt them into project metadata, and dashboard Enter toggles adopted direct resources with Pi-native `+path` / `-path` filters.
+- Package enable/disable is whole-package only for now: disabling writes empty package resource filter arrays, enabling clears those filters, and Construct does not snapshot/restore partial Pi package filters.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`; print-mode `/construct scan` is read-only, while TUI `/construct scan` may create/update `.pi/construct.json` only when the user selects findings and presses Enter to load them.
 - Saved loadouts are named groups of active package sources. `profile` is mostly the internal catalog term.

@@ -137,7 +137,8 @@ Controls:
 - show compact package source labels in rows where possible, e.g. `github:owner/repo` or `local:<dir>`, while keeping exact source strings in saved metadata and write operations;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the footer short and two-line: controls first, then `[!] read-only · [·] recipe item`;
-- Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
+- Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for packages this is a whole-package toggle, and for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
+- package disable/enable does not preserve partial package filters: disabling writes empty package `extensions`, `skills`, `prompts`, and `themes` arrays; enabling clears those all-empty filter keys. Users who need partial package resource selection should edit Pi settings directly for now;
 - Enter on a focused saved loadout with no selected rows is activate-only: it installs available package sources and enables disabled package sources, but does not disable/remove active member packages, remove packages outside the recipe, or exact-match the project to the recipe;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
 - `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;
