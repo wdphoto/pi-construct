@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Document why scan does not crawl old package cache skills/extensions and how to distinguish package-provided resources from direct project resources.
+
 ## 0.0.17 - 2026-06-23
 
 ### Fixed

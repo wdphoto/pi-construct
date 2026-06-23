@@ -15,5 +15,5 @@ Scratchpad for research notes, open questions, and ideas that are not yet commit
 - First-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind explicit opt-in only.
 - A lightweight doctor report for duplicate package/resource provenance, overlapping runtime tool names, and stale known-project entries.
-- Optional package details view for package-contained resources. Keep this out of the main loadout view unless deliberately promoted; Pi config/resource-center already owns broad resource browsing.
+- Research optional package internals/"pluck resources" flow for fat packages: show package-contained skills/extensions/prompts/themes in a drill-down or sub-section, then allow project-local Pi package filters to enable only selected internals. Start with installed packages only; avoid turning Construct into a package browser/package manager; decide later whether saved loadouts should preserve package source + filter recipes.
 - If Pi exposes a stable package-install or settings-change event later, consider it before reintroducing filesystem watching.

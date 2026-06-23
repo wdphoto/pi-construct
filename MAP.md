@@ -48,6 +48,8 @@ See `CHANGELOG.md` for version-by-version detail.
 
 ## v0.0.x — dashboard/status polish
 
+- [ ] Clean up `/construct` TUI vocabulary: call saved recipes **Loadouts** in the dashboard, because the saved thing is a Construct loadout; package rows are package/resource toggles, not saved things.
+- [ ] Rework the `/construct` dashboard key model so the controls feel deliberate and memorable instead of overloaded: distinguish loadout actions from package/resource toggle actions, keep bulk selection, and clarify destructive project removal.
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.

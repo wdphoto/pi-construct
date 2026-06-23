@@ -256,7 +256,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		if (saved.sources.length > 0) {
 			saved.description = [
 				`Saved package-source loadout${saved.label ? `: ${saved.label}` : ""}.`,
-				`Members: ${summary.value}. Rows marked [·] belong to the focused saved loadout.`,
+				`Recipe items: ${summary.value}. Rows marked [·] are part of the focused recipe.`,
 				"Press Enter to activate it: install/enable package sources that are not active.",
 				"Activate-only: Enter does not disable, remove, or exact-match anything outside the recipe.",
 				"Press Space to select member package rows for manual package actions.",
@@ -314,13 +314,22 @@ function stateLabel(section: DashboardSection): string {
 }
 
 function selectionMarker(item: DashboardItem): string {
-	return item.disabled ? "   " : "[ ]";
+	return item.section === "Unloaded" ? "[!]" : item.disabled ? "   " : "[ ]";
+}
+
+function kindText(item: DashboardItem): string {
+	if (item.type === "saved") return "set";
+	if (item.type === "package") return "pkg";
+	if (item.resource.kind === "extension") return "ext";
+	if (item.resource.kind === "skill") return "skl";
+	if (item.resource.kind === "prompt") return "prm";
+	return "thm";
 }
 
 function dashboardLine(item: DashboardItem, labelWidth: number): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
 	const value = item.type === "package" ? item.displaySource : item.value;
-	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${kindText(item)}  ${paddedLabel}  ${value}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[]): string {
@@ -334,8 +343,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
-		"Legend: [ ] selectable · [x] selected · [·] saved member · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes selected from project · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
+		"Controls: Space selects · on set, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
@@ -466,6 +475,8 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateLabel: stateLabel(item.section),
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
+		kindText: kindText(item),
+		marker: item.section === "Unloaded" ? "[!]" : undefined,
 		relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 		quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 		confirmOnFocus: item.type === "saved",
@@ -473,19 +484,11 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
+		highlightFocused: false,
 		confirmHint: "Enter applies/runs",
-		filterLabel: "Filter loadouts/resources",
-		filterHint: "Type to narrow by saved loadout, package, resource, source, or state · Backspace edits",
-		stateLegend: [
-			{ icon: "[x]", label: "selected", tone: "muted" },
-			{ icon: "[·]", label: "saved member", tone: "muted" },
-			{ icon: "◆", label: "saved", tone: "accent" },
-			{ icon: "✓", label: "active", tone: "green" },
-			{ icon: "–", label: "disabled", tone: "mutedGreen" },
-			{ icon: "+", label: "available", tone: "warning" },
-			{ icon: "◇", label: "unloaded", tone: "muted" },
-		],
-		footerHint: "  Space selects · on Saved, selects members · Enter applies/runs · r removes selected from project · Esc cancels",
+		filterLabel: "Filter",
+		filterHint: "Type to narrow · Backspace edits",
+		footerHint: "  Controls: Space select · Enter apply/run · r remove · Esc cancel\n  Markers: [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),

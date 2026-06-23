@@ -200,6 +200,66 @@ Construct scan separates:
 
 Construct does not inspect package internals during scan. This keeps scan conservative and avoids turning Construct into a package manager/resource crawler.
 
+## Why did scan not pick up old skills/extensions I remember seeing?
+
+Check which bucket they came from.
+
+### Package-provided resources
+
+If the skills/extensions came from an installed package, they may live under package cache folders such as:
+
+```text
+.pi/git/
+.pi/npm/
+```
+
+Construct scan intentionally does not crawl those cache folders. It reports the package declaration from `.pi/settings.json`, not every skill, command, tool, or extension file inside that package.
+
+If the package declaration is already loaded into Construct, scan will not show those package internals as unloaded direct resources.
+
+### Direct project resources
+
+Scan only reports direct resources when they exist under project-local paths such as:
+
+```text
+.pi/skills/
+.pi/extensions/
+.pi/prompts/
+.pi/themes/
+```
+
+If those folders are empty or missing, there are no direct resources for scan to pick up.
+
+### Old package caches
+
+A package cache can remain after a package declaration is removed, or it can disappear after cleanup. Cache contents are not Construct's source of truth.
+
+To restore a package that used to provide skills/extensions, restore the package declaration through the dashboard Available row or Pi:
+
+```bash
+pi install <source> -l --approve
+```
+
+Then run:
+
+```text
+/construct load
+```
+
+if it needs to be remembered by Construct again.
+
+### Trust misses
+
+If scan skipped projects because they were not trusted by Pi, print scan will say so under `Skipped projects` and show a non-zero skipped count.
+
+If scan says:
+
+```text
+Skipped untrusted projects: 0
+```
+
+then trust was not the reason those resources were missing from the report.
+
 ## What should I check before reporting a drift bug?
 
 Run:

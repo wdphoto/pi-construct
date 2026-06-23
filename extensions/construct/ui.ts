@@ -141,6 +141,7 @@ export interface CheckboxPickerItem {
 	stateLabel?: string;
 	stateText?: string;
 	stateTone?: CheckboxPickerTone;
+	kindText?: string;
 	relatedIds?: string[];
 	quickSelectIds?: string[];
 	confirmOnFocus?: boolean;
@@ -180,6 +181,7 @@ export interface CheckboxPickerOptions {
 	filterLabel?: string;
 	filterHint?: string;
 	titleBold?: boolean;
+	highlightFocused?: boolean;
 	stateLegend?: CheckboxPickerLegendItem[];
 	initialSelection?: "checked" | "empty";
 	actions?: {
@@ -253,7 +255,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function searchableText(item: CheckboxPickerItem): string {
-			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText].filter(Boolean).join(" ");
+			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText, item.kindText].filter(Boolean).join(" ");
 		}
 
 		function filteredItems(): CheckboxPickerItem[] {
@@ -359,6 +361,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
 			const stateTexts = visibleItems.map((item) => item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? ""));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
+			const kindTexts = visibleItems.map((item) => item.kindText ?? "");
+			const maxKindWidth = Math.min(8, Math.max(0, ...kindTexts.map((text) => visibleWidth(text))));
 
 			let previousSection: string | undefined;
 			for (let index = start; index < end; index += 1) {
@@ -373,20 +377,22 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 
 				const stateText = item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? "");
+				const kindText = item.kindText ?? "";
+				const kindPart = maxKindWidth > 0 ? `${kindText}${" ".repeat(Math.max(0, maxKindWidth - visibleWidth(kindText)))}  ` : "";
 				const isRelated = relatedIds.has(item.id) && !checked.has(item.id) && !item.relatedIds?.includes(item.id);
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
-					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "   " : "[ ]";
-					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone, paddedState)}  ${paddedLabel}  ${item.value}`;
-					if (!item.disabled && isSelected) line = theme.bold(line);
+					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
+					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone, paddedState)}  ${kindPart}${paddedLabel}  ${item.value}`;
+					if (!item.disabled && isSelected && options.highlightFocused !== false) line = theme.bold(line);
 					lines.push(truncateToWidth(line, width));
 					continue;
 				}
 
 				const marker = item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
-				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
+				let line = `${cursor}${marker} ${kindPart}${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
-				else if (isSelected) line = theme.bold(line);
+				else if (isSelected && options.highlightFocused !== false) line = theme.bold(line);
 				lines.push(truncateToWidth(line, width));
 			}
 

@@ -2,11 +2,9 @@
 
 # The Construct
 
-The Construct is a global extension for [Pi](https://pi.dev) that manages loading project-level resources.
+The Construct is a global extension for [Pi](https://pi.dev) that stores and manages project-level resources.
 
-It does **not** replace `pi install`, `pi remove`, or `pi config`. Normal Pi project files remain the source of truth. Construct remembers package sources you choose to load into its library, then gives you a fast `/construct` menu for installing, enabling, disabling, and removing those project package declarations. It also reports direct project-local Pi resources such as `.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, and `.pi/extensions/`; `/construct load` can adopt them into advisory metadata so dashboard Enter can toggle them with Pi-native resource filters.
-
-For troubleshooting drift, reconcile, and edge-case recovery, see [`FAQ.md`](FAQ.md).
+Just fire up `/construct`, tap your **spacebar** to select a resource, then hit **Enter** to install it or deactivate it.
 
 ## Loadout menu
 
