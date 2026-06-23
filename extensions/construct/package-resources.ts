@@ -114,10 +114,23 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 	return { resources: await resolvedResourcesForInventory({ inventory, resolved, scope: "project" }), warnings };
 }
 
+async function withPiOffline<T>(enabled: boolean, operation: () => Promise<T>): Promise<T> {
+	if (!enabled) return operation();
+	const previous = process.env.PI_OFFLINE;
+	process.env.PI_OFFLINE = "1";
+	try {
+		return await operation();
+	} finally {
+		if (previous === undefined) delete process.env.PI_OFFLINE;
+		else process.env.PI_OFFLINE = previous;
+	}
+}
+
 export async function collectTemporaryPackageResourcesForSources(
 	ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">,
 	inventory: ProjectInventory,
 	sources: string[],
+	options: { cacheOnly?: boolean } = {},
 ): Promise<PackageResourceInventory> {
 	const uniqueSources = [...new Set(sources.filter((source) => source.trim().length > 0))];
 	if (uniqueSources.length === 0) return { resources: [], warnings: [] };
@@ -131,7 +144,7 @@ export async function collectTemporaryPackageResourcesForSources(
 		const agentDir = getAgentDir();
 		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
 		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
-		resolved = await packageManager.resolveExtensionSources(uniqueSources, { temporary: true });
+		resolved = await withPiOffline(options.cacheOnly === true, () => packageManager.resolveExtensionSources(uniqueSources, { temporary: true }));
 		const errors = settingsManager.drainErrors();
 		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for available package resource inventory: ${error.error.message}`));
 	} catch (error) {

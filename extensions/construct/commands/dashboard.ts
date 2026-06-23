@@ -109,7 +109,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory; inventory: Awaited<ReturnType<typeof collectProjectInventory>> }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
 	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
@@ -231,10 +231,19 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		}
 	}
 
-	const packageResources = ctx.mode === "tui" ? await collectProjectPackageResources(ctx, inventory) : undefined;
+	let packageResources: PackageResourceInventory | undefined;
+	if (ctx.mode === "tui") {
+		const projectResources = await collectProjectPackageResources(ctx, inventory);
+		const availableSources = packages.filter((item): item is DashboardPackage => item.type === "package" && item.section === "Available" && !item.disabled).map((item) => item.source);
+		const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, availableSources, { cacheOnly: true });
+		packageResources = {
+			resources: [...projectResources.resources, ...availableResources.resources],
+			warnings: [...projectResources.warnings, ...availableResources.warnings],
+		};
+	}
 	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings, projectMetadataMissing, packageResources, inventory };
+	return { paths, packages, warnings, projectMetadataMissing, packageResources };
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -564,7 +573,6 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 			confirmOnFocus: item.type === "saved",
 			expandable: visibleChildren.length > 0,
-			lazyChildren: item.type === "package" && item.section === "Available",
 		});
 		items.push(...visibleChildren);
 	}
@@ -653,7 +661,7 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings, projectMetadataMissing, packageResources, inventory } = await buildDashboardPackages(ctx);
+	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
 		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
 		return;
@@ -674,34 +682,6 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, sessionPackageResources) : undefined;
-		},
-		loadChildren: async (focusedItem) => {
-			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
-			if (!packageItem || packageItem.section !== "Available") return [];
-			const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, [packageItem.source]);
-			sessionPackageResources.resources.push(...availableResources.resources);
-			for (const warning of availableResources.warnings) sessionPackageResources.warnings.push(warning);
-			const resources = resourcesForPackage(packageItem, sessionPackageResources);
-			const children = packageResourceChildren(packageItem, sessionPackageResources);
-			if (resources.length > 1) return children;
-			const emptyLines =
-				resources.length === 1
-					? [
-						"Inspected: one package resource found, so this stays a whole-package row.",
-						`${resourceLabel(resources[0])}: ${resources[0].packageRelativePath}`,
-						"Select the package row and press Enter to install it normally.",
-					]
-					: ["Inspected: no package-contained resources resolved.", "Select the package row and press Enter to install it normally."];
-			return {
-				children: [],
-				quietEmpty: true,
-				emptyDescription: emptyLines.join("\n"),
-				empty: {
-					title: `Package resources: ${packageItem.label}`,
-					confirmHint: "Press Enter/Esc to return",
-					lines: emptyLines,
-				},
-			};
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action, changedIds) => {

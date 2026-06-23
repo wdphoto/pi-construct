@@ -44,7 +44,7 @@ Likely policy:
 ## Constraints for first implementation
 
 - Project packages use `DefaultPackageManager.resolve()` and `scope === "project"`.
-- Available packages may be inspected lazily with Pi's temporary package resolver only after the user presses Right Arrow on the row, then installed project-local only after the user confirms a child-resource selection. If inspection finds zero or one resource, keep the package as a whole-package row instead of opening a child picker.
+- Available packages may be cache-inspected with Pi's temporary package resolver during dashboard build, but without network/download. If the cache scan finds multiple resources, Right Arrow opens the child picker; if it finds zero or one resource, keep the package as a whole-package row.
 - No remote package browsing outside remembered Construct package sources.
 - No saved-loadout filter recipes.
 - No share/import of filter selections.
@@ -82,7 +82,7 @@ Status: complete enough for the next read-only dashboard drill-down.
 
 ## Stage 2 — dashboard drill-down
 
-Status: implemented as inline unfold for installed package rows plus lazy Right Arrow inspection for Available package rows.
+Status: implemented as inline unfold for installed package rows plus cache-inspected Available package rows.
 
 Key model:
 
@@ -101,12 +101,12 @@ Panel content:
 
 ## Stage 3 — write-enabled package picker
 
-Status: first implementation landed in the dashboard inline scaffold, including lazy Right Arrow inspect/install-with-filters for Available package rows. The dashboard now hides the unfold affordance for packages with zero or one resolved package resource.
+Status: first implementation landed in the dashboard inline scaffold, including cache-inspected install-with-filters for Available package rows. The dashboard now hides the unfold affordance for packages with zero or one resolved package resource.
 
 Flow:
 
 1. User focuses a package row.
-2. Presses Right Arrow on an installed multi-resource package, or on an Available package before resource counts are known, to inspect/unfold package resources.
+2. Presses Right Arrow on a multi-resource package row to unfold package resources.
 3. Uses Space on child rows to choose exact target resources to keep enabled.
 4. Construct previews changes:
    - package source;
