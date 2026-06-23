@@ -9,8 +9,9 @@ HOME_DIR="$TMP/home"
 PROJECT_A="$TMP/project-a"
 PROJECT_B="$TMP/project-b"
 PROJECT_RES="$TMP/project-resources"
+PROJECT_SAVE_UNLOADED="$TMP/project-save-unloaded"
 PKG_DIR="$TMP/construct-e2e-package"
-mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PROJECT_RES" "$PKG_DIR/extensions"
+mkdir -p "$HOME_DIR" "$PROJECT_A" "$PROJECT_B" "$PROJECT_RES" "$PROJECT_SAVE_UNLOADED" "$PKG_DIR/extensions"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -198,7 +199,7 @@ grep -Fq 'Saved loadout already exists: pi-projects' <<<"$SAVE_AGAIN_OUTPUT"
 PROFILE_LIST_OUTPUT="$(construct_pi "$PROJECT_A" '/construct list' 2>&1)"
 grep -Fq 'pi-projects' <<<"$PROFILE_LIST_OUTPUT"
 SAVED_DASHBOARD_OUTPUT="$(construct_pi "$PROJECT_B" '/construct' 2>&1)"
-grep -Fq 'Saved' <<<"$SAVED_DASHBOARD_OUTPUT"
+grep -Fq 'Loadouts' <<<"$SAVED_DASHBOARD_OUTPUT"
 grep -Fq '◆  pi-projects' <<<"$SAVED_DASHBOARD_OUTPUT"
 grep -Fq '1 available' <<<"$SAVED_DASHBOARD_OUTPUT"
 SHARE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct share pi-projects' 2>&1)"
@@ -274,6 +275,17 @@ assert not any(source in profile.get("sources", []) for profile in catalog.get("
 assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else project / ".pi" / entry).resolve()) == source for entry in settings.get("packages", [])), settings
 assert not construct.get("items"), construct
 PY
+
+printf '== save active unloaded package declarations ==\n'
+(
+  cd "$PROJECT_SAVE_UNLOADED"
+  HOME="$HOME_DIR" pi install "$PKG_DIR" -l --approve >/dev/null 2>&1
+)
+SAVE_UNLOADED_OUTPUT="$(construct_pi "$PROJECT_SAVE_UNLOADED" '/construct save unloaded-package' 2>&1)"
+grep -Fq 'Saved loadout: unloaded-package' <<<"$SAVE_UNLOADED_OUTPUT"
+grep -Fq 'Included package sources: 1' <<<"$SAVE_UNLOADED_OUTPUT"
+grep -Fq 'Loaded into Construct and included package sources: 1' <<<"$SAVE_UNLOADED_OUTPUT"
+grep -Fq 'Skipped active package declarations not loaded into Construct: 0' <<<"$SAVE_UNLOADED_OUTPUT"
 
 printf '== removed sync/reload command surface ==\n'
 SYNC_OUTPUT="$(construct_pi "$PROJECT_B" '/construct sync' 2>&1)"

@@ -4,6 +4,7 @@ import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js";
 import { readJson } from "../json.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
+import { CONSTRUCT_TITLE } from "../metadata.js";
 import { collectPackageSourceSets, getManagedItems, getPackages, packageMetadataDrift } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
@@ -152,7 +153,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			description:
 				sources.length === 0
 					? "Empty loadout recipe."
-					: `Loadout recipe${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Enter runs it; Space selects recipe items.`,
+					: `Loadout recipe${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Enter runs; Space selects recipe items.`,
 		});
 	}
 
@@ -179,11 +180,11 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			matchSources: uniqueSorted([source, ...matchSources]),
 			description: declared
 				? disabledByFilters
-					? "Disabled package. Enter enables selected; r removes selected."
-					: "Active package. Enter disables selected; r removes selected."
+					? "Disabled package. Enter enables; r removes."
+					: "Active package. Enter disables; r removes."
 				: missingDeclarationDrift
-					? "Drifted package. Enter restores selected."
-					: "Available package. Enter installs selected.",
+					? "Drifted package. Enter restores."
+					: "Available package. Enter installs.",
 		});
 	}
 
@@ -199,7 +200,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Available",
 			checked: false,
 			matchSources: [item.source],
-			description: "Available package. Enter installs selected.",
+			description: "Available package. Enter installs.",
 		});
 	}
 
@@ -238,8 +239,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			resource,
 			description: resource.managed
 				? resource.enabled
-					? `Active ${resource.kind}. Enter disables selected.`
-					: `Disabled ${resource.kind}. Enter enables selected.`
+					? `Active ${resource.kind}. Enter disables.`
+					: `Disabled ${resource.kind}. Enter enables.`
 				: `Read-only ${resource.kind}. Run /construct load to adopt it.`,
 		});
 	}
@@ -250,7 +251,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		saved.value = summary.value;
 		saved.relatedIds = summary.relatedIds;
 		if (saved.sources.length > 0) {
-			saved.description = `Loadout recipe: ${summary.value}. Enter runs it; Space selects recipe items.`;
+			saved.description = `Loadout recipe: ${summary.value}. Enter runs; Space selects recipe items.`;
 		}
 	}
 
@@ -273,9 +274,13 @@ function dashboardSummary(packages: DashboardItem[]): string {
 	return `${counts.active} active · ${counts.disabled} disabled · ${counts.available} available · ${counts.unloaded} unloaded`;
 }
 
-function dashboardPickerTitle(packages: DashboardItem[]): string {
+function dashboardPickerTitle(_packages: DashboardItem[]): string {
+	return CONSTRUCT_TITLE;
+}
+
+function dashboardPickerSubtitle(packages: DashboardItem[]): string {
 	const counts = dashboardCounts(packages);
-	return `Loadout: ${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
+	return `${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
 }
 
 function sectionLabel(section: DashboardSection): string {
@@ -287,8 +292,8 @@ function sectionTone(_section: DashboardSection): CheckboxPickerTone {
 }
 
 function stateTone(section: DashboardSection): CheckboxPickerTone {
-	if (section === "Active") return "green";
-	if (section === "Disabled") return "mutedGreen";
+	if (section === "Active") return "accent";
+	if (section === "Disabled") return "muted";
 	if (section === "Available") return "warning";
 	if (section === "Saved") return "accent";
 	return "muted";
@@ -311,23 +316,14 @@ function selectionMarker(item: DashboardItem): string {
 	return item.section === "Unloaded" ? "[!]" : item.disabled ? "   " : "[ ]";
 }
 
-function kindText(item: DashboardItem): string {
-	if (item.type === "saved") return "";
-	if (item.type === "package") return "pkg";
-	if (item.resource.kind === "extension") return "ext";
-	if (item.resource.kind === "skill") return "skl";
-	if (item.resource.kind === "prompt") return "prm";
-	return "thm";
-}
-
 function dashboardLine(item: DashboardItem, labelWidth: number): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
 	const value = item.type === "package" ? item.displaySource : item.value;
-	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${kindText(item)}  ${paddedLabel}  ${value}`;
+	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
 }
 
 function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[]): string {
-	const lines: string[] = ["Construct Loadout", "=================", `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+	const lines: string[] = [CONSTRUCT_TITLE, "=".repeat(CONSTRUCT_TITLE.length), `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
@@ -470,7 +466,6 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		stateLabel: stateLabel(item.section),
 		stateText: stateIcon(item.section),
 		stateTone: stateTone(item.section),
-		kindText: kindText(item),
 		marker: item.section === "Unloaded" ? "[!]" : undefined,
 		relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 		quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
@@ -479,10 +474,12 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
+		subtitle: dashboardPickerSubtitle(packages),
 		confirmHint: "Enter applies/runs",
 		filterLabel: "Filter",
 		filterHint: "type to narrow",
 		filterHintInline: true,
+		colorRowsByState: true,
 		footerHint: "  Space select · Enter apply/run · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),

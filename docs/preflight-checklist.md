@@ -86,7 +86,7 @@ Expected:
 
 Expected:
 
-- `/construct save <loadout-name>` saves active Construct package sources from the current project.
+- `/construct save <loadout-name>` saves active package sources from the current project, including active unloaded package declarations by default; TUI lets users deselect those declarations.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
@@ -133,8 +133,8 @@ Check in real TUI usage:
 - `r` shows a warning, then removes selected Active or Disabled package declarations; Loadouts rows themselves do not remove recipe items;
 - Esc cancels;
 - package rows stay primary;
-- live TUI title uses the quiet `Loadout:` count format;
-- focused row text is bold, unfocused row text stays plain, section headings use accent/heading color, and only state icons carry state color: saved/loadout accent, active green, disabled muted green, available yellow, unloaded gray;
+- live TUI title includes the package/version string and a quiet count line;
+- focused row content is bold, section headings use accent/heading color, cursor/checkbox markers stay plain, and row content carries state color: saved/loadout and active heading accent, disabled muted, available yellow, unloaded/read-only gray;
 - Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;

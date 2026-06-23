@@ -125,7 +125,7 @@ export async function waitForIdleBeforeConstructWrite(
 	}
 }
 
-export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success" | "green" | "mutedGreen";
+export type CheckboxPickerTone = "accent" | "muted" | "warning" | "success";
 
 export interface CheckboxPickerItem {
 	id: string;
@@ -141,7 +141,6 @@ export interface CheckboxPickerItem {
 	stateLabel?: string;
 	stateText?: string;
 	stateTone?: CheckboxPickerTone;
-	kindText?: string;
 	relatedIds?: string[];
 	quickSelectIds?: string[];
 	confirmOnFocus?: boolean;
@@ -181,8 +180,10 @@ export interface CheckboxPickerOptions {
 	filterLabel?: string;
 	filterHint?: string;
 	filterHintInline?: boolean;
+	subtitle?: string;
 	titleBold?: boolean;
 	highlightFocused?: boolean;
+	colorRowsByState?: boolean;
 	stateLegend?: CheckboxPickerLegendItem[];
 	initialSelection?: "checked" | "empty";
 	actions?: {
@@ -250,13 +251,11 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function styleTone(tone: CheckboxPickerTone | undefined, text: string): string {
-			if (tone === "green") return theme.fg("syntaxComment", text);
-			if (tone === "mutedGreen") return theme.fg("syntaxComment", `\x1b[2m${text}\x1b[22m`);
 			return theme.fg(tone ?? "accent", text);
 		}
 
 		function searchableText(item: CheckboxPickerItem): string {
-			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText, item.kindText].filter(Boolean).join(" ");
+			return [item.label, item.value, item.description, item.section, item.stateLabel, item.stateText].filter(Boolean).join(" ");
 		}
 
 		function filteredItems(): CheckboxPickerItem[] {
@@ -341,7 +340,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const filterValue = query ? theme.fg("accent", query) : theme.fg("muted", "all items");
 			const renderedTitle = options.titleBold === false ? theme.fg("accent", title) : theme.fg("accent", theme.bold(title));
 			const filterLine = options.filterHintInline ? `${filterLabel}: ${filterValue}${filterHint ? theme.fg("muted", ` · ${filterHint}`) : ""}` : `${filterLabel}: ${filterValue}`;
-			const lines: string[] = [renderedTitle, filterLine];
+			const lines: string[] = [renderedTitle];
+			if (options.subtitle) lines.push(theme.fg("accent", options.subtitle));
+			lines.push(filterLine);
 			if (!options.filterHintInline && filterHint) lines.push(theme.fg("muted", `  ${filterHint}`));
 			lines.push("");
 			if (items.length === 0) {
@@ -365,9 +366,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(item.label))));
 			const stateTexts = visibleItems.map((item) => item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? ""));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
-			const kindTexts = visibleItems.map((item) => item.kindText ?? "");
-			const maxKindWidth = Math.min(8, Math.max(0, ...kindTexts.map((text) => visibleWidth(text))));
-
 			let previousSection: string | undefined;
 			for (let index = start; index < end; index += 1) {
 				const item = visibleItems[index];
@@ -381,20 +379,25 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				const paddedLabel = item.label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 
 				const stateText = item.stateText ?? (item.stateLabel ? `${item.stateIcon ? `${item.stateIcon} ` : ""}${item.stateLabel}` : item.stateIcon ?? "");
-				const kindText = item.kindText ?? "";
-				const kindPart = maxKindWidth > 0 ? `${kindText}${" ".repeat(Math.max(0, maxKindWidth - visibleWidth(kindText)))}  ` : "";
 				const isRelated = relatedIds.has(item.id) && !checked.has(item.id) && !item.relatedIds?.includes(item.id);
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
-					let line = `${cursor}${selectMarker} ${styleTone(item.stateTone, paddedState)}  ${kindPart}${paddedLabel}  ${item.value}`;
+					const prefix = `${cursor}${selectMarker} `;
+					if (options.colorRowsByState) {
+						let bodyText = truncateToWidth(`${paddedState}  ${paddedLabel}  ${item.value}`, Math.max(0, width - visibleWidth(prefix)));
+						if (!item.disabled && isSelected && options.highlightFocused !== false) bodyText = theme.bold(bodyText);
+						lines.push(`${prefix}${styleTone(item.stateTone, bodyText)}`);
+						continue;
+					}
+					let line = `${prefix}${styleTone(item.stateTone, paddedState)}  ${paddedLabel}  ${item.value}`;
 					if (!item.disabled && isSelected && options.highlightFocused !== false) line = theme.bold(line);
 					lines.push(truncateToWidth(line, width));
 					continue;
 				}
 
 				const marker = item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
-				let line = `${cursor}${marker} ${kindPart}${paddedLabel}  ${item.value}`;
+				let line = `${cursor}${marker} ${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
 				else if (isSelected && options.highlightFocused !== false) line = theme.bold(line);
 				lines.push(truncateToWidth(line, width));
@@ -407,7 +410,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (options.stateLegend) lines.push(`  ${options.stateLegend.map(renderLegendItem).join(theme.fg("muted", " · "))}`);
 			const footerLines = (options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`).split("\n");
 			for (const footerLine of footerLines) lines.push(theme.fg("muted", footerLine));
-			if (options.actions?.remove) lines.push(theme.fg("muted", `  Selected: ${checked.size}`));
 			cachedWidth = width;
 			cachedLines = truncateLines(lines, width);
 			return cachedLines;

@@ -17,43 +17,43 @@ Run:
 Example:
 
 ```text
-Construct Loadout
-=================
+pi-construct@0.0.17
+===================
 Project: /Users/you/site
 2 active · 1 disabled · 3 available · 1 unloaded
 
 Loadouts
 --------
-[ ] ◆       web-stack       3 package sources
+[ ] ◆       www-stack       3 package sources
 [ ] ◆       go-stuff        2 package sources
 [ ] ◆       pi-projects     5 package sources
 [ ] ◆       robotics        3 package sources
 
 Active
 ------
-[ ] ✓  pkg  pi-web-access   npm:pi-web-access
-[ ] ✓  pkg  pi-subagents    git:github.com/your-org/pi-subagents
+[ ] ✓  pi-web-access   npm:pi-web-access
+[ ] ✓  pi-subagents    git:github.com/your-org/pi-subagents
 
 Disabled
 --------
-[ ] –  pkg  pi-browser      npm:pi-browser
+[ ] –  pi-browser      npm:pi-browser
 
 Available
 ---------
-[ ] +  pkg  pi-lens         git:github.com/your-org/pi-lens
-[ ] +  pkg  pi-chrome       npm:pi-chrome
-[ ] +  pkg  pi-ask-user     git:github.com/your-org/pi-ask-user
+[ ] +  pi-lens         git:github.com/your-org/pi-lens
+[ ] +  pi-chrome       npm:pi-chrome
+[ ] +  pi-ask-user     git:github.com/your-org/pi-ask-user
 
 Unloaded
 --------
-[!] ◇  pkg  local-tooling   ../local-tooling
+[!] ◇  local-tooling   ../local-tooling
 
 ✓ active · – disabled · + available · ◇ unloaded
 
-Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.
+Space selects · Enter applies/runs · r removes · Esc cancels
 ```
 
-In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: saved/loadout is accent, active is green, disabled is muted green, available is yellow, and unloaded is gray. The focused row is bold; other row text stays plain.
+In the live TUI, the dashboard title includes the package/version string, followed by a quiet count line. Row content is color-coded by state: saved/loadout and active use the heading accent, disabled is muted, available is yellow, and unloaded/read-only is gray. The cursor and checkbox markers stay plain; the focused row content is bold.
 
 States:
 
@@ -89,11 +89,13 @@ Or open the load picker for all unloaded project declarations:
 /construct load
 ```
 
-Save the active Construct package sources as a named loadout recipe:
+Save the active package sources as a named loadout recipe:
 
 ```text
 /construct save web-stack
 ```
+
+If active package declarations have not been loaded into Construct yet, save loads/includes them by default and reports what was included. Direct project-local resources are not included in saved loadouts yet; save warns when those are present.
 
 To update that recipe later, make the desired package sources active and save the same name again. Construct replaces the saved recipe; it does not append or merge.
 
@@ -128,7 +130,7 @@ Or run `/construct`, focus a loadout recipe and press Enter to activate it, or s
 /construct load [id-or-source-or-path ...] # adopt project resources into Construct
 /construct unload [id-or-source ...]       # forget resources from Construct
 /construct autoload [on|off|status]  # optional trusted TUI quit-time load prompt
-/construct save <loadout-name>       # save active Construct package sources as a named loadout
+/construct save <loadout-name>       # save active package sources as a named loadout
 /construct list                      # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project
 /construct share <saved-name>        # print a shareable saved-loadout JSON snippet
@@ -149,7 +151,7 @@ Notes:
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
 - `/construct autoload [on|off|status]` is off by default. When enabled, trusted TUI sessions check for unloaded project resources on exit and ask before loading them. Autoload never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
-- `/construct save <loadout-name>` includes active Construct package sources. Disabled package declarations are skipped. Saving an existing loadout name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
+- `/construct save <loadout-name>` includes active package sources. Active package declarations not loaded into Construct are loaded/included by default, and TUI lets you deselect them. Disabled package declarations are skipped. Direct project-local resources are not included yet and are reported when present. Saving an existing loadout name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety.
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.

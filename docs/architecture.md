@@ -18,7 +18,7 @@ The current implementation inventories and toggles packages plus direct project 
    - Enter applies/runs the obvious action for actionable rows: run Loadouts, install Available, disable Active, or enable Disabled.
    - `r` asks for confirmation, then removes selected Active or Disabled project package declarations.
    - Keeps Unloaded rows clearly labeled as project declarations/resources not yet loaded into Construct; `/construct load` is the adoption path.
-   - In TUI mode, keeps the title quiet (`Loadout: ...`), unfocused row text plain, focused row text bold, and color limited to the state icon column: saved/loadout accent, active green, disabled muted green, available yellow, unloaded gray.
+   - In TUI mode, keeps the title quiet while showing the package/version string and count line, keeps cursor/checkbox markers plain, colors row content by state, and bolds focused row content: saved/loadout and active heading accent, disabled muted, available yellow, unloaded/read-only gray.
    - Treats loadout rows as recipe/spotlight rows: focusing one marks recipe item rows with `[·]`, Enter runs the recipe additively, and Space quick-selects recipe item rows for normal package actions; disable/remove remains a package-row action.
 
 3. **Package operation layer**

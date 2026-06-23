@@ -96,7 +96,7 @@ quiet_pi() {
 
 printf '== new-project dashboard/status ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
-[[ "$DASHBOARD_OUTPUT" == *"Construct Loadout"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"pi-construct@"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Unloaded"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"

@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { formatCatalogItem, parseCatalog } from "./catalog.js";
 import { describeRead, isObject, readJson } from "./json.js";
 import { getPaths } from "./paths.js";
+import { CONSTRUCT_TITLE } from "./metadata.js";
 import { collectPackageSourceSets, formatList, getManagedItems, getPackages } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources, directResourceKinds, resourcePlural } from "./resources.js";
@@ -107,8 +108,8 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	];
 
 	return [
-		"Construct status",
-		"================",
+		`${CONSTRUCT_TITLE} status`,
+		"=".repeat(`${CONSTRUCT_TITLE} status`.length),
 		`Project: ${data.paths.cwd}`,
 		data.paths.realCwd === data.paths.cwd ? undefined : `Canonical: ${data.paths.realCwd}`,
 		`Trust: ${data.trusted ? "trusted" : "not trusted"}`,

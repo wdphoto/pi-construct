@@ -11,7 +11,7 @@ Construct is centered on one primary command: `/construct`.
 /construct load [id-or-source-or-path ...] # add current project resources to the Construct
 /construct unload [id-or-source ...]         # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
-/construct save <loadout-name>     # save active Construct package sources as a named loadout
+/construct save <loadout-name>     # save active package sources as a named loadout
 /construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
 /construct share <saved-name>      # print a shareable saved-loadout JSON snippet
@@ -98,7 +98,7 @@ Autoload rules:
 
 ## Saved loadouts
 
-Saved loadouts are named groups of active Construct package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed.
+Saved loadouts are named groups of active package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Active unloaded package declarations are loaded into Construct and included by default when saving (TUI lets users deselect them). Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed, and save output should warn when direct resources are present.
 
 ```text
 /construct save www
@@ -111,7 +111,7 @@ Saved loadouts are named groups of active Construct package sources. `profile` r
 
 Save rules:
 
-- `/construct save <loadout-name>` includes active Construct package sources.
+- `/construct save <loadout-name>` includes active package sources, loading/including active unloaded package declarations by default; TUI lets users deselect those package declarations before saving.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct are offered; selected rows are loaded into Construct and included, unselected rows are skipped.
 - Saving over an existing name never appends or merges. TUI asks before replacing; non-TUI replacement refuses for now.
@@ -156,8 +156,8 @@ Controls:
 - row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused loadout recipe, `[!]` means read-only, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
-- in TUI, use a quiet title line like `Loadout: 1 active | 0 disabled | 3 available | 0 unloaded`;
-- keep unfocused row text plain for readability, but bold the focused row; color only the compact state icon column: Loadouts/Saved accent, Active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
+- in TUI, use a quiet title with the package/version string and a count line like `1 active | 0 disabled | 3 available | 0 unloaded`;
+- color row content by state while keeping cursor/checkbox markers plain: Loadouts/Saved and Active heading accent, Disabled muted, Available warning/yellow, Unloaded/read-only muted gray; bold the focused row content;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
 - keep the footer short and two-line: controls first, then `[!] read-only · [·] recipe item`;
 - Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
