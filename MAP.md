@@ -45,6 +45,7 @@ See `CHANGELOG.md` for version-by-version detail.
 
 - [x] Clean up `/construct` TUI vocabulary: call saved recipes **Loadouts** in the dashboard, because the saved thing is a Construct loadout; package rows are package/resource toggles, not saved things.
 - [ ] Continue dashboard UI/key polish opportunistically as the workflow evolves.
+- [ ] Clean up Construct load/apply build output: package install/git/npm subprocess chatter currently leaks into the TUI progress panel (`remote: Enumerating objects…`, `npm audit`, funding notices, repeated spinner lines). Capture or summarize native package-manager output into human-digestible progress/results without hiding actionable failures.
 - [x] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.

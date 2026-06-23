@@ -340,7 +340,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected/all resources · [~] mixed package resources · [-] all package resources off · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space selects · on mixed package rows, selects all resources/restores the original mix · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes selected from project · Esc cancels.",
+		"Space cycles package resources: mixed → all on → all off → no pending change · Enter applies/runs · → unfolds known resources · ← folds · i details · r removes · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -622,7 +622,7 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
 		if (resourceCount > 1) {
-			const mixedHint = item.filterState === "partially-filtered" ? " Space on [~] selects all contained resources; Space again restores the original mix." : "";
+			const mixedHint = item.filterState === "partially-filtered" ? " Space cycles [~] mixed → [x] all on → [-] all off → back to no pending change." : "";
 			return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.${mixedHint}`;
 		}
 		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use i for the exact path.`;

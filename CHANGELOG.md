@@ -6,6 +6,11 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.24 - 2026-06-23
+
+### Fixed
+- Make aggregate package-row toggling cycle through all-on, all-off, and back to the original child-resource targets, so users can clear pending package-resource changes instead of getting stuck on `[x]` or `[-]`.
+
 ## 0.0.23 - 2026-06-23
 
 ### Changed

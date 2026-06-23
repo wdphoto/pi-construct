@@ -148,7 +148,7 @@ Preferred behavior:
 - Partial child selection shows the package row as `[~]`, so users can see from the root that this package has narrowed resource choices without relying on color.
 - All child resources targeted on shows `[x]`; all child resources targeted off shows `[-]`.
 - Collapsing a package must not discard child target state. Re-expanding should show the same child checks until the user applies or cancels the dashboard.
-- Pressing Space on a mixed package row selects all package-contained child resources. Pressing Space again from `[x]` restores the original mixed baseline when the package started partially filtered; otherwise normal all-on/all-off toggling applies.
+- Pressing Space on a mixed package row selects all package-contained child resources. Pressing Space again from `[x]` turns all package-contained child resources off. Pressing Space from `[-]` returns to the original child-resource targets, clearing the pending aggregate resource change.
 - Enter with dirty child resource state writes package filters and ignores whole-package row toggles for that package, preserving the current safety model.
 - Enter on an Available package row with no dirty children still installs the whole package with Pi defaults.
 - Enter on an Active/Disabled package row with no dirty children still uses the existing whole-package enable/disable behavior.
@@ -157,7 +157,7 @@ Implementation shape:
 
 1. Keep the dashboard's inline tree. Do not add a new slash command, modal resource browser, or saved-loadout filter recipe.
 2. Add a small aggregate-selection seam to the shared checkbox picker, e.g. parent rows can declare child ids that should drive their displayed marker and Space behavior.
-3. Compute aggregate marker state from current child checks and the initial child baseline:
+3. Compute aggregate marker state from current child checks:
    - some selected: `[~]` mixed;
    - all selected: `[x]` all on;
    - none selected with dirty resource state: `[-]` all off;

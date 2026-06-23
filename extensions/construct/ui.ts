@@ -373,7 +373,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		interface AggregateChildState {
 			ids: string[];
 			target: AggregateState;
-			baseline: AggregateState;
 			dirty: boolean;
 		}
 
@@ -390,7 +389,6 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return {
 				ids,
 				target: aggregateStateFor(ids, checked),
-				baseline: aggregateStateFor(ids, initiallyChecked),
 				dirty: ids.some((id) => changed.has(id)),
 			};
 		}
@@ -873,7 +871,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 							checked.delete(item.id);
 							syncChanged(item.id);
 						}
-						if (aggregate?.target === "all" && aggregate.baseline === "partial") {
+						if (aggregate?.dirty && aggregate.target === "none") {
 							for (const id of targetIds) {
 								if (initiallyChecked.has(id)) checked.add(id);
 								else checked.delete(id);
