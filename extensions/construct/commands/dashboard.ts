@@ -479,7 +479,6 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
-		highlightFocused: false,
 		confirmHint: "Enter applies/runs",
 		filterLabel: "Filter",
 		filterHint: "type to narrow",

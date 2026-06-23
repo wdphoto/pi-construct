@@ -141,7 +141,7 @@ In TUI mode, `/construct` is the place to see and change project loadout state.
 
 Sections:
 
-- `Saved` — named saved loadouts that can be run in this project.
+- `Loadouts` — named saved loadout recipes that can be run in this project.
 - `Active` — Construct-managed resources active in this project.
 - `Disabled` — Construct-managed resources present in this project but disabled by Pi package/direct resource filters.
 - `Available` — remembered packages that can be installed here.
@@ -152,14 +152,14 @@ Runtime skills/commands are not shown in the default dashboard. Use `/construct 
 Controls:
 
 - type to search/filter;
-- Space selects rows; on a saved loadout row, Space selects that recipe's selectable member package rows instead of selecting the saved row itself;
-- row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused saved loadout, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
+- Space selects rows; on a loadout row, Space selects that recipe's selectable package rows instead of selecting the loadout row itself;
+- row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused loadout recipe, `[!]` means read-only, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
-- make the filter obvious with a label such as `Filter loadouts/resources:` and a hint that typing narrows by saved loadout/package/resource/source/state;
+- make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
 - in TUI, use a quiet title line like `Loadout: 1 active | 0 disabled | 3 available | 0 unloaded`;
-- keep row text plain for readability; color only the compact state icon column: Saved accent, Active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
+- keep unfocused row text plain for readability, but bold the focused row; color only the compact state icon column: Loadouts/Saved accent, Active clear green, Disabled muted green, Available warning/yellow, Unloaded muted gray;
 - do not show trailing per-row action text; selected rows may be applied with Enter or removed with `r`, so end-of-row action hints are too wide and can be misleading;
-- keep the state key short: `◇ unloaded`, not `read-only`; put commands on a separate controls line;
+- keep the footer short and two-line: controls first, then `[!] read-only · [·] recipe item`;
 - Enter applies/runs the obvious action for selected rows: install `Available`, disable `Active`, or enable `Disabled`; for Construct-managed direct resources this writes top-level `+path` / `-path` filters;
 - Enter on a focused saved loadout with no selected rows is activate-only: it installs available package sources and enables disabled package sources, but does not disable/remove active member packages, remove packages outside the recipe, or exact-match the project to the recipe;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;

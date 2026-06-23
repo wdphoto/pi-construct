@@ -125,16 +125,16 @@ Expected:
 Check in real TUI usage:
 
 - fuzzy search works;
-- Space selects package/direct rows, and on a Saved row quick-selects its selectable member package rows;
-- focusing Saved rows marks member package rows with `[·]` without directly selecting them;
-- Enter on a focused Saved row runs it additively; Enter on selected package/direct rows installs Available, disables Active, and enables Disabled rows;
-- running Saved rows is additive/activating only and does not disable/remove active member packages;
+- Space selects package/direct rows, and on a Loadouts row quick-selects its selectable recipe item rows;
+- focusing Loadouts rows marks recipe item rows with `[·]` without directly selecting them;
+- Enter on a focused Loadouts row runs it additively; Enter on selected package/direct rows installs Available, disables Active, and enables Disabled rows;
+- running Loadouts rows is additive/activating only and does not disable/remove active recipe items;
 - Unloaded rows are read-only in `/construct`, and `/construct load` shows only unloaded/adoptable rows;
-- `r` shows a warning, then removes selected Active or Disabled package declarations; Saved rows themselves do not remove member packages;
+- `r` shows a warning, then removes selected Active or Disabled package declarations; Loadouts rows themselves do not remove recipe items;
 - Esc cancels;
 - package rows stay primary;
 - live TUI title uses the quiet `Loadout:` count format;
-- row text stays plain, section headings use accent/heading color, and only state icons carry color: saved accent, active green, disabled muted green, available yellow, unloaded gray;
+- focused row text is bold, unfocused row text stays plain, section headings use accent/heading color, and only state icons carry state color: saved/loadout accent, active green, disabled muted green, available yellow, unloaded gray;
 - Unloaded rows are clear and do not flood the view;
 - runtime inventory stays out of the dashboard and remains visible in status;
 - summaries are readable and actionable;

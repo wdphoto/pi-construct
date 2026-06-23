@@ -15,11 +15,11 @@ The current implementation inventories and toggles packages plus direct project 
    - Merges Construct library entries, saved loadouts, current project package declarations, direct project resource inventory, package filter state, and Construct metadata.
    - Direct project resource rows are read-only until adopted; after `/construct load` adopts them into metadata, Enter toggles them with Pi-native top-level resource filters.
    - Uses selected rows plus one fast normal action and one destructive action rather than treating checkboxes as current package state.
-   - Enter applies/runs the obvious action for actionable rows: run Saved, install Available, disable Active, or enable Disabled.
+   - Enter applies/runs the obvious action for actionable rows: run Loadouts, install Available, disable Active, or enable Disabled.
    - `r` asks for confirmation, then removes selected Active or Disabled project package declarations.
    - Keeps Unloaded rows clearly labeled as project declarations/resources not yet loaded into Construct; `/construct load` is the adoption path.
-   - In TUI mode, keeps the title quiet (`Loadout: ...`), row text plain, and color limited to the state icon column: saved accent, active green, disabled muted green, available yellow, unloaded gray.
-   - Treats saved loadout rows as recipe/spotlight rows: focusing one marks member package rows with `[·]`, Enter runs the recipe additively, and Space quick-selects member package rows for normal package actions; disable/remove remains a package-row action.
+   - In TUI mode, keeps the title quiet (`Loadout: ...`), unfocused row text plain, focused row text bold, and color limited to the state icon column: saved/loadout accent, active green, disabled muted green, available yellow, unloaded gray.
+   - Treats loadout rows as recipe/spotlight rows: focusing one marks recipe item rows with `[·]`, Enter runs the recipe additively, and Space quick-selects recipe item rows for normal package actions; disable/remove remains a package-row action.
 
 3. **Package operation layer**
    - Loads available sources with Pi's native project-local install path:

@@ -6,7 +6,7 @@ Roadmap and action list for The Construct. Scratch/research notes live in `TODO.
 
 Construct has shipped the core loadout loop:
 
-- `/construct` dashboard with `Saved`, `Active`, `Disabled`, `Available`, and `Unloaded` rows;
+- `/construct` dashboard with `Loadouts`, `Active`, `Disabled`, `Available`, and `Unloaded` rows;
 - manual `/construct load` and `/construct unload` boundaries;
 - known-project counts;
 - explicit `/construct autoload` with confirmation-only adoption prompts;
@@ -48,7 +48,7 @@ See `CHANGELOG.md` for version-by-version detail.
 
 ## v0.0.x — dashboard/status polish
 
-- [ ] Clean up `/construct` TUI vocabulary: call saved recipes **Loadouts** in the dashboard, because the saved thing is a Construct loadout; package rows are package/resource toggles, not saved things.
+- [x] Clean up `/construct` TUI vocabulary: call saved recipes **Loadouts** in the dashboard, because the saved thing is a Construct loadout; package rows are package/resource toggles, not saved things.
 - [ ] Rework the `/construct` dashboard key model so the controls feel deliberate and memorable instead of overloaded: distinguish loadout actions from package/resource toggle actions, keep bulk selection, and clarify destructive project removal.
 - [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.

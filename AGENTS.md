@@ -88,7 +88,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 
 - `/construct` opens the Construct Loadout dashboard.
 - Dashboard TUI title stays quiet: `Loadout: N active | N disabled | N available | N unloaded`.
-- Dashboard row text stays plain; only the state icon column is colored: Saved is accent, Active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
+- Dashboard unfocused row text stays plain and the focused row may be bold; only the state icon column is colored: Loadouts/Saved is accent, Active is clear green, Disabled is muted green, Available is yellow, Unloaded is gray; headings use the normal accent/heading color.
 - `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata; direct project resources are adopted into advisory current-project metadata only.
 - `/construct unload` removes resources from the Construct library/saved-loadout refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.

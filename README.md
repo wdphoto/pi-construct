@@ -22,41 +22,41 @@ Construct Loadout
 Project: /Users/you/site
 2 active · 1 disabled · 3 available · 1 unloaded
 
-Saved
------
-[ ] ◆  web-stack       3 package sources
-[ ] ◆  go-stuff        2 package sources + 1 skill
+Loadouts
+--------
+[ ] ◆       web-stack       3 package sources
+[ ] ◆       go-stuff        2 package sources
 
 Active
 ------
-[ ] ✓  pi-web-access   npm:pi-web-access
-[ ] ✓  pi-subagents    git:github.com/your-org/pi-subagents
+[ ] ✓  pkg  pi-web-access   npm:pi-web-access
+[ ] ✓  pkg  pi-subagents    git:github.com/your-org/pi-subagents
 
 Disabled
 --------
-[ ] –  pi-browser      npm:pi-browser
+[ ] –  pkg  pi-browser      npm:pi-browser
 
 Available
 ---------
-[ ] +  pi-lens         git:github.com/your-org/pi-lens
-[ ] +  pi-chrome       npm:pi-chrome
-[ ] +  pi-ask-user     git:github.com/your-org/pi-ask-user
+[ ] +  pkg  pi-lens         git:github.com/your-org/pi-lens
+[ ] +  pkg  pi-chrome       npm:pi-chrome
+[ ] +  pkg  pi-ask-user     git:github.com/your-org/pi-ask-user
 
 Unloaded
 --------
-    ◇  local-tooling   ../local-tooling
+[!] ◇  pkg  local-tooling   ../local-tooling
 
-Legend: [ ] selectable · [x] selected · [·] saved member · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.
-Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels.
+Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.
+Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes active/disabled · Esc cancels.
 ```
 
-In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: active is green, disabled is muted green, available is yellow, and unloaded is gray. Plain output stays uncolored for readability.
+In the live TUI, the dashboard title is a quiet `Loadout:` count line. State meaning is carried by the icon column: saved/loadout is accent, active is green, disabled is muted green, available is yellow, and unloaded is gray. The focused row is bold; other row text stays plain.
 
 States:
 
 | State | Meaning | Enter | `r` |
 | --- | --- | --- | --- |
-| `Saved` | named package-source loadout | run in this project | no-op |
+| `Loadouts` | named package-source loadout recipe | run in this project | no-op |
 | `Active` | active in this project and Construct-managed | disable | remove from project, after warning |
 | `Disabled` | present here, but Pi package/direct resource filters are off | enable | remove from project for packages; no delete for direct resources |
 | `Available` | remembered by Construct, not installed in this project | install into project | no-op |
@@ -114,7 +114,7 @@ To look for trusted projects with unloaded package declarations or direct `.pi/`
 
 Run `/construct scan` with no path to scan trusted Pi paths from Pi's trust store. Pass a folder only when you want to inspect a specific local tree, such as a monorepo or project parent. In the TUI, scan shows lightweight progress and a selectable review list; Space selects findings and Enter loads them into Construct. Print-mode scan is read-only. Scan is project-local: it looks for Pi-trusted projects with `.pi/settings.json`, `.pi/construct.json`, `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and `.pi/themes/`. Untrusted projects are skipped and listed. It does not scan global/user skill locations or Pi package caches.
 
-Or run `/construct`, focus a saved loadout and press Enter to activate it, or select an `Available` package with Space and press Enter to install it. Saved loadout rows are recipe/spotlight rows: focusing one marks member package rows with `[·]`; pressing Space on the saved row quick-selects those member package rows for bulk package actions.
+Or run `/construct`, focus a loadout recipe and press Enter to activate it, or select an `Available` package with Space and press Enter to install it. Loadout rows are recipe/spotlight rows: focusing one marks package rows with `[·]`; pressing Space on the loadout row quick-selects those package rows for bulk package actions.
 
 ## Commands
 
@@ -150,7 +150,7 @@ Notes:
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
 - `/construct wipe <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
-- In `/construct`, Enter on a focused saved loadout activates it additively. Space on a saved loadout selects its member package rows instead, so normal Enter/`r` package-row actions apply to those members.
+- In `/construct`, Enter on a focused loadout activates it additively. Space on a loadout selects its recipe item rows instead, so normal Enter/`r` package-row actions apply to those package rows.
 - Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
 
 ## How it works
