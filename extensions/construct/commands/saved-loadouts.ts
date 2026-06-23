@@ -2,12 +2,11 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { CatalogProfile, ConstructPaths } from "../types.js";
 import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
-import { describeJsonReadIssue, readJson, writeJson } from "../json.js";
+import { describeJsonReadIssue, writeJson } from "../json.js";
 import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
 import { getPaths } from "../paths.js";
-import { collectProjectInventory } from "../project-inventory.js";
+import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
 import { rememberKnownProject } from "../projects.js";
-import { collectDirectProjectResources } from "../resources.js";
 import {
 	findSavedLoadout,
 	generatedCacheSources,
@@ -40,25 +39,23 @@ function usage(): string {
 	].join("\n");
 }
 
-async function packageOnlyInventory(ctx: ExtensionCommandContext) {
-	const inventory = await collectProjectInventory(ctx, { directResources: false });
+interface SavePackageSnapshot {
+	activeManagedSources: string[];
+	activeUnloadedPackages: Array<{ id: string; source: string }>;
+	disabledPackageCount: number;
+}
+
+function savePackageSnapshotFromInventory(inventory: ProjectInventory): SavePackageSnapshot {
 	if (inventory.reads.projectConstruct.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", inventory.reads.projectConstruct)}`);
-	return inventory;
+	return {
+		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active").map((item) => item.metadata.identityKey ?? item.source)),
+		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
+		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
+	};
 }
 
-async function activeManagedPackageSources(ctx: ExtensionCommandContext): Promise<string[]> {
-	const inventory = await packageOnlyInventory(ctx);
-	return uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active").map((item) => item.metadata.identityKey ?? item.source));
-}
-
-async function disabledProjectPackageCount(ctx: ExtensionCommandContext): Promise<number> {
-	const inventory = await packageOnlyInventory(ctx);
-	return inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length;
-}
-
-async function activeUnloadedPackageSources(ctx: ExtensionCommandContext): Promise<Array<{ id: string; source: string }>> {
-	const inventory = await packageOnlyInventory(ctx);
-	return inventory.unloadedPackageDeclarations.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source }));
+async function collectSavePackageSnapshot(ctx: ExtensionCommandContext): Promise<SavePackageSnapshot> {
+	return savePackageSnapshotFromInventory(await collectProjectInventory(ctx, { directResources: false }));
 }
 
 async function promptForUnloadedSources(
@@ -106,14 +103,12 @@ async function promptForUnloadedSources(
 	return selected.selectedIds.filter((source) => candidateSources.has(source));
 }
 
-async function directResourceSaveNotice(ctx: ExtensionCommandContext, paths: ConstructPaths): Promise<string[]> {
-	const constructRead = await readJson(paths.projectConstructPath);
-	const direct = await collectDirectProjectResources(ctx, paths, constructRead);
-	const active = direct.resources.filter((resource) => resource.enabled);
-	if (active.length === 0 && direct.warnings.length === 0) return [];
+function directResourceSaveNotice(inventory: ProjectInventory): string[] {
+	const active = inventory.directResources.resources.filter((resource) => resource.enabled);
+	if (active.length === 0 && inventory.directResources.warnings.length === 0) return [];
 	const unloaded = active.filter((resource) => !resource.managed).length;
 	return [
-		...direct.warnings.map((warning) => `! ${warning}`),
+		...inventory.directResources.warnings.map((warning) => `! ${warning}`),
 		active.length > 0 ? `! Direct project-local resources not included: ${active.length}${unloaded > 0 ? ` (${unloaded} not loaded into Construct)` : ""}` : undefined,
 		active.length > 0 ? "! Saved loadouts are package-source-only for now; direct .pi resources stay project-local." : undefined,
 		...active.slice(0, 6).map((resource) => `! ${resource.kind} ${resource.name}: ${resource.displayPath}`),
@@ -291,16 +286,19 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	const paths = await getPaths(ctx);
 	const id = savedLoadoutId(requestedName);
 
-	let initialManaged: string[];
-	let initialUnloaded: Array<{ id: string; source: string }>;
+	let initialSnapshot: SavePackageSnapshot;
+	let directNotice: string[];
 	try {
-		[initialManaged, initialUnloaded] = await Promise.all([activeManagedPackageSources(ctx), activeUnloadedPackageSources(ctx)]);
+		const initialInventory = await collectProjectInventory(ctx);
+		initialSnapshot = savePackageSnapshotFromInventory(initialInventory);
+		directNotice = directResourceSaveNotice(initialInventory);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Saved loadout not created.\nCould not inspect active project package sources.\n${message}`);
 		return;
 	}
-	const directNotice = await directResourceSaveNotice(ctx, paths);
+	const initialManaged = initialSnapshot.activeManagedSources;
+	const initialUnloaded = initialSnapshot.activeUnloadedPackages;
 
 	const selectedBeforeWait = await promptForUnloadedSources(ctx, requestedName, initialManaged, initialUnloaded);
 	if (!selectedBeforeWait) {
@@ -309,7 +307,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	}
 
 	if (initialManaged.length === 0 && selectedBeforeWait.length === 0) {
-		const skippedDisabled = await disabledProjectPackageCount(ctx);
+		const skippedDisabled = initialSnapshot.disabledPackageCount;
 		showText(
 			ctx,
 			saveNotCreatedText(
@@ -335,13 +333,13 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	let skippedActiveUnloaded = 0;
 	let skippedDisabled = 0;
 	try {
-		const freshUnloaded = await activeUnloadedPackageSources(ctx);
+		const freshSnapshot = await collectSavePackageSnapshot(ctx);
 		const selectedSet = new Set(selectedBeforeWait);
-		selectedToLoad = uniqueSorted(freshUnloaded.filter((candidate) => selectedSet.has(candidate.source)).map((candidate) => candidate.source));
+		selectedToLoad = uniqueSorted(freshSnapshot.activeUnloadedPackages.filter((candidate) => selectedSet.has(candidate.source)).map((candidate) => candidate.source));
 		const selectedAfterWait = new Set(selectedToLoad);
-		skippedActiveUnloaded = freshUnloaded.filter((candidate) => !selectedAfterWait.has(candidate.source)).length;
-		skippedDisabled = await disabledProjectPackageCount(ctx);
-		currentSources = uniqueSorted([...(await activeManagedPackageSources(ctx)), ...selectedToLoad]);
+		skippedActiveUnloaded = freshSnapshot.activeUnloadedPackages.filter((candidate) => !selectedAfterWait.has(candidate.source)).length;
+		skippedDisabled = freshSnapshot.disabledPackageCount;
+		currentSources = uniqueSorted([...freshSnapshot.activeManagedSources, ...selectedToLoad]);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Saved loadout not created.\nCould not re-check project package sources after waiting.\n${message}`);
@@ -390,7 +388,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 		}
 	}
 
-	currentSources = uniqueSorted(await activeManagedPackageSources(ctx));
+	currentSources = uniqueSorted((await collectSavePackageSnapshot(ctx)).activeManagedSources);
 	if (currentSources.length === 0) {
 		showText(ctx, "Saved loadout not created. No active Construct package sources found after loading selected package declarations.");
 		return;
