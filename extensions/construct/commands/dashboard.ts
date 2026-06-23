@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, DirectResourceKind, DirectResourceSummary } from "../types.js";
+import type { ConstructPaths, DirectResourceSummary } from "../types.js";
 import { deriveId } from "../catalog.js";
 import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory } from "../project-inventory.js";
@@ -8,6 +8,7 @@ import { formatPackageSourceLabel, packageSourceIdentityKey } from "../sources.j
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { type PackageResourceFilterKey } from "../package-filters.js";
+import { packageResourceSelectionKey, packageResourceSetsDiffer, planPackageResourceFilters } from "../package-resource-plans.js";
 import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -484,13 +485,6 @@ function resourcesForPackage(item: DashboardPackage, packageResources: PackageRe
 	return packageResources?.resources.filter((resource) => resourceMatchesPackage(resource, item)) ?? [];
 }
 
-const packageFilterKeyForKind: Record<DirectResourceKind, PackageResourceFilterKey> = {
-	extension: "extensions",
-	skill: "skills",
-	prompt: "prompts",
-	theme: "themes",
-};
-
 function packageResourceChildRowId(item: DashboardPackage, resource: PackageResourceSummary): string {
 	return rowId("package-resource", item.rowId, resource.kind, resource.packageRelativePath);
 }
@@ -587,8 +581,8 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 			const available = item.section === "Available";
 			const actionDescription =
 				item.section === "Available"
-					? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters."
-					: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.";
+					? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters. [x] means this target changed."
+					: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters. [x] means this target changed.";
 			const entrypointNote = packageResourceEntrypointNote(resource);
 			children.push({
 				id: packageResourceChildRowId(item, resource),
@@ -599,12 +593,12 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 				description: entrypointNote ? `${entrypointNote}\n${actionDescription}` : actionDescription,
 				checked: available ? false : resource.enabled,
 				disabled: !editable,
-				stateText: available ? "+" : undefined,
-				stateTone: available ? "warning" : undefined,
-				checkedStateText: available ? undefined : "✓",
-				uncheckedStateText: available ? undefined : "–",
-				checkedStateTone: available ? undefined : "success",
-				uncheckedStateTone: available ? undefined : "muted",
+				stateText: available ? "off" : undefined,
+				stateTone: available ? "muted" : undefined,
+				checkedStateText: "on",
+				uncheckedStateText: "off",
+				checkedStateTone: "success",
+				uncheckedStateTone: "muted",
 				selectionMarkerMode: available ? "checked" : "changed",
 				marker: editable ? undefined : "   ",
 			});
@@ -665,9 +659,20 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 interface PackageResourceFilterPlan {
 	item: DashboardPackage;
 	resources: PackageResourceSummary[];
-	selectedPaths: Set<string>;
+	selectedResourceKeys: Set<string>;
 	filters: Partial<Record<PackageResourceFilterKey, string[] | null>>;
 	selectedCount: number;
+}
+
+function packageResourceFilterPlanForResources(item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>): PackageResourceFilterPlan {
+	const planned = planPackageResourceFilters(resources, selectedResourceKeys);
+	return {
+		item,
+		resources,
+		selectedResourceKeys: planned.selectedResourceKeys,
+		filters: planned.filters,
+		selectedCount: planned.selectedCount,
+	};
 }
 
 function packageResourceFilterPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, selectedIds: string[], changedIds: string[]): PackageResourceFilterPlan[] {
@@ -687,17 +692,11 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 		if (!changedPackages.has(item.rowId)) continue;
 		const resources = resourcesForPackage(item, packageResources);
 		if (resources.length === 0) continue;
-		const selectedPaths = new Set<string>();
+		const selectedResourceKeys = new Set<string>();
 		for (const resource of resources) {
-			if (selected.has(packageResourceChildRowId(item, resource))) selectedPaths.add(resource.packageRelativePath);
+			if (selected.has(packageResourceChildRowId(item, resource))) selectedResourceKeys.add(packageResourceSelectionKey(resource.kind, resource.packageRelativePath));
 		}
-		const filters: Partial<Record<PackageResourceFilterKey, string[] | null>> = {};
-		for (const kind of directResourceKinds) {
-			const kindResources = resources.filter((resource) => resource.kind === kind);
-			const selectedKindPaths = kindResources.filter((resource) => selectedPaths.has(resource.packageRelativePath)).map((resource) => resource.packageRelativePath).sort();
-			filters[packageFilterKeyForKind[kind]] = selectedKindPaths;
-		}
-		plans.push({ item, resources, selectedPaths, filters, selectedCount: selectedPaths.size });
+		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys));
 	}
 	return plans;
 }
@@ -717,6 +716,7 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	if (installCount > 0) lines.push("Available packages are installed project-local, then immediately narrowed with native Pi package filters.");
 	lines.push(
 		"Resource-level selection writes an explicit package-resource allowlist; future package-added resources stay disabled until selected.",
+		"Available package selections are re-checked after install before filters are written; if the cached list changed, Construct warns in the result panel.",
 		"No package files are copied into .pi/ and no saved loadout recipe is changed.",
 		"Package row selections are ignored while resource-level changes are pending.",
 		"",
@@ -726,7 +726,7 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 		for (const kind of directResourceKinds) {
 			const kindResources = plan.resources.filter((resource) => resource.kind === kind);
 			if (kindResources.length === 0) continue;
-			const selectedCount = kindResources.filter((resource) => plan.selectedPaths.has(resource.packageRelativePath)).length;
+			const selectedCount = kindResources.filter((resource) => plan.selectedResourceKeys.has(packageResourceSelectionKey(resource.kind, resource.packageRelativePath))).length;
 			lines.push(`  ${resourcePlural(kind)}: ${selectedCount}/${kindResources.length}`);
 		}
 	}
@@ -734,13 +734,35 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
 }
 
-function packageResourceProgressLines(plans: PackageResourceFilterPlan[], complete = 0, failures: string[] = []): string[] {
+function packageResourceProgressLines(plans: PackageResourceFilterPlan[], complete = 0, failures: string[] = [], warnings: string[] = []): string[] {
 	return [
 		`${complete}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} complete`,
 		"",
 		...plans.map((plan, index) => `${index < complete ? "✓" : " "} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} resources`),
+		...warnings.map((warning) => `! ${warning}`),
 		...failures.map((failure) => `! ${failure}`),
 	];
+}
+
+async function recheckInstalledPackageResourcePlan(ctx: ExtensionCommandContext, item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>, filterSource: string, metadataId: string | undefined): Promise<{ plan?: PackageResourceFilterPlan; warnings: string[] }> {
+	const warnings: string[] = [];
+	const inventory = await collectProjectInventory(ctx, { directResources: false });
+	const inventoryResources = await collectProjectPackageResources(ctx, inventory);
+	warnings.push(...inventoryResources.warnings);
+	const installedItem: DashboardPackage = {
+		...item,
+		id: metadataId ?? item.id,
+		source: filterSource,
+		matchSources: uniqueSorted([filterSource, item.source, ...item.matchSources]),
+	};
+	const installedResources = resourcesForPackage(installedItem, inventoryResources);
+	if (installedResources.length === 0) {
+		return { warnings: [...warnings, `${item.label}: installed, but Pi did not resolve package resources before filters were written.`] };
+	}
+	if (packageResourceSetsDiffer(resources, installedResources)) {
+		warnings.push(`${item.label}: cached package resource list changed after install; filters were written from the installed resource list where paths still matched.`);
+	}
+	return { plan: packageResourceFilterPlanForResources(item, installedResources, selectedResourceKeys), warnings };
 }
 
 export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
@@ -767,7 +789,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  [~] mixed resources · [-] all resources off · [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  child rows show target on/off; [x] on a child means changed · [~] mixed · [-] all off · [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
@@ -789,11 +811,12 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				if (!ready) return { title: "Package resource update cancelled", lines: ["No files were changed."] };
 
 				const failures: string[] = [];
+				const applyWarnings: string[] = [];
 				const succeeded = new Set<string>();
 				let complete = 0;
 				let needsReload = false;
 				update("Applying package resource filters", packageResourceProgressLines(resourcePlans));
-				for (const plan of resourcePlans) {
+				for (let plan of resourcePlans) {
 					if (signal.aborted) break;
 					let filterSource = plan.item.source;
 					let metadataId = plan.item.managed ? plan.item.id : undefined;
@@ -806,18 +829,21 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 						if (!load.ok) {
 							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
 							complete += 1;
-							update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures));
+							update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures, applyWarnings));
 							continue;
 						}
 						filterSource = load.declaredSource ?? plan.item.source;
 						metadataId = load.itemId ?? metadataId;
+						const rechecked = await recheckInstalledPackageResourcePlan(ctx, plan.item, plan.resources, plan.selectedResourceKeys, filterSource, metadataId);
+						applyWarnings.push(...rechecked.warnings);
+						if (rechecked.plan) plan = rechecked.plan;
 					}
 					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted });
 					if (result.needsReload) needsReload = true;
 					if (!result.ok) failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
 					else succeeded.add(plan.item.rowId);
 					complete += 1;
-					update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures));
+					update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures, applyWarnings));
 				}
 				const changed = succeeded.size;
 				const installedWithFilters = resourcePlans.filter((plan) => plan.item.section === "Available" && succeeded.has(plan.item.rowId));
@@ -832,6 +858,8 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
 						updatedWithFilters.length > 0 ? `Updated package filters: ${updatedWithFilters.length}` : undefined,
 						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						applyWarnings.length > 0 ? `Warnings: ${applyWarnings.length}` : undefined,
+						...applyWarnings.map((warning) => `! ${warning}`),
 						failures.length > 0 ? `Failures: ${failures.length}` : undefined,
 						...failures.map((failure) => `! ${failure}`),
 						needsReload ? "Reload Pi to use the updated package resource filters." : undefined,

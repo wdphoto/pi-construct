@@ -1,6 +1,6 @@
 # Package resource picker plan
 
-Status: next-stage plan for a small Construct-specific package-row picker.
+Status: implemented for package rows, with follow-up polish still tracked in `MAP.md`.
 
 ## Product direction
 
@@ -70,7 +70,7 @@ Status: complete enough for the next read-only dashboard drill-down.
      - whole-package disabled;
      - partially filtered;
      - invalid/unknown.
-   - Keep planner pure and testable.
+   - Keep planner pure and testable. The write planner now lives in `extensions/construct/package-resource-plans.ts` with smoke coverage for cross-kind path collisions and all-empty selections.
 
 2. Update inventory vocabulary. ✅
    - Preserve existing active/disabled/available/unloaded dashboard sections for now.
@@ -120,7 +120,7 @@ Flow:
    - re-read settings;
    - write object-form package filters using exact package-relative paths;
    - preserve unrelated package declaration fields;
-   - preserve unrelated package declaration fields;
+   - for Available rows, re-resolve the installed project package before writing filters and warn if the cached temporary resource list changed;
    - update package-level Construct metadata only to keep the advisory enabled flag aligned when all resources are disabled or some are enabled;
    - show progress/result/reload flow.
 
@@ -137,7 +137,9 @@ Important Pi detail:
 - `+path` is force-include, not a narrowing include by itself.
 - For “only this resource,” use plain exact path entries.
 
-## Stage 3.1 — parent/child selection polish plan
+## Stage 3.1 — parent/child selection polish
+
+Status: implemented for aggregate parent markers and clearer child target labels.
 
 Goal: make package-contained resource selection feel predictable without turning the dashboard into a custom package browser.
 
@@ -195,9 +197,7 @@ Coverage targets:
 
 ## Open questions
 
-- Should the dashboard show a clearer dirty/target marker for child rows after Space changes a resource target?
 - Should partially filtered packages get their own dashboard row copy/state, or just a description badge?
-- Should picker write all four resource filter arrays or only arrays touched by the user?
 
 ## Decisions made
 

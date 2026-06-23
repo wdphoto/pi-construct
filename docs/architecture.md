@@ -26,7 +26,7 @@ The current implementation inventories and toggles packages plus direct project 
      ```bash
      pi install <source> -l --approve
      ```
-   - For Available package child-resource selection, cache-inspects remembered sources with Pi's temporary resolver without network/download during dashboard build, shows child rows only when that cache already has multiple resources, then installs project-local and writes package filters for selected resources when the user unfolds and confirms.
+   - For Available package child-resource selection, cache-inspects remembered sources with Pi's temporary resolver without network/download during dashboard build, shows child rows only when that cache already has multiple resources, then installs project-local, re-resolves the installed package resource list, warns if it differs from the cache, and writes package filters for selected resources when the user unfolds and confirms.
    - Disables installed/active sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
    - Enables disabled sources by clearing those all-empty package resource filters.
    - Toggles Construct-managed direct resources by writing Pi-native top-level `+path` / `-path` filters in `.pi/settings.json`.

@@ -64,7 +64,7 @@ Expected:
 Expected:
 
 - `/construct unload` asks in TUI mode.
-- `/construct unload <id-or-source ...>` removes matching resources from the Construct library.
+- `/construct unload <id-or-source ...>` removes matching resources from the Construct library, including equivalent package source spellings.
 - Unload prunes matching saved-loadout entries and current-project Construct metadata.
 - Unload does not remove package declarations from `.pi/settings.json`.
 - Unload does not uninstall project packages.
@@ -78,7 +78,7 @@ Expected:
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
 - `/construct list` lists saved loadouts.
-- `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
+- `/construct run <saved-name>` turns those package sources on in the current project, skipping already-active sources, enabling disabled matches, installing missing sources, and using the TUI progress/result/reload panel.
 - Saved loadouts appear as compact `◆` rows in `/construct`; focusing one marks member package rows with `[·]`, pressing Enter runs it additively, and pressing Space quick-selects its selectable member package rows.
 - `/construct share <saved-name>` prints a package-source JSON snippet and warns for local paths.
 - `/construct wipe <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.

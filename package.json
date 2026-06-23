@@ -35,9 +35,10 @@
     "check:hygiene": "tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false",
     "pack:dry-run": "npm pack --dry-run",
     "release:verify": "npm run check && npm run pack:dry-run",
-    "smoke:all": "npm run smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke",
+    "smoke:all": "npm run smoke && npm run package-resource-plans-smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke",
     "prepublishOnly": "npm run release:verify",
     "smoke": "./scripts/smoke.sh",
+    "package-resource-plans-smoke": "./scripts/package-resource-plans-smoke.sh",
     "install-smoke": "./scripts/install-smoke.sh",
     "e2e-smoke": "./scripts/e2e-smoke.sh",
     "invalid-drift-smoke": "./scripts/invalid-drift-smoke.sh"

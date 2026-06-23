@@ -184,6 +184,11 @@ STATUS_FULL_OUTPUT="$(run_pi_approved '/construct status full')"
 [[ "$STATUS_FULL_OUTPUT" == *"themes: 1"* ]]
 [[ "$STATUS_FULL_OUTPUT" == *"skill helper (enabled)"* ]]
 [[ "$STATUS_FULL_OUTPUT" == *"skills/helper/SKILL.md"* ]]
+SAVE_OUTPUT="$(run_pi_approved '/construct save baseline')"
+[[ "$SAVE_OUTPUT" == *"Saved loadout: baseline"* ]]
+RUN_ACTIVE_OUTPUT="$(run_pi_approved '/construct run baseline')"
+[[ "$RUN_ACTIVE_OUTPUT" == *"Saved loadout already active: baseline"* ]]
+[[ "$RUN_ACTIVE_OUTPUT" == *"No package settings changed."* ]]
 
 printf '== disabled package filters are recognized ==\n'
 python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
@@ -207,6 +212,9 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"pkg"* || "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"enabled in Construct metadata, disabled by package filters"* ]]
+RUN_ENABLE_OUTPUT="$(run_pi_approved '/construct run baseline')"
+[[ "$RUN_ENABLE_OUTPUT" == *"Ran saved loadout: baseline"* ]]
+[[ "$RUN_ENABLE_OUTPUT" == *"Enabled: 1"* ]]
 
 printf '== partial package filters are recognized ==\n'
 python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'
@@ -267,6 +275,20 @@ STATUS_OUTPUT="$(run_pi '/construct status')"
 printf '== saved loadout list ==\n'
 LIST_OUTPUT="$(run_pi '/construct list')"
 [[ "$LIST_OUTPUT" == *"Saved Construct loadouts"* ]]
+UNLOAD_EQUIV_OUTPUT="$(run_pi "/construct unload $PKG_DIR/")"
+[[ "$UNLOAD_EQUIV_OUTPUT" == *"Construct unload complete."* ]]
+[[ "$UNLOAD_EQUIV_OUTPUT" == *"Construct forgot: 1 resource"* ]]
+python3 - "$HOME_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+home = pathlib.Path(sys.argv[1])
+catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
+assert not catalog.get("items"), catalog
+baseline = next(profile for profile in catalog.get("profiles", []) if profile.get("id") == "baseline")
+assert baseline.get("sources") == [], baseline
+PY
 
 printf '== stale known-project visibility ==\n'
 python3 - "$HOME_DIR" "$TMP/missing-project" <<'PY'

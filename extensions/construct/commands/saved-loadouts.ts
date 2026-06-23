@@ -1,6 +1,7 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import type { CatalogProfile, ConstructPaths } from "../types.js";
+import type { CatalogItem, CatalogProfile, ConstructPaths } from "../types.js";
 import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../catalog.js";
 import { describeJsonReadIssue, writeJson } from "../json.js";
 import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
@@ -20,7 +21,7 @@ import {
 	uniqueSorted,
 	type ParsedLoadoutSnippet,
 } from "../saved-loadouts.js";
-import { isLocalPathSource } from "../sources.js";
+import { formatPackageSourceLabel, isLocalPathSource, packageSourceMatchValues } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, splitArgs, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 import { loadSourcesIntoConstruct } from "./load.js";
 
@@ -196,6 +197,63 @@ async function confirmReplaceSavedLoadout(ctx: ExtensionCommandContext, id: stri
 	});
 }
 
+function packageStateRank(state: "active" | "disabled" | "available" | "unloaded"): number {
+	if (state === "active") return 0;
+	if (state === "disabled") return 1;
+	if (state === "unloaded") return 2;
+	return 3;
+}
+
+async function sourceMatchesForRun(source: string, paths: ConstructPaths): Promise<Set<string>> {
+	const settingsDir = dirname(paths.projectSettingsPath);
+	return new Set([source, ...(await packageSourceMatchValues(source, settingsDir)), ...(await packageSourceMatchValues(source, paths.cwd))]);
+}
+
+function overlaps(a: Iterable<string>, b: Set<string>): boolean {
+	for (const value of a) if (b.has(value)) return true;
+	return false;
+}
+
+async function stepsForSavedLoadoutSources(inventory: ProjectInventory, sources: string[], catalogItems: CatalogItem[]): Promise<{ steps: ConstructOperationStep[]; alreadyActive: string[] }> {
+	const steps: ConstructOperationStep[] = [];
+	const alreadyActive: string[] = [];
+	const scheduled = new Set<string>();
+
+	function addStep(action: "Install" | "Enable", source: string, label: string, catalogItem = findCatalogItem(catalogItems, source)): void {
+		const key = `${action}:${source}`;
+		if (scheduled.has(key)) return;
+		scheduled.add(key);
+		steps.push({
+			action,
+			item: { id: label, label, source, displaySource: formatPackageSourceLabel(source), catalogItem },
+			state: "pending",
+		});
+	}
+
+	for (const source of sources) {
+		const matches = await sourceMatchesForRun(source, inventory.paths);
+		const managed = inventory.managedPackages.filter((item) => overlaps(item.matchSources, matches)).sort((a, b) => packageStateRank(a.state) - packageStateRank(b.state))[0];
+		if (managed) {
+			if (managed.state === "active") alreadyActive.push(source);
+			else if (managed.state === "disabled") addStep("Enable", managed.source, managed.metadata.id);
+			else addStep("Install", source, findCatalogItem(catalogItems, source)?.id ?? deriveId(source));
+			continue;
+		}
+
+		const unloaded = inventory.unloadedPackageDeclarations.find((candidate) => overlaps(candidate.matchSources, matches));
+		if (unloaded) {
+			if (unloaded.disabledByFilters) addStep("Enable", unloaded.rawSource, deriveId(unloaded.source));
+			else alreadyActive.push(source);
+			continue;
+		}
+
+		const item = findCatalogItem(catalogItems, source);
+		addStep("Install", source, item?.id ?? deriveId(source), item);
+	}
+
+	return { steps, alreadyActive };
+}
+
 async function runSavedLoadoutOperations(
 	ctx: ExtensionCommandContext,
 	paths: ConstructPaths,
@@ -221,15 +279,25 @@ async function runSavedLoadoutOperations(
 		return { title: "Saved loadout run failed", lines: [`Saved loadout has no package sources: ${currentProfile.id}`] };
 	}
 
-	const steps: ConstructOperationStep[] = sources.map((source) => {
-		const item = findCatalogItem(fresh.catalog.items, source);
-		const label = item?.id ?? deriveId(source);
+	let operationPlan: Awaited<ReturnType<typeof stepsForSavedLoadoutSources>>;
+	try {
+		operationPlan = await stepsForSavedLoadoutSources(await collectProjectInventory(ctx, { directResources: false }), sources, fresh.catalog.items);
+	} catch (error) {
+		return { title: "Saved loadout run failed", lines: [`Could not inspect current project package state: ${error instanceof Error ? error.message : String(error)}`] };
+	}
+	const { steps, alreadyActive } = operationPlan;
+	if (steps.length === 0) {
 		return {
-			action: "Install",
-			item: { id: label, label, source, displaySource: source, catalogItem: item },
-			state: "pending",
+			title: `Saved loadout already active: ${currentProfile.id}`,
+			confirmHint: "Press Enter/Esc to return to session",
+			lines: [
+				"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
+				`Already active: ${alreadyActive.length}/${sources.length}`,
+				...alreadyActive.map((source) => `✓ ${source}`),
+				"No package settings changed.",
+			],
 		};
-	});
+	}
 	const outcome = await runConstructOperationSteps({
 		ctx,
 		paths,
@@ -242,6 +310,7 @@ async function runSavedLoadoutOperations(
 	});
 
 	const loaded = outcome.completed.filter((step) => step.action === "Install");
+	const enabled = outcome.completed.filter((step) => step.action === "Enable");
 	const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
 	return {
 		title: outcome.cancelled
@@ -256,8 +325,12 @@ async function runSavedLoadoutOperations(
 		lines: [
 			outcome.cancelled ? "Cancelled before remaining resources." : undefined,
 			"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
+			alreadyActive.length > 0 ? `Already active and skipped: ${alreadyActive.length}` : undefined,
 			`Turned on: ${outcome.appliedChanges}/${steps.length}`,
+			loaded.length > 0 ? `Installed: ${loaded.length}` : undefined,
 			...loaded.map((step) => `+ ${step.item.label}: ${step.item.source}`),
+			enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
+			...enabled.map((step) => `+ ${step.item.label}: ${step.item.source}`),
 			outcome.partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${outcome.partialRuntimeChanges.length}` : undefined,
 			...outcome.partialRuntimeChanges.map((change) => `! ${change.item.label}: ${change.error}`),
 			outcome.partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,

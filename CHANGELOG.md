@@ -6,6 +6,15 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Changed
+- Clarify package child-resource rows by showing explicit `on`/`off` target state and explaining that `[x]` on a child means the target changed.
+- Make `/construct run <saved-name>` skip already-active package sources and enable disabled matching declarations instead of reinstalling every saved source.
+- Re-check Available package resource selections after install before writing filters, warning when the cached resource list changed.
+- Let `/construct unload <source>` match equivalent package source spellings and remove equivalent saved-loadout source references.
+
+### Added
+- Extract package resource filter planning into a pure helper with smoke coverage for cross-kind path collisions and all-empty selections.
+
 ## 0.0.24 - 2026-06-23
 
 ### Fixed

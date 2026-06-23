@@ -6,7 +6,7 @@ import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js
 import { getPaths } from "../paths.js";
 import { collectPackageSourceSets, getPackages } from "../project-settings.js";
 import { knownProjectCountForSources, knownProjectCounts, readKnownProjects, rememberKnownProject } from "../projects.js";
-import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
+import { managedPackageSourceIdentity, packageSourceMatchValues } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 function unloadUsage(): string {
@@ -22,11 +22,24 @@ function catalogItemKey(item: CatalogItem): string {
 	return `${item.id}\u0000${item.source}`;
 }
 
-function findUnloadItems(items: CatalogItem[], queries: string[]): { selected: CatalogItem[]; missing: string[] } {
+function overlaps(a: Iterable<string>, b: Set<string>): boolean {
+	for (const value of a) if (b.has(value)) return true;
+	return false;
+}
+
+async function sourceMatchSet(source: string, paths: ConstructPaths): Promise<Set<string>> {
+	const settingsDir = dirname(paths.projectSettingsPath);
+	return new Set([source, ...(await packageSourceMatchValues(source, settingsDir)), ...(await packageSourceMatchValues(source, paths.cwd))]);
+}
+
+async function findUnloadItems(items: CatalogItem[], queries: string[], paths: ConstructPaths): Promise<{ selected: CatalogItem[]; missing: string[] }> {
 	const selected = new Map<string, CatalogItem>();
 	const missing: string[] = [];
+	const itemMatches = new Map<string, Set<string>>();
+	for (const item of items) itemMatches.set(catalogItemKey(item), await sourceMatchSet(item.source, paths));
 	for (const query of queries) {
-		const matches = items.filter((candidate) => candidate.id === query || candidate.source === query || candidate.name === query);
+		const queryMatches = await sourceMatchSet(query, paths);
+		const matches = items.filter((candidate) => candidate.id === query || candidate.source === query || candidate.name === query || overlaps(itemMatches.get(catalogItemKey(candidate)) ?? [], queryMatches));
 		if (matches.length === 0) missing.push(query);
 		else for (const item of matches) selected.set(catalogItemKey(item), item);
 	}
@@ -51,8 +64,8 @@ async function currentProjectActiveCount(paths: ConstructPaths, selected: Catalo
 
 	let active = 0;
 	for (const item of selected) {
-		const normalized = await normalizeSourceForLibrary(item.source, settingsDir);
-		if (packageSources.declaredSources.has(item.source) || packageSources.declaredSources.has(normalized)) active += 1;
+		const matches = await packageSourceMatchValues(item.source, settingsDir);
+		if (matches.some((match) => packageSources.declaredSources.has(match))) active += 1;
 	}
 	return { active };
 }
@@ -103,7 +116,7 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	let selected: CatalogItem[] = [];
 	let missing: string[] = [];
 	if (queries.length > 0) {
-		const result = findUnloadItems(catalog.items, queries);
+		const result = await findUnloadItems(catalog.items, queries, paths);
 		selected = result.selected;
 		missing = result.missing;
 	} else if (ctx.mode === "tui") {
@@ -158,15 +171,23 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 	const selectedKnownCounts = await knownProjectCountsByItem(ctx, selected);
 
 	const removedIds = new Set(selected.map((item) => item.id));
-	const removedSources = new Set(selected.map((item) => item.source));
 	const removedKeys = new Set(selected.map(catalogItemKey));
+	const removedSourceMatches = new Set<string>();
+	for (const item of selected) for (const match of await sourceMatchSet(item.source, paths)) removedSourceMatches.add(match);
 	const nextItems = freshCatalog.catalog.items.filter((item) => !removedKeys.has(catalogItemKey(item)));
-	const nextProfiles = freshCatalog.catalog.profiles.map((profile) => ({
-		...profile,
-		items: profile.items.filter((id) => !removedIds.has(id)),
-		sources: profile.sources.filter((source) => !removedSources.has(source)),
-		updatedAt: new Date().toISOString(),
-	}));
+	const nextProfiles = [];
+	for (const profile of freshCatalog.catalog.profiles) {
+		const nextSources: string[] = [];
+		for (const source of profile.sources) {
+			if (!overlaps(await sourceMatchSet(source, paths), removedSourceMatches)) nextSources.push(source);
+		}
+		nextProfiles.push({
+			...profile,
+			items: profile.items.filter((id) => !removedIds.has(id)),
+			sources: nextSources,
+			updatedAt: new Date().toISOString(),
+		});
+	}
 	await writeJson(paths.userCatalogPath, { ...freshCatalog.catalog, version: 1, items: nextItems, profiles: nextProfiles });
 
 	const [metadata, currentProject] = await Promise.all([removeCurrentProjectMetadata(paths, selected), currentProjectActiveCount(paths, selected)]);
