@@ -335,7 +335,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] saved member · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels.",
+		"Controls: Space selects · on Saved, selects members · Enter applies/runs · r removes selected from project · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
@@ -364,19 +364,24 @@ function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
 	];
 }
 
-function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
+function removablePackages(packages: DashboardItem[], ids: string[]): DashboardPackage[] {
 	const selected = new Set(ids);
-	const removable = packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
+	return packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
+}
+
+function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
+	const removable = removablePackages(packages, ids);
 	if (removable.length === 0) return undefined;
 	const preview = removable.slice(0, 8).map((item) => `- ${item.label}: ${item.source}`);
 	const extra = removable.length > preview.length ? [`…and ${removable.length - preview.length} more`] : [];
 	return {
-		title: "Remove from this project?",
-		confirmHint: "Press Enter to remove · Esc cancels",
+		title: `Remove ${removable.length} package${removable.length === 1 ? "" : "s"} from this project?`,
+		confirmHint: "Press Enter to remove from project · Esc cancels",
 		lines: [
-			`This will run project-local \`pi remove\` for ${removable.length} package${removable.length === 1 ? "" : "s"}.`,
-			"It edits .pi/settings.json after creating a backup.",
-			"It does not delete global Pi package caches.",
+			`This will run project-local \`pi remove\` for ${removable.length} selected package${removable.length === 1 ? "" : "s"}.`,
+			"It edits this project's .pi/settings.json after creating a backup.",
+			"It does not delete global Pi package caches or saved loadout recipes.",
+			"The slash command /construct remove <name> is different: it removes a saved loadout recipe only.",
 			"",
 			...preview,
 			...extra,
@@ -479,7 +484,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			{ icon: "+", label: "available", tone: "warning" },
 			{ icon: "◇", label: "unloaded", tone: "muted" },
 		],
-		footerHint: "  Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels",
+		footerHint: "  Space selects · on Saved, selects members · Enter applies/runs · r removes selected from project · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),
