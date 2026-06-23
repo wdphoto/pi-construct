@@ -10,15 +10,16 @@ This is a review/discussion document. It is not the committed roadmap. Move acce
 
 Construct is functionally healthy, but the bloat is real. The npm package is small; the weight is cognitive:
 
-- saved-loadout command code is still large, but pure helpers and shared operation plumbing are now split out;
+- saved-loadout command code is still large, but pure helpers, shared operation plumbing, and shared save snapshots are now split out;
 - the generic TUI picker has become a mini framework;
 - dashboard and saved-loadout run flows now share operation/progress/result execution code;
+- dashboard, status, save, and load candidate discovery now share a read-only project inventory module;
 - old design-plan docs now outnumber current source-of-truth docs;
-- the next roadmap item (`/construct scan`) can stay lean only if broad discovery remains conservative and selected TUI loading keeps `/construct load` write boundaries.
+- `/construct scan` must stay lean by remaining conservative/file-based and by keeping selected TUI loading within `/construct load` write boundaries.
 
 No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
 
-My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, dashboard/run operation plumbing is shared, and postponed autoload behavior is hidden from the public surface.
+My opinionated recommendation: pause before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, dashboard/run operation plumbing is shared, project reconciliation now has a read-only inventory seam, and postponed autoload behavior is removed from the public/code surface.
 
 ## Validation run
 
@@ -146,19 +147,20 @@ Resolution:
 - Saved-loadout source expansion remains in saved-loadout command code and shared helpers.
 - Public command behavior and command surface are unchanged.
 
-### A5 — State collection is repeated across modules — source-set helper extracted on review branch
+### A5 — State collection is repeated across modules — read-only inventory seam extracted
 
 Severity: medium maintainability / drift risk
 Files: `dashboard.ts`, `load.ts`, `status.ts`, `saved-loadouts.ts`, `project-settings.ts`
 
 Several modules independently collect package declarations, normalize local paths, match Construct metadata, detect disabled filters, and classify package state. The logic is readable in each place, but subtle differences are accumulating.
 
-Resolution so far:
+Resolution:
 
 - Added `collectPackageSourceSets()` in `project-settings.ts` for raw+normalized declared/active/disabled package source sets.
-- Wired it into dashboard, status, saved-loadout save, and unload checks where the existing semantics matched.
+- Added `project-inventory.ts` as a read-only seam for paths, JSON reads, catalog/known-project parsing, package declarations, managed package classification, available/unloaded package rows, and Pi-native direct project resources.
+- Dashboard, status, saved-loadout save, and `/construct load` candidate discovery now consume that inventory where the semantics match.
 - Added normalized local source details to verbose status package declaration lines so raw relative settings strings are easier to compare with Construct metadata.
-- Avoided a full central snapshot module; callers still own their command-specific classification and UI behavior.
+- Kept scan intentionally conservative/file-based and kept load/write operations in the command-specific modules.
 
 Deferred option: extract more identity helpers only when duplication causes a real bug or a future feature needs it. Avoid turning this into a broad inventory framework.
 
