@@ -33,7 +33,7 @@ If the project has never been loaded into Construct, the dashboard shows a quiet
 Example:
 
 ```text
-pi-construct@0.0.18
+pi-construct@0.0.19
 ===================
 Project: /Users/you/site
 2 active · 1 disabled · 3 available · 1 unloaded
