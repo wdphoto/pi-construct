@@ -148,6 +148,7 @@ export interface CheckboxPickerItem {
 	depth?: number;
 	expandable?: boolean;
 	expandedByDefault?: boolean;
+	lazyChildren?: boolean;
 }
 
 export interface CheckboxPickerApplyResult {
@@ -237,7 +238,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let phase: "pick" | "inspect" | "confirmSubmit" | "applying" | "loading" | "done" = "pick";
 		const expanded = new Set(items.filter((item) => item.expandedByDefault).map((item) => item.id));
 		let itemById = new Map(items.map((item) => [item.id, item]));
-		const hasTreeItems = items.some((item) => item.expandable || item.parentId);
+		function hasTreeItems(): boolean {
+			return items.some((item) => item.expandable || item.parentId);
+		}
 		let submittedIds: string[] | undefined;
 		let submittedChangedIds: string[] = [];
 		let confirmationAction: CheckboxPickerSubmitAction = "remove";
@@ -429,7 +432,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
-					const prefix = `${cursor}${selectMarker} ${hasTreeItems ? `${expansionMarker(item)} ` : ""}`;
+					const prefix = `${cursor}${selectMarker} ${hasTreeItems() ? `${expansionMarker(item)} ` : ""}`;
 					if (options.colorRowsByState) {
 						let bodyText = truncateToWidth(`${paddedState}  ${paddedLabel}  ${item.value}`, Math.max(0, width - visibleWidth(prefix)));
 						if (!item.disabled && isSelected && options.highlightFocused !== false) bodyText = theme.bold(bodyText);
@@ -443,7 +446,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 
 				const marker = item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
-				let line = `${cursor}${marker} ${hasTreeItems ? `${expansionMarker(item)} ` : ""}${paddedLabel}  ${item.value}`;
+				let line = `${cursor}${marker} ${hasTreeItems() ? `${expansionMarker(item)} ` : ""}${paddedLabel}  ${item.value}`;
 				if (item.disabled) line = theme.fg(item.marker === "[i]" || item.marker === "[u]" ? "muted" : "warning", line);
 				else if (isSelected && options.highlightFocused !== false) line = theme.bold(line);
 				lines.push(truncateToWidth(line, width));
@@ -530,6 +533,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 					const existingIds = new Set(items.map((candidate) => candidate.id));
 					const newChildren = children.filter((child) => !existingIds.has(child.id));
 					if (newChildren.length > 0) {
+						item.expandable = true;
 						const parentIndex = items.findIndex((candidate) => candidate.id === item.id);
 						items.splice(parentIndex >= 0 ? parentIndex + 1 : items.length, 0, ...newChildren);
 						for (const child of newChildren) {
@@ -704,6 +708,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 			if (options.inspect && data.toLowerCase() === (options.inspectKey ?? "i").toLowerCase()) {
 				const item = selectedItem();
+				if (item?.lazyChildren && !items.some((candidate) => candidate.parentId === item.id) && options.loadChildren) {
+					startLoadChildren(item);
+					return;
+				}
 				const inspection = item ? options.inspect(item) : undefined;
 				if (inspection) {
 					startInspect(inspection);

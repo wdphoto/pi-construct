@@ -89,10 +89,10 @@ Plan: `docs/package-resource-picker-plan.md`. Research: `docs/package-resource-p
 - [x] Recalibrate whole-package toggles so partial filters are not silently clobbered.
 - [x] Add read-only dashboard package-row drill-down.
 - [x] Add write-enabled package resource picker that writes Pi package filters after confirmation.
-- [x] Extend package resource picking to Available rows: lazily inspect remembered sources with Pi's temporary resolver, then install project-local with selected resources only.
+- [x] Extend package resource picking to Available rows: lazily inspect remembered sources with Pi's temporary resolver from `i`, then install project-local with selected resources only.
 - [x] Keep `r` remove package-level only; package child rows are filtered, not removed individually.
 - [x] Hide the child-resource unfold affordance for packages with zero or one resolved package resource.
-- [ ] Polish the child-row UI so hierarchy, changed target state, and lazy Available inspection are clearer.
+- [ ] Polish the child-row UI so hierarchy and changed target state are clearer.
 - [ ] Defer saved-loadout filter recipes until there is explicit product demand.
 
 ## Later
