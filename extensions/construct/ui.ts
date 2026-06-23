@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export function splitArgs(args: string): { command: string; rest: string } {
 	const trimmed = args.trim();
@@ -593,7 +593,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				tui.requestRender();
 				return;
 			}
-			if (keybindings.matches(data, "tui.editor.cursorRight") || data === "\u001b[C") {
+			if (keybindings.matches(data, "tui.editor.cursorRight") || matchesKey(data, Key.right)) {
 				const item = selectedItem();
 				if (item?.expandable && !expanded.has(item.id)) {
 					expanded.add(item.id);
@@ -602,7 +602,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 				return;
 			}
-			if (keybindings.matches(data, "tui.editor.cursorLeft") || data === "\u001b[D") {
+			if (keybindings.matches(data, "tui.editor.cursorLeft") || matchesKey(data, Key.left)) {
 				const item = selectedItem();
 				const collapseId = item?.expandable && expanded.has(item.id) ? item.id : item?.parentId;
 				if (collapseId) {
