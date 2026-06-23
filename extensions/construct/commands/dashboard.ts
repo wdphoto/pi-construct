@@ -105,9 +105,10 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[] }> {
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
+	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
 	const catalog = inventory.catalog.data;
 	const warnings = [...inventory.catalog.warnings];
 	const packages: DashboardItem[] = [];
@@ -224,7 +225,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	}
 
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings };
+	return { paths, packages, warnings, projectMetadataMissing };
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -246,9 +247,9 @@ function dashboardPickerTitle(_packages: DashboardItem[]): string {
 	return CONSTRUCT_TITLE;
 }
 
-function dashboardPickerSubtitle(packages: DashboardItem[]): string {
+function dashboardPickerSubtitle(packages: DashboardItem[], projectMetadataMissing: boolean): string {
 	const counts = dashboardCounts(packages);
-	return `${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
+	return `${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded${projectMetadataMissing ? " | no Construct metadata yet" : ""}`;
 }
 
 function sectionLabel(section: DashboardSection): string {
@@ -290,15 +291,18 @@ function dashboardLine(item: DashboardItem, labelWidth: number): string {
 	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
 }
 
-function dashboardFooterHint(packages: DashboardItem[]): string {
+function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: boolean): string {
 	const counts = dashboardCounts(packages);
+	if (projectMetadataMissing && counts.unloaded > 0) return "No Construct metadata yet. Run /construct load to adopt unloaded project resources.";
+	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
+	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
 	if (counts.unloaded > 0) return "Run /construct load to add unloaded resources to the Construct.";
 	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
 	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
 	return "Install a Pi package normally, then run /construct load to remember it.";
 }
 
-function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[]): string {
+function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[], projectMetadataMissing: boolean): string {
 	const lines: string[] = [CONSTRUCT_TITLE, "=".repeat(CONSTRUCT_TITLE.length), `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
@@ -313,7 +317,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
 		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
 		"",
-		dashboardFooterHint(packages),
+		dashboardFooterHint(packages, projectMetadataMissing),
 	);
 	return lines.join("\n");
 }
@@ -425,9 +429,9 @@ function actionForSavedSource(item: DashboardPackage | undefined): DashboardActi
 }
 
 export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings } = await buildDashboardPackages(ctx);
+	const { paths, packages, warnings, projectMetadataMissing } = await buildDashboardPackages(ctx);
 	if (ctx.mode !== "tui") {
-		showText(ctx, dashboardText(paths, packages, warnings));
+		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
 		return;
 	}
 
@@ -452,7 +456,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		initialSelection: "empty",
 		titleBold: false,
-		subtitle: dashboardPickerSubtitle(packages),
+		subtitle: dashboardPickerSubtitle(packages, projectMetadataMissing),
 		confirmHint: "Enter applies/runs",
 		filterLabel: "Filter",
 		filterHint: "type to narrow",

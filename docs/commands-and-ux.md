@@ -120,6 +120,8 @@ Saved loadouts also appear as compact first-class rows in `/construct`. They are
 
 In TUI mode, `/construct` is the place to see and change project loadout state.
 
+If the current project has no `.pi/construct.json` yet, `/construct` may show a quiet “no Construct metadata yet” hint. This is informational onboarding only and does not create metadata; `/construct load` remains the explicit adoption path.
+
 Sections:
 
 - `Loadouts` — named saved loadout recipes that can be run in this project.

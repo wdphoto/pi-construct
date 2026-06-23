@@ -16,6 +16,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 - Document saved loadouts/share snippets as package-source-only, with direct project resources staying project-local metadata.
 - Show missing known-project paths in `/construct status full` without adding a new cleanup/doctor command or pruning automatically.
 - Document that known-project counts stay out of dashboard rows and remain limited to status/unload contexts.
+- Add a quiet `/construct` dashboard hint for projects with no Construct metadata yet, without creating `.pi/construct.json`.
 
 ## 0.0.18 - 2026-06-23
 

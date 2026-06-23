@@ -48,6 +48,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.
+- [x] Add quiet first-run dashboard messaging when a project has no `.pi/construct.json`; this is informational only and does not create metadata.
 
 ## v0.0.x — inventory/reconciliation cleanup
 

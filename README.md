@@ -28,6 +28,8 @@ Run:
 /construct
 ```
 
+If the project has never been loaded into Construct, the dashboard shows a quiet “no Construct metadata yet” hint. Nothing is written until you run `/construct load` or apply an explicit dashboard action.
+
 Example:
 
 ```text

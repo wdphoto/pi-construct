@@ -9,7 +9,6 @@ Scratchpad for research notes, open questions, and ideas that are not yet commit
 ## Ideas not yet committed
 
 - Future portable direct-resource export/import: design only if users need `.pi/extensions`, prompts, skills, or themes to move between projects without first becoming a Pi package. Current saved loadouts/share snippets stay package-source-only.
-- First-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind explicit opt-in only.
 - A lightweight doctor report for duplicate package/resource provenance, overlapping runtime tool names, and optional stale known-project pruning. Current decision: `/construct status full` reports missing known-project paths but does not prune automatically.
 - Future known-project dashboard counts only if the index becomes authoritative enough to explain them clearly. Current decision: keep counts out of dashboard rows and limit them to status/unload contexts.

@@ -99,6 +99,7 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"pi-construct@"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"Unloaded"* ]]
+[[ "$DASHBOARD_OUTPUT" == *"No Construct metadata yet"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"Construct metadata: missing"* ]]
 STATUS_FULL_OUTPUT="$(run_pi '/construct status full')"
