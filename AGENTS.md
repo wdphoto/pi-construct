@@ -4,12 +4,25 @@ This repo is for **pi-construct** / **The Construct**, a global Pi extension / P
 
 This is a Pi-native project. Before reaching for external web docs, use Pi's installed local documentation, local examples, and this repo's docs as the source of truth. Work smarter: verify against the APIs and behavior already on this machine.
 
+Above all: keep Construct as close to native Pi as possible. Prefer Pi's existing APIs, commands, settings semantics, TUI components, and package/resource behavior over custom duplicate systems.
+
 ## Project intent
 
 - Build a friendly loadout manager for idiomatic Pi project-local config.
 - Do not build a new package manager.
+- Do not rebuild broad Pi UX that already exists. Construct should complement native Pi flows, not fork them.
 - The source of truth for project setup remains normal Pi files like `.pi/settings.json`, `.pi/prompts/`, `.pi/skills/`, `.pi/extensions/`, and project package declarations.
 - Keep global Pi lean; the global extension provides commands, library/profile metadata, import/export, and onboarding only.
+
+## Native-first development rules
+
+- Before designing a feature, ask: “Does Pi already have this?” Check installed docs, exported APIs, CLI behavior, and local examples first.
+- Prefer using Pi-native primitives directly: `SettingsManager`, `DefaultPackageManager`, Pi package filters, trust handling, reload behavior, extension command APIs, and TUI components/patterns.
+- Treat native Pi commands as product references. For package resource enable/disable behavior, study and align with `pi config` before adding Construct UI.
+- Avoid duplicating Pi's package manager, resource resolver, trust model, config editor, or reload mechanics. If Construct needs a friendlier path, build a thin workflow on top of the native primitive.
+- Keep Construct metadata advisory. Do not invent a parallel source of truth when `.pi/settings.json` or Pi package declarations already express the state.
+- If we discover a more idiomatic Pi API after implementing custom logic, call it out, recalibrate, and simplify rather than preserving duplication.
+- Prefer small seams that can be replaced by native Pi APIs as they become public/exported.
 
 ## Docs roles
 
@@ -92,7 +105,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.
 - `/construct status full` and `/construct` report direct project resources using Pi's native resolver; `/construct load` can adopt them into project metadata, and dashboard Enter toggles adopted direct resources with Pi-native `+path` / `-path` filters.
-- Package enable/disable is whole-package only for now: disabling writes empty package resource filter arrays, enabling clears those filters, and Construct does not snapshot/restore partial Pi package filters.
+- Package enable/disable is whole-package only for now: disabling writes empty package resource filter arrays, enabling clears those filters, and Construct does not snapshot/restore partial Pi package filters. Before adding package-internal resource picking, recalibrate this path so Construct does not silently clobber native partial package filters.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`; print-mode `/construct scan` is read-only, while TUI `/construct scan` may create/update `.pi/construct.json` only when the user selects findings and presses Enter to load them.
 - Saved loadouts are named groups of active package sources. `profile` is mostly the internal catalog term.
@@ -196,13 +209,14 @@ Key docs:
 - Prompt templates: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/prompt-templates.md`
 - TUI/custom UI: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/tui.md`
 
-Relevant examples to review when coding:
+Relevant examples/implementations to review when coding:
 
 - `project-trust.ts` for Pi trust behavior; Construct should not own trust decisions.
 - `commands.ts` for slash command listing patterns.
 - `tools.ts` for simple settings-list UI patterns.
 - `dynamic-resources/index.ts` for future cwd/profile ideas, not current product behavior.
 - `reload-runtime.ts` for safe reload behavior.
+- Pi's native `pi config` implementation for package resource filtering behavior before building or changing Construct package-resource UI.
 
 ## Git/project hygiene
 
