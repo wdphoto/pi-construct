@@ -9,7 +9,6 @@ Construct has shipped the core loadout loop:
 - `/construct` dashboard with `Loadouts`, `Active`, `Disabled`, `Available`, and `Unloaded` rows;
 - manual `/construct load` and `/construct unload` boundaries;
 - known-project counts;
-- explicit `/construct autoload` with confirmation-only adoption prompts;
 - saved loadouts: `save`, `list`, `run`, `share`, `wipe`, and `import`;
 - direct project resource inventory/adoption/toggle support for project extensions, skills, prompt templates, and themes;
 - package-source-only saved loadouts/share snippets.
@@ -28,11 +27,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Extract shared package source-set collection for raw/normalized declared, active, and disabled package declarations.
 - [x] Extract small pure UI scroll/truncation helpers without changing picker behavior.
 - [x] Simplify autoload to passive quit-time prompts only; remove the session watcher.
-
-## v0.0.x — autoload polish
-
-- [ ] Manually verify quit-time autoload prompt in trusted TUI sessions.
-- [ ] Prefer a future public Pi package-install or settings-change event over filesystem watching if Pi exposes one.
+- [x] Hide postponed autoload behavior from the public command/docs surface and remove the dormant command module.
 
 ## v0.0.x — project scan
 
@@ -49,17 +44,18 @@ See `CHANGELOG.md` for version-by-version detail.
 ## v0.0.x — dashboard/status polish
 
 - [x] Clean up `/construct` TUI vocabulary: call saved recipes **Loadouts** in the dashboard, because the saved thing is a Construct loadout; package rows are package/resource toggles, not saved things.
-- [ ] Rework the `/construct` dashboard key model so the controls feel deliberate and memorable instead of overloaded: distinguish loadout actions from package/resource toggle actions, keep bulk selection, and clarify destructive project removal.
-- [ ] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
+- [ ] Continue dashboard UI/key polish opportunistically as the workflow evolves.
+- [x] Manually verify dashboard action keys in TUI: Space selects, Enter applies/runs, `r` confirms/removes, result-panel Enter reloads.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.
 
 ## v0.0.x — inventory/reconciliation cleanup
 
 - [x] Centralize package metadata drift wording so scan, status, and dashboard stay aligned.
-- [ ] Extract a small project inventory module that returns one reconciled list of package/direct-resource rows: saved, active, disabled, available, unloaded, and drifted.
-- [ ] Make dashboard, status, scan, and load consume that reconciled inventory instead of recomputing state locally.
-- [ ] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
+- [x] Extract a small project inventory module for shared package/direct-resource reconciliation.
+- [ ] Continue moving command-specific callers onto the shared inventory where it fits; dashboard, status, and save now use it, while scan stays conservative file parsing and load still owns its write-oriented candidate selection.
+- [x] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
+- [x] Keep package-internal resource browsing/filter recipes out of this cleanup; treat that as a separate product design if needed.
 
 ## Later
 
@@ -69,3 +65,4 @@ See `CHANGELOG.md` for version-by-version detail.
 - [ ] Review when saved loadouts/share snippets should include portable direct resources; current decision is package-source-only.
 - [ ] Optional local-file packaging/export for `.pi/extensions`, prompts, skills, and themes.
 - [ ] Optional parallel package installs/removals, but only after safe locking or merge semantics exist.
+- [ ] Revisit autoload only if there is clear demand and preferably a future public Pi package-install or settings-change event.

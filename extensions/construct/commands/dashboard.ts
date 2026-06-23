@@ -1,12 +1,9 @@
-import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceSummary } from "../types.js";
-import { deriveId, loadCatalog, normalizeSourceForLibrary } from "../catalog.js";
-import { readJson } from "../json.js";
+import { deriveId } from "../catalog.js";
+import { collectProjectInventory } from "../project-inventory.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
-import { collectPackageSourceSets, getManagedItems, getPackages, packageMetadataDrift } from "../project-settings.js";
-import { collectDirectProjectResources } from "../resources.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 
@@ -118,23 +115,11 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function projectPackageSourceSets(paths: ConstructPaths): Promise<{
-	packages: ReturnType<typeof getPackages>;
-	declaredSources: Set<string>;
-	disabledSources: Set<string>;
-}> {
-	const settings = await readJson(paths.projectSettingsPath);
-	const packages = getPackages(settings).filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.source.trim());
-	const sources = await collectPackageSourceSets(packages, dirname(paths.projectSettingsPath));
-	return { packages, declaredSources: sources.declaredSources, disabledSources: sources.disabledSources };
-}
-
 async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[] }> {
-	const { paths, catalog, warnings } = await loadCatalog(ctx);
-	const project = await projectPackageSourceSets(paths);
-	const constructRead = await readJson(paths.projectConstructPath);
-	const managed = (await getManagedItems(constructRead, project.declaredSources, paths, project.disabledSources)).filter((item) => item.kind === "package" && item.source);
-	const managedSources = new Set(managed.flatMap((item) => item.matchSources ?? []));
+	const inventory = await collectProjectInventory(ctx);
+	const { paths } = inventory;
+	const catalog = inventory.catalog.data;
+	const warnings = [...inventory.catalog.warnings];
 	const packages: DashboardItem[] = [];
 
 	for (const profile of catalog.profiles) {
@@ -157,14 +142,11 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
-	for (const item of managed) {
-		const source = item.source;
-		if (!source) continue;
-		const matchSources = item.matchSources ?? [];
-		const declared = matchSources.some((candidate) => project.declaredSources.has(candidate));
-		const disabledByFilters = matchSources.some((candidate) => project.disabledSources.has(candidate));
-		const drift = packageMetadataDrift(item.enabled, declared, disabledByFilters);
-		const missingDeclarationDrift = !declared && item.enabled !== undefined;
+	for (const managed of inventory.managedPackages) {
+		const item = managed.metadata;
+		const source = managed.source;
+		const drift = managed.drift;
+		const missingDeclarationDrift = !managed.declared && item.enabled !== undefined;
 		if (drift) warnings.push(`${item.id} drift: ${drift}`);
 		packages.push({
 			type: "package",
@@ -173,13 +155,13 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			label: item.id,
 			source,
 			displaySource: compactSource(source),
-			section: declared ? (disabledByFilters ? "Disabled" : "Active") : "Available",
+			section: managed.state === "active" ? "Active" : managed.state === "disabled" ? "Disabled" : "Available",
 			checked: false,
 			managed: true,
-			disabledByFilters,
-			matchSources: uniqueSorted([source, ...matchSources]),
-			description: declared
-				? disabledByFilters
+			disabledByFilters: managed.disabledByFilters,
+			matchSources: uniqueSorted([source, ...managed.matchSources]),
+			description: managed.declared
+				? managed.disabledByFilters
 					? "Disabled package. Enter enables; r removes."
 					: "Active package. Enter disables; r removes."
 				: missingDeclarationDrift
@@ -188,8 +170,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
-	for (const item of catalog.items) {
-		if (managedSources.has(item.source) || project.declaredSources.has(item.source)) continue;
+	for (const item of inventory.availableCatalogPackages) {
 		packages.push({
 			type: "package",
 			rowId: rowId("catalog", item.id, item.source),
@@ -204,28 +185,25 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
-	for (const pkg of project.packages) {
-		const normalized = await normalizeSourceForLibrary(pkg.source, dirname(paths.projectSettingsPath));
-		if (managedSources.has(pkg.source) || managedSources.has(normalized)) continue;
+	for (const pkg of inventory.unloadedPackageDeclarations) {
 		packages.push({
 			type: "package",
-			rowId: rowId("unloaded", normalized),
-			id: `unloaded:${normalized}`,
-			label: deriveId(normalized),
-			source: normalized,
-			displaySource: compactSource(normalized),
+			rowId: rowId("unloaded", pkg.source),
+			id: `unloaded:${pkg.source}`,
+			label: deriveId(pkg.source),
+			source: pkg.source,
+			displaySource: compactSource(pkg.source),
 			section: "Unloaded",
 			checked: false,
 			disabled: true,
 			disabledByFilters: pkg.disabledByFilters,
-			matchSources: uniqueSorted([pkg.source, normalized]),
+			matchSources: uniqueSorted(pkg.matchSources),
 			description: "Read-only package. Run /construct load to adopt it.",
 		});
 	}
 
-	const directResources = await collectDirectProjectResources(ctx, paths, constructRead);
-	warnings.push(...directResources.warnings);
-	for (const resource of directResources.resources) {
+	warnings.push(...inventory.directResources.warnings);
+	for (const resource of inventory.directResources.resources) {
 		const section: PackageDashboardSection = resource.managed ? (resource.enabled ? "Active" : "Disabled") : "Unloaded";
 		packages.push({
 			type: "direct",

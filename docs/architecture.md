@@ -8,7 +8,7 @@ The current implementation inventories and toggles packages plus direct project 
 
 1. **Command layer**
    - Registers `/construct`.
-   - Supports public `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import` subcommands.
+   - Supports public `status`, `scan`, `load`, `unload`, `save`, `list`, `run`, `share`, `wipe`, and `import` subcommands.
    - Default `/construct` opens the loadout dashboard in TUI mode or prints a read-only dashboard in print mode.
 
 2. **Dashboard layer**
@@ -53,6 +53,7 @@ The current implementation inventories and toggles packages plus direct project 
    - Tracks Construct-managed package items and enabled state.
 
 7. **Inventory layer**
+   - `project-inventory.ts` is a read-only module that reconciles user library state, known projects, `.pi/settings.json`, `.pi/construct.json`, managed package metadata, unloaded package declarations, available library packages, and direct project resources for dashboard/status callers.
    - Reads `.pi/settings.json` for project package declarations.
    - Reads `.pi/construct.json` for advisory state.
    - Uses Pi's exported `DefaultPackageManager.resolve()` and `SettingsManager` to inventory direct project extensions, skills, prompt templates, and themes with Pi's own discovery/trust/filter semantics.
@@ -163,11 +164,8 @@ Construct writes JSON through a shared helper that writes a complete temporary f
 
 - `docs/product-model.md` defines the product boundary.
 - `docs/commands-and-ux.md` defines the public command and dashboard behavior.
-- `docs/autoload-transparency.md` records autoload behavior and caveats.
 - `docs/safety-and-maintenance.md` records safety rules and maintenance risks.
 
 ## Lifecycle behavior
 
-Construct does not open menus, install packages, reload Pi, or write files just because Pi starts.
-
-Autoload is explicit opt-in behavior. When enabled in a trusted TUI project, Construct checks on session quit and can ask before loading unloaded package sources into Construct. It is confirmation-only, metadata-only, and intentionally has no session-time filesystem watcher.
+Construct does not open menus, install packages, reload Pi, or write files just because Pi starts or exits.

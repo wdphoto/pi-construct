@@ -18,7 +18,7 @@ Construct is functionally healthy, but the bloat is real. The npm package is sma
 
 No release-blocking correctness failure showed up in automated checks. The strongest near-term bug risk was duplicate row identity in TUI selection when two remembered sources share the same derived id; this has now been fixed on the review branch.
 
-My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, dashboard/run operation plumbing is shared, and autoload has been simplified to passive quit-time prompts.
+My opinionated recommendation: pause for review before adding feature surface. The docs are consolidated, duplicate TUI ids are fixed, hygiene is clean, saved-loadout helpers are split, dashboard/run operation plumbing is shared, and postponed autoload behavior is hidden from the public surface.
 
 ## Validation run
 
@@ -71,7 +71,7 @@ active docs after consolidation: 1,093 lines
 
 ## What is healthy
 
-- The public command surface remains intentionally small: `/construct`, `status`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, `import`.
+- The public command surface remains intentionally small: `/construct`, `status`, `scan`, `load`, `unload`, `save`, `list`, `run`, `share`, `wipe`, `import`.
 - `.pi/settings.json` remains source of truth; `.pi/construct.json` stays advisory.
 - Mutating flows wait for idle before writes and re-read important JSON state near writes.
 - JSON writes use temp-file + fsync + rename.
@@ -187,21 +187,21 @@ File: `extensions/construct/json.ts`
 
 Deferred option: add a distinct `state: "error"` only if future JSON plumbing work needs code-level branching between parse and I/O failures.
 
-### A8 — Autoload watcher may not be worth its code weight — fixed on review branch
+### A8 — Autoload is postponed and hidden from the public surface
 
 Severity: product/maintenance decision
-File: `extensions/construct/commands/autoload.ts`
+File: deleted `extensions/construct/commands/autoload.ts`
 
-Autoload is safe: off by default, trusted TUI only, confirmation-gated, and metadata-only. But the session watcher added timing complexity, parent-path watch gaps, prompt annoyance risk, and code around a non-core behavior.
+Autoload was safe in design but non-core: even confirmation-gated exit prompts added product surface, timing questions, and docs weight around behavior users did not explicitly need.
 
 Resolution:
 
-- Removed the session-time `.pi/settings.json` filesystem watcher.
-- Removed watcher debounce/state and startup registration.
-- Kept the explicit `/construct autoload` toggle and trusted TUI quit-time prompt.
-- Updated docs/copy to present autoload as passive and exit-time only.
+- Removed the session-time `.pi/settings.json` filesystem watcher in the earlier cleanup.
+- Hid the remaining autoload command/hook from the public command surface.
+- Removed the dormant autoload command module.
+- Removed active user-facing autoload docs.
 
-Deferred option: if Pi later exposes a public package-install or settings-change event, consider that before reintroducing filesystem watching.
+Deferred option: revisit only if users ask for it, and preferably only if Pi later exposes a public package-install or settings-change event.
 
 ### A9 — Package filter restoration remains an explicit product trade-off
 
@@ -267,7 +267,6 @@ The active docs should now be small enough for agents and humans to load without
 - `docs/product-model.md` — compact product model.
 - `docs/commands-and-ux.md` — current command/UX reference.
 - `docs/architecture.md` — architecture, data model, and Pi filter semantics.
-- `docs/autoload-transparency.md` — passive quit-time autoload behavior and safety boundaries.
 - `docs/safety-and-maintenance.md` — safety rules and maintenance risks.
 - `docs/preflight-checklist.md` — release/manual checklist.
 - `docs/technical-audit-plan.md` — current audit discussion doc.

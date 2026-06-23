@@ -1,26 +1,15 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatCatalogItem, parseCatalog } from "./catalog.js";
-import { describeRead, isObject, readJson } from "./json.js";
-import { getPaths } from "./paths.js";
+import { formatCatalogItem } from "./catalog.js";
+import { describeRead } from "./json.js";
 import { CONSTRUCT_TITLE } from "./metadata.js";
-import { collectPackageSourceSets, formatList, getManagedItems, getPackages } from "./project-settings.js";
-import { parseKnownProjects } from "./projects.js";
-import { collectDirectProjectResources, directResourceKinds, resourcePlural } from "./resources.js";
+import { collectProjectInventory, type ProjectInventory } from "./project-inventory.js";
+import { formatList } from "./project-settings.js";
+import { directResourceKinds, resourcePlural } from "./resources.js";
 import { normalizeSourceForLibrary } from "./sources.js";
 
 interface StatusData {
-	paths: Awaited<ReturnType<typeof getPaths>>;
-	userCatalog: Awaited<ReturnType<typeof readJson>>;
-	userSettings: Awaited<ReturnType<typeof readJson>>;
-	userProjects: Awaited<ReturnType<typeof readJson>>;
-	projectSettings: Awaited<ReturnType<typeof readJson>>;
-	projectConstruct: Awaited<ReturnType<typeof readJson>>;
-	catalog: ReturnType<typeof parseCatalog>;
-	knownProjects: ReturnType<typeof parseKnownProjects>;
-	packages: ReturnType<typeof getPackages>;
-	managed: Awaited<ReturnType<typeof getManagedItems>>;
-	directResources: Awaited<ReturnType<typeof collectDirectProjectResources>>;
+	inventory: ProjectInventory;
 	commands: ReturnType<ExtensionAPI["getCommands"]>;
 	tools: ReturnType<ExtensionAPI["getAllTools"]>;
 	activeTools: ReturnType<ExtensionAPI["getActiveTools"]>;
@@ -41,33 +30,8 @@ function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
 }
 
 async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<StatusData> {
-	const paths = await getPaths(ctx);
-	const [userCatalog, userSettings, userProjects, projectSettings, projectConstruct] = await Promise.all([
-		readJson(paths.userCatalogPath),
-		readJson(paths.userSettingsPath),
-		readJson(paths.userProjectsPath),
-		readJson(paths.projectSettingsPath),
-		readJson(paths.projectConstructPath),
-	]);
-
-	const catalog = parseCatalog(userCatalog);
-	const knownProjects = parseKnownProjects(userProjects);
-	const packages = getPackages(projectSettings);
-	const packageSources = await collectPackageSourceSets(packages, dirname(paths.projectSettingsPath));
-	const managed = await getManagedItems(projectConstruct, packageSources.declaredSources, paths, packageSources.disabledSources);
-	const directResources = await collectDirectProjectResources(ctx, paths, projectConstruct);
 	return {
-		paths,
-		userCatalog,
-		userSettings,
-		userProjects,
-		projectSettings,
-		projectConstruct,
-		catalog,
-		knownProjects,
-		packages,
-		managed,
-		directResources,
+		inventory: await collectProjectInventory(ctx),
 		commands: pi.getCommands(),
 		tools: pi.getAllTools(),
 		activeTools: pi.getActiveTools(),
@@ -81,28 +45,25 @@ function compactCount(count: number, singular: string, plural = `${singular}s`):
 	return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function compactRead(result: Awaited<ReturnType<typeof readJson>>): string {
+function compactRead(result: ProjectInventory["reads"]["userCatalog"]): string {
 	if (result.state === "ok") return "ok";
 	if (result.state === "missing") return "missing";
 	return "invalid/unreadable JSON";
 }
 
-function autoloadEnabled(data: StatusData): boolean {
-	return data.userSettings.state === "ok" && isObject(data.userSettings.data) && data.userSettings.data.autoload === true;
-}
-
 function buildCompactStatus(data: StatusData, argumentWarnings: string[]): string {
-	const enabled = data.managed.filter((item) => item.enabled === true).length;
-	const disabled = data.managed.filter((item) => item.enabled === false).length;
-	const unknown = data.managed.length - enabled - disabled;
-	const drift = data.managed.filter((item) => item.drift);
-	const invalidPackages = data.packages.filter((pkg) => pkg.form === "invalid").length;
-	const directProjectResources = data.directResources.resources.length;
+	const inventory = data.inventory;
+	const enabled = inventory.managedItems.filter((item) => item.enabled === true).length;
+	const disabled = inventory.managedItems.filter((item) => item.enabled === false).length;
+	const unknown = inventory.managedItems.length - enabled - disabled;
+	const drift = inventory.managedItems.filter((item) => item.drift);
+	const invalidPackages = inventory.packageDeclarations.filter((pkg) => pkg.form === "invalid").length;
+	const directProjectResources = inventory.directResources.resources.length;
 	const warnings = [
 		...argumentWarnings,
-		...data.catalog.warnings,
-		...data.knownProjects.warnings,
-		...data.directResources.warnings,
+		...inventory.catalog.warnings,
+		...inventory.knownProjects.warnings,
+		...inventory.directResources.warnings,
 		...drift.map((item) => `${item.id} drift: ${item.drift}`),
 		...(invalidPackages > 0 ? [`${invalidPackages} invalid package declaration${invalidPackages === 1 ? "" : "s"} in .pi/settings.json`] : []),
 	];
@@ -110,27 +71,25 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	return [
 		`${CONSTRUCT_TITLE} status`,
 		"=".repeat(`${CONSTRUCT_TITLE} status`.length),
-		`Project: ${data.paths.cwd}`,
-		data.paths.realCwd === data.paths.cwd ? undefined : `Canonical: ${data.paths.realCwd}`,
+		`Project: ${inventory.paths.cwd}`,
+		inventory.paths.realCwd === inventory.paths.cwd ? undefined : `Canonical: ${inventory.paths.realCwd}`,
 		`Trust: ${data.trusted ? "trusted" : "not trusted"}`,
 		"",
 		"Loadout",
 		"-------",
-		`Library: ${compactCount(data.catalog.data.items.length, "package")} · ${compactCount(data.catalog.data.profiles.length, "saved loadout")}`,
-		`Known projects: ${data.knownProjects.data.projects.length}`,
-		`Project packages: ${data.packages.length}`,
+		`Library: ${compactCount(inventory.catalog.data.items.length, "package")} · ${compactCount(inventory.catalog.data.profiles.length, "saved loadout")}`,
+		`Known projects: ${inventory.knownProjects.data.projects.length}`,
+		`Project packages: ${inventory.packageDeclarations.length}`,
 		directProjectResources > 0 ? `Direct project resources: ${directProjectResources}` : undefined,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
-		`Autoload: ${autoloadEnabled(data) ? "on" : "off"}`,
 		"Load: manual only (/construct load)",
 		"",
 		"Files",
 		"-----",
-		`Project settings: ${compactRead(data.projectSettings)}`,
-		`Construct metadata: ${compactRead(data.projectConstruct)}`,
-		`Construct library: ${compactRead(data.userCatalog)}`,
-		`Construct settings: ${compactRead(data.userSettings)}`,
-		`Known-project index: ${compactRead(data.userProjects)}`,
+		`Project settings: ${compactRead(inventory.reads.projectSettings)}`,
+		`Construct metadata: ${compactRead(inventory.reads.projectConstruct)}`,
+		`Construct library: ${compactRead(inventory.reads.userCatalog)}`,
+		`Known-project index: ${compactRead(inventory.reads.userProjects)}`,
 		"",
 		"Runtime",
 		"-------",
@@ -147,17 +106,17 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		.join("\n");
 }
 
-function directResourceState(resource: StatusData["directResources"]["resources"][number]): string {
+function directResourceState(resource: ProjectInventory["directResources"]["resources"][number]): string {
 	return resource.managed ? "managed" : "unloaded";
 }
 
-function directResourceLine(resource: StatusData["directResources"]["resources"][number]): string {
+function directResourceLine(resource: ProjectInventory["directResources"]["resources"][number]): string {
 	const enabled = resource.enabled ? "enabled" : "disabled";
 	const settingsPath = resource.settingsPath ? `, settings ${resource.settingsPath}` : "";
 	return `- ${resource.kind} ${resource.name} (${enabled}, ${resource.source}, ${directResourceState(resource)}${settingsPath}) — ${resource.displayPath}`;
 }
 
-async function packageDeclarationLine(pkg: StatusData["packages"][number], settingsDir: string): Promise<string> {
+async function packageDeclarationLine(pkg: ProjectInventory["packageDeclarations"][number], settingsDir: string): Promise<string> {
 	const details: string[] = [pkg.form];
 	if (pkg.disabledByFilters) details.push("disabled by filters");
 	if (pkg.form !== "invalid" && pkg.source.trim()) {
@@ -195,9 +154,10 @@ function duplicateNameLines<T>(label: string, items: T[], nameFor: (item: T) => 
 }
 
 async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]): Promise<string> {
-	const catalogPreview = data.catalog.data.items.slice(0, 5).map(formatCatalogItem);
-	const profilePreview = data.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
-	const knownProjectPreview = data.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
+	const inventory = data.inventory;
+	const catalogPreview = inventory.catalog.data.items.slice(0, 5).map(formatCatalogItem);
+	const profilePreview = inventory.catalog.data.profiles.slice(0, 5).map((profile) => `- ${profile.id}: ${profile.sources.length || profile.items.length} package sources`);
+	const knownProjectPreview = inventory.knownProjects.data.projects.slice(0, 5).map((project) => `- ${project.realPath ?? project.path}: ${project.packages.length} packages`);
 	const commandCounts = countBy(data.commands, (command) => command.source);
 	const activeToolNames = new Set(data.activeTools);
 	const activeTools = data.tools.filter((tool) => activeToolNames.has(tool.name));
@@ -207,23 +167,23 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		...duplicateNameLines("slash command", data.commands, (command) => `/${command.name}`, (command) => `${command.source}:${command.sourceInfo.path}`),
 		...duplicateNameLines("tool", data.tools, (tool) => tool.name, (tool) => `${tool.sourceInfo.source}:${tool.sourceInfo.path}`),
 	];
-	const packageLines = await Promise.all(data.packages.map((pkg) => packageDeclarationLine(pkg, dirname(data.paths.projectSettingsPath))));
-	const managedLines = data.managed.map((item) => {
+	const packageLines = await Promise.all(inventory.packageDeclarations.map((pkg) => packageDeclarationLine(pkg, dirname(inventory.paths.projectSettingsPath))));
+	const managedLines = inventory.managedItems.map((item) => {
 		const enabled = item.enabled === undefined ? "unknown" : item.enabled ? "enabled" : "disabled";
 		const source = item.source ? ` — ${item.source}` : "";
 		const drift = item.drift ? ` [drift: ${item.drift}]` : "";
 		return `- ${item.id} (${item.kind}, ${enabled})${source}${drift}`;
 	});
 	const directResourceLines = directResourceKinds.flatMap((kind) => {
-		const resources = data.directResources.resources.filter((resource) => resource.kind === kind);
+		const resources = inventory.directResources.resources.filter((resource) => resource.kind === kind);
 		return [`${resourcePlural(kind)}: ${resources.length}`, ...formatList(resources.map(directResourceLine), `no project ${resourcePlural(kind)}`)];
 	});
 
 	return [
 		"Construct status details",
 		"========================",
-		`Target cwd: ${data.paths.cwd}`,
-		data.paths.realCwd === data.paths.cwd ? undefined : `Canonical cwd: ${data.paths.realCwd}`,
+		`Target cwd: ${inventory.paths.cwd}`,
+		inventory.paths.realCwd === inventory.paths.cwd ? undefined : `Canonical cwd: ${inventory.paths.realCwd}`,
 		`Mode: ${data.mode}`,
 		`UI available: ${data.hasUI ? "yes" : "no"}`,
 		`Project trusted: ${data.trusted ? "yes" : "no"}`,
@@ -231,31 +191,29 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		"",
 		"User Construct state",
 		"--------------------",
-		`Autoload: ${autoloadEnabled(data) ? "on" : "off"} (trusted TUI quit-time prompt)`,
 		"Load writes: user library and selected .pi/construct.json metadata only",
-		`Construct library: ${describeRead(data.userCatalog)}`,
-		`Construct settings: ${describeRead(data.userSettings)}`,
-		`Known-project index: ${describeRead(data.userProjects)}`,
-		`Library items: ${data.catalog.data.items.length}`,
+		`Construct library: ${describeRead(inventory.reads.userCatalog)}`,
+		`Known-project index: ${describeRead(inventory.reads.userProjects)}`,
+		`Library items: ${inventory.catalog.data.items.length}`,
 		...formatList(catalogPreview, "no library preview"),
-		`Saved loadouts: ${data.catalog.data.profiles.length}`,
+		`Saved loadouts: ${inventory.catalog.data.profiles.length}`,
 		...formatList(profilePreview, "no saved loadouts"),
-		...data.catalog.warnings.map((warning) => `! ${warning}`),
-		`Known projects: ${data.knownProjects.data.projects.length}`,
+		...inventory.catalog.warnings.map((warning) => `! ${warning}`),
+		`Known projects: ${inventory.knownProjects.data.projects.length}`,
 		...formatList(knownProjectPreview, "no known projects indexed"),
-		...data.knownProjects.warnings.map((warning) => `! ${warning}`),
+		...inventory.knownProjects.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Project Pi state",
 		"----------------",
-		`Project settings: ${describeRead(data.projectSettings)}`,
-		`Package declarations: ${data.packages.length}`,
+		`Project settings: ${describeRead(inventory.reads.projectSettings)}`,
+		`Package declarations: ${inventory.packageDeclarations.length}`,
 		...formatList(packageLines, "no project packages declared"),
-		`Construct metadata: ${describeRead(data.projectConstruct)}`,
-		`Construct-managed items: ${data.managed.length}`,
+		`Construct metadata: ${describeRead(inventory.reads.projectConstruct)}`,
+		`Construct-managed items: ${inventory.managedItems.length}`,
 		...formatList(managedLines, "no Construct-managed items"),
-		`Direct project resources: ${data.directResources.resources.length}`,
+		`Direct project resources: ${inventory.directResources.resources.length}`,
 		...directResourceLines,
-		...data.directResources.warnings.map((warning) => `! ${warning}`),
+		...inventory.directResources.warnings.map((warning) => `! ${warning}`),
 		"",
 		"Runtime inventory",
 		"-----------------",

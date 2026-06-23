@@ -7,8 +7,8 @@ Use disposable `HOME` and fixture projects. Do not edit live global Pi files.
 Protect the manual product model:
 
 - `/construct` is the primary surface.
-- Support commands are `status`, `scan`, `load`, `unload`, `autoload`, `save`, `list`, `run`, `share`, `remove`, and `import`.
-- No startup prompt/write/adoption behavior; opt-in autoload is quit-time only, confirmation-only, and metadata-only.
+- Support commands are `status`, `scan`, `load`, `unload`, `save`, `list`, `run`, `share`, `wipe`, and `import`.
+- No startup/shutdown prompt, write, or adoption behavior.
 - No separate toggle/library/catalog command family.
 - Read-only checks must not create `.pi/construct.json`.
 - Mutating project loadout checks must back up `.pi/settings.json` before direct edits.
@@ -21,7 +21,6 @@ Protect the manual product model:
 /construct scan [path]
 /construct load [id-or-source-or-path ...]
 /construct unload [id-or-source ...]
-/construct autoload
 /construct save <loadout-name>
 /construct list
 /construct run <saved-name>
@@ -69,18 +68,6 @@ Expected:
 - Unload prunes matching saved-loadout entries and current-project Construct metadata.
 - Unload does not remove package declarations from `.pi/settings.json`.
 - Unload does not uninstall project packages.
-
-## Autoload
-
-Expected:
-
-- Autoload is off by default.
-- `/construct autoload` toggles on/off.
-- `/construct autoload on|off|status` works explicitly.
-- Autoload checks for unloaded/adoptable project resources on trusted TUI session quit and prompts before writing.
-- Autoload also scans on quit/exit, not reload or session switch.
-- Autoload requires confirmation before writing.
-- Autoload does not install, enable, execute, reload, or alter `.pi/settings.json`.
 
 ## Saved loadouts
 

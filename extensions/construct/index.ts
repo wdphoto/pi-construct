@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { handleAutoload, maybePromptAutoloadOnShutdown } from "./commands/autoload.js";
 import { handleDashboard } from "./commands/dashboard.js";
 import { handleLoad } from "./commands/load.js";
 import { handleSavedLoadoutCommand } from "./commands/saved-loadouts.js";
@@ -9,12 +8,10 @@ import { buildStatus } from "./status.js";
 import { showText, splitArgs } from "./ui.js";
 
 export default function constructExtension(pi: ExtensionAPI) {
-	pi.on("session_shutdown", maybePromptAutoloadOnShutdown);
-
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "scan", "load", "unload", "save", "list", "run", "share", "wipe", "import", "autoload"];
+			const commands = ["status", "scan", "load", "unload", "save", "list", "run", "share", "wipe", "import"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -43,11 +40,6 @@ export default function constructExtension(pi: ExtensionAPI) {
 
 			if (command === "unload") {
 				await handleUnload(rest, ctx);
-				return;
-			}
-
-			if (command === "autoload") {
-				await handleAutoload(rest, ctx);
 				return;
 			}
 
@@ -92,7 +84,6 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct scan [path]",
 					"- /construct load [id-or-source-or-path ...]",
 					"- /construct unload [id-or-source ...]",
-					"- /construct autoload [on|off|status]",
 					"- /construct save <loadout-name>",
 					"- /construct list",
 					"- /construct run <saved-name>",

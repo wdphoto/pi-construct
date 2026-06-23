@@ -169,7 +169,7 @@ DASHBOARD_OUTPUT="$(run_pi '/construct')"
 STATUS_OUTPUT="$(run_pi '/construct status')"
 [[ "$STATUS_OUTPUT" == *"enabled in Construct metadata, disabled by package filters"* ]]
 
-printf '== autoload disabled ==\n'
+printf '== no implicit adoption ==\n'
 python3 - "$PROJECT_DIR" "$PKG2_DIR" <<'PY'
 import json
 import pathlib
@@ -201,17 +201,12 @@ assert not user_settings_path.exists(), "status/load should not create Construct
 assert not any(item.get("source") == remembered_source for item in catalog.get("items", [])), catalog
 PY
 
-printf '== autoload toggle ==\n'
+printf '== autoload is not public ==\n'
 AUTOLOAD_OUTPUT="$(run_pi '/construct autoload status')"
-[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload: off"* ]]
-AUTOLOAD_OUTPUT="$(run_pi '/construct autoload on')"
-[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload is now on."* ]]
+[[ "$AUTOLOAD_OUTPUT" == *"Unknown /construct subcommand: autoload"* ]]
+[[ "$AUTOLOAD_OUTPUT" != *"Construct autoload:"* ]]
 STATUS_OUTPUT="$(run_pi '/construct status')"
-[[ "$STATUS_OUTPUT" == *"Autoload: on"* ]]
-AUTOLOAD_OUTPUT="$(run_pi '/construct autoload off')"
-[[ "$AUTOLOAD_OUTPUT" == *"Construct autoload is now off."* ]]
-STATUS_OUTPUT="$(run_pi '/construct status')"
-[[ "$STATUS_OUTPUT" == *"Autoload: off"* ]]
+[[ "$STATUS_OUTPUT" != *"Autoload:"* ]]
 
 printf '== saved loadout list ==\n'
 LIST_OUTPUT="$(run_pi '/construct list')"

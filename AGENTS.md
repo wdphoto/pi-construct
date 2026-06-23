@@ -55,7 +55,6 @@ Important files:
 .pi/settings.json                       # Pi project source of truth
 .pi/construct.json                      # advisory Construct metadata
 ~/.pi/agent/construct/catalog.json      # user-local Construct library/profiles
-~/.pi/agent/construct/settings.json     # user-local Construct settings
 ```
 
 ## Current command surface
@@ -70,7 +69,6 @@ Support commands:
 - `/construct scan`
 - `/construct load`
 - `/construct unload`
-- `/construct autoload`
 - `/construct save <name>`
 - `/construct list`
 - `/construct run <saved-name>`
@@ -96,7 +94,6 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - `/construct status full` and `/construct` report direct project resources using Pi's native resolver; `/construct load` can adopt them into project metadata, and dashboard Enter toggles adopted direct resources with Pi-native `+path` / `-path` filters.
 - `.pi/construct.json` is advisory metadata only.
 - `/construct status` is read-only and must not create `.pi/construct.json`; print-mode `/construct scan` is read-only, while TUI `/construct scan` may create/update `.pi/construct.json` only when the user selects findings and presses Enter to load them.
-- Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It scans on trusted TUI quit only; no live `.pi/settings.json` watcher.
 - Saved loadouts are named groups of active package sources. `profile` is mostly the internal catalog term.
 - `/construct save <name>` includes active Construct-managed package sources, offers active unloaded package declarations for explicit loading/inclusion in TUI, skips disabled package declarations, and warns that direct project-local resources are not included. Non-TUI save may auto-load active unloaded package declarations so scripted saves can complete.
 - Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.

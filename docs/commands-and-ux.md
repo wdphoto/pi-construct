@@ -10,7 +10,6 @@ Construct is centered on one primary command: `/construct`.
 /construct scan [path]             # find unloaded trusted local project resources
 /construct load [id-or-source-or-path ...] # add current project resources to the Construct
 /construct unload [id-or-source ...]         # remove resources from the Construct
-/construct autoload                # optional exit prompt for loading new resources
 /construct save <loadout-name>     # save active package sources as a named loadout
 /construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
@@ -72,29 +71,6 @@ Unload means removing resources from the Construct library.
 - Unload may show “known projects” assignment counts from Construct's user-local project index. These counts are informational only and never block unload.
 
 If a project package declaration has not been loaded into Construct, it appears under `Unloaded` in the dashboard.
-
-## `/construct autoload`
-
-Autoload is off by default. When enabled, it checks on session quit for unloaded/adoptable project resources and asks before loading anything into Construct.
-
-```text
-/construct autoload        # toggle on/off
-/construct autoload on     # explicit on
-/construct autoload off    # explicit off
-/construct autoload status # show current state
-```
-
-Autoload rules:
-
-- trusted projects only;
-- TUI only;
-- no session-time watcher or mid-session prompts;
-- quit/exit scans for unloaded resources;
-- always requires confirmation;
-- never installs packages;
-- never enables resources;
-- never edits `.pi/settings.json`;
-- only writes the Construct library and `.pi/construct.json` after confirmation.
 
 ## Saved loadouts
 

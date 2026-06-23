@@ -85,7 +85,6 @@ function projectPaths(projectDir: string): ConstructPaths {
 		realCwd: projectDir,
 		constructDir,
 		userCatalogPath: join(constructDir, "catalog.json"),
-		userSettingsPath: join(constructDir, "settings.json"),
 		userProjectsPath: join(constructDir, "projects.json"),
 		projectSettingsPath: join(projectDir, CONFIG_DIR_NAME, "settings.json"),
 		projectConstructPath: join(projectDir, CONFIG_DIR_NAME, "construct.json"),

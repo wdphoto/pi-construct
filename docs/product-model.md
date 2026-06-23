@@ -53,7 +53,6 @@ Current direct-resource support includes inventory in `/construct status full`, 
 
 - Keep loadout changes manual and explicit.
 - Construct must not silently install, enable, disable, remove, copy, load, update, reload, or write project files.
-- Autoload is off by default and always confirms before writing.
 - `/construct load` is manual adoption only.
 - `/construct unload` never edits `.pi/settings.json` or uninstalls project packages.
 - `.pi/settings.json` and project-local `.pi/` resources are Pi's source of truth.
@@ -72,7 +71,6 @@ Current direct-resource support includes inventory in `/construct status full`, 
 /construct scan [path]
 /construct load
 /construct unload
-/construct autoload
 /construct save <loadout-name>
 /construct list
 /construct run <saved-name>
@@ -95,12 +93,6 @@ Known-project index:
 
 ```text
 ~/.pi/agent/construct/projects.json
-```
-
-User Construct settings:
-
-```text
-~/.pi/agent/construct/settings.json
 ```
 
 Project metadata:
