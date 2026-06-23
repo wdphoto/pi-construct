@@ -466,6 +466,18 @@ function resourceLabel(resource: PackageResourceSummary): string {
 }
 
 function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
+	const resources = resourcesForPackage(item, packageResources);
+	if (item.section === "Available" && resources.length === 0) {
+		return {
+			title: `Package resources: ${item.label}`,
+			confirmHint: "Press Enter/Esc to return",
+			lines: [
+				"This Available package has not been inspected yet.",
+				"Press Right Arrow on the package row to ask Pi to resolve package-contained resources.",
+				"For git or npm sources, that inspection may clone/cache the package before showing results.",
+			],
+		};
+	}
 	if (!packageResources) {
 		return {
 			title: `Package resources: ${item.label}`,
@@ -473,7 +485,6 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 			lines: ["Package resources were not collected for this dashboard session."],
 		};
 	}
-	const resources = resourcesForPackage(item, packageResources);
 	const lines = [
 		`Package: ${item.label}`,
 		`Source: ${item.source}`,
@@ -534,6 +545,7 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 	const items: CheckboxPickerItem[] = [];
 	for (const item of packages) {
 		const children = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
+		const visibleChildren = children.length > 1 ? children : [];
 		items.push({
 			id: item.rowId,
 			label: item.label,
@@ -551,9 +563,9 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 			confirmOnFocus: item.type === "saved",
-			expandable: children.length > 0 || item.section === "Available",
+			expandable: visibleChildren.length > 0 || item.section === "Available",
 		});
-		items.push(...children);
+		items.push(...visibleChildren);
 	}
 	return items;
 }
@@ -672,7 +684,24 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, [packageItem.source]);
 			sessionPackageResources.resources.push(...availableResources.resources);
 			for (const warning of availableResources.warnings) sessionPackageResources.warnings.push(warning);
-			return packageResourceChildren(packageItem, sessionPackageResources);
+			const resources = resourcesForPackage(packageItem, sessionPackageResources);
+			const children = packageResourceChildren(packageItem, sessionPackageResources);
+			if (resources.length > 1) return children;
+			return {
+				children: [],
+				empty: {
+					title: `Package resources: ${packageItem.label}`,
+					confirmHint: "Press Enter/Esc to return",
+					lines:
+						resources.length === 1
+							? [
+								"This package contains one Pi resource, so Construct keeps it as a whole-package row instead of opening a child picker.",
+								`- ${resourceLabel(resources[0])}: ${resources[0].packageRelativePath}`,
+								"Select the package row and press Enter to install it normally.",
+							]
+							: ["No package-contained resources resolved for this package.", "Select the package row and press Enter to install it normally."],
+				},
+			};
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action, changedIds) => {

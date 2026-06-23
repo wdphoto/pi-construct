@@ -178,6 +178,11 @@ export interface CheckboxPickerLegendItem {
 	tone: CheckboxPickerTone;
 }
 
+export interface CheckboxPickerLoadChildrenResult {
+	children: CheckboxPickerItem[];
+	empty?: CheckboxPickerConfirmation;
+}
+
 export interface CheckboxPickerOptions {
 	confirmHint?: string;
 	footerHint?: string;
@@ -197,7 +202,7 @@ export interface CheckboxPickerOptions {
 	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction, changedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
 	inspectKey?: string;
-	loadChildren?: (focusedItem: CheckboxPickerItem) => Promise<CheckboxPickerItem[]>;
+	loadChildren?: (focusedItem: CheckboxPickerItem) => Promise<CheckboxPickerItem[] | CheckboxPickerLoadChildrenResult>;
 	onSubmit?: (
 		selectedIds: string[],
 		update: (title: string, lines: string[]) => void,
@@ -252,7 +257,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let spinnerTick = 0;
 		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 		const animationTimer = setInterval(() => {
-			if (phase !== "applying") return;
+			if (phase !== "applying" && phase !== "loading") return;
 			spinnerTick += 1;
 			invalidate();
 			tui.requestRender();
@@ -347,7 +352,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const window = scrollWindow(applyLines, applyScroll, maxVisible);
 			applyScroll = window.scroll;
 			const elapsedSeconds = Math.max(0, Math.floor((Date.now() - applyStartedAt) / 1000));
-			const heading = phase === "applying" ? `${spinnerFrames[spinnerTick % spinnerFrames.length]} ${applyTitle} · ${elapsedSeconds}s` : applyTitle;
+			const heading = phase === "applying" || phase === "loading" ? `${spinnerFrames[spinnerTick % spinnerFrames.length]} ${applyTitle} · ${elapsedSeconds}s` : applyTitle;
 			const lines = [theme.fg("accent", theme.bold(heading)), ""];
 			for (const line of window.visible) {
 				if (line.startsWith("!")) lines.push(theme.fg("warning", line));
@@ -518,8 +523,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			]);
 			void (async () => {
 				try {
-					const children = await options.loadChildren!(item);
+					const result = await options.loadChildren!(item);
 					if (token !== loadingToken) return;
+					const children = Array.isArray(result) ? result : result.children;
+					const empty = Array.isArray(result) ? undefined : result.empty;
 					const existingIds = new Set(items.map((candidate) => candidate.id));
 					const newChildren = children.filter((child) => !existingIds.has(child.id));
 					if (newChildren.length > 0) {
@@ -537,9 +544,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						tui.requestRender();
 						return;
 					}
-					confirmationTitle = `Package resources: ${item.label}`;
-					confirmationLines = ["No package-contained resources resolved for this package."];
-					confirmationHint = "Press Enter/Esc to return";
+					item.expandable = false;
+					confirmationTitle = empty?.title ?? `Package resources: ${item.label}`;
+					confirmationLines = empty?.lines ?? ["No package-contained resources resolved for this package."];
+					confirmationHint = empty?.confirmHint ?? "Press Enter/Esc to return";
 					confirmationTone = "accent";
 					confirmationScroll = 0;
 					phase = "inspect";

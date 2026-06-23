@@ -6,7 +6,7 @@ The Construct is a **global** extension for [Pi](https://pi.dev) that manages pr
 
 Run `/construct`, tap **Space** to select a resource, then hit **Enter** to apply. Life is good.
 
-## Install Construct
+## Install pi-construct
 
 Install flavours:
 
@@ -20,7 +20,7 @@ pi install https://github.com/wdphoto/pi-construct
 pi install ~/Code/pi-construct
 ```
 
-## Loadout menu
+## The Construct Menu
 
 Run:
 
@@ -85,7 +85,7 @@ Use `/construct load` to adopt unloaded package declarations into Construct. Dir
 
 Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections.
 
-On a package row, Right Arrow unfolds Pi-resolved package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. For `Available` packages, resources are inspected only when you unfold the row; child selection starts unchecked, installs the package project-local first, then immediately narrows it to the selected resources. No package files are copied, and saved loadout recipes stay package-source-only.
+On a package row with multiple Pi-resolved resources, Right Arrow unfolds package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. For `Available` packages, resources are inspected only when you unfold the row; child selection starts unchecked, installs the package project-local first, then immediately narrows it to the selected resources. Packages with zero or one resolved resource stay as whole-package rows. No package files are copied, and saved loadout recipes stay package-source-only.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 

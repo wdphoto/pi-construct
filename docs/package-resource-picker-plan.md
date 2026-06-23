@@ -44,7 +44,7 @@ Likely policy:
 ## Constraints for first implementation
 
 - Project packages use `DefaultPackageManager.resolve()` and `scope === "project"`.
-- Available packages may be inspected lazily with Pi's temporary package resolver only after the user unfolds the row, then installed project-local only after the user confirms a child-resource selection.
+- Available packages may be inspected lazily with Pi's temporary package resolver only after the user unfolds the row, then installed project-local only after the user confirms a child-resource selection. If inspection finds zero or one resource, keep the package as a whole-package row instead of opening a child picker.
 - No remote package browsing outside remembered Construct package sources.
 - No saved-loadout filter recipes.
 - No share/import of filter selections.
@@ -101,7 +101,7 @@ Panel content:
 
 ## Stage 3 — write-enabled package picker
 
-Status: first implementation landed in the dashboard inline scaffold, including lazy inspect/install-with-filters for Available package rows.
+Status: first implementation landed in the dashboard inline scaffold, including lazy inspect/install-with-filters for Available package rows. The dashboard now hides the unfold affordance for known packages with zero or one resolved package resource.
 
 Flow:
 
