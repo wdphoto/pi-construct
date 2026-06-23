@@ -25,6 +25,33 @@ function truncateLines(lines: string[], width: number): string[] {
 	return lines.map((line) => truncateToWidth(line, width));
 }
 
+function wrapSeparatedHintLine(line: string, width: number): string[] {
+	if (visibleWidth(line) <= width) return [line];
+	const separator = " · ";
+	if (!line.includes(separator)) return [line];
+	const indent = line.match(/^\s*/)?.[0] ?? "";
+	const parts = line.slice(indent.length).split(separator).filter((part) => part.length > 0);
+	if (parts.length === 0) return [line];
+
+	const wrapped: string[] = [];
+	let current = indent;
+	for (const part of parts) {
+		const next = current.trim().length === 0 ? `${indent}${part}` : `${current}${separator}${part}`;
+		if (visibleWidth(next) <= width || current.trim().length === 0) {
+			current = next;
+			continue;
+		}
+		wrapped.push(current);
+		current = `${indent}${part}`;
+	}
+	wrapped.push(current);
+	return wrapped;
+}
+
+function wrapHintLines(lines: string[], width: number): string[] {
+	return lines.flatMap((line) => wrapSeparatedHintLine(line, width));
+}
+
 function scrollWindow(lines: string[], scroll: number, maxVisible: number): { scroll: number; visible: string[]; rangeLabel?: string } {
 	const maxScroll = Math.max(0, lines.length - maxVisible);
 	const nextScroll = Math.max(0, Math.min(scroll, maxScroll));
@@ -494,7 +521,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (item?.description) lines.push("", ...item.description.split("\n").map((line) => theme.fg("muted", `  ${line}`)));
 			lines.push("");
 			if (options.stateLegend) lines.push(`  ${options.stateLegend.map(renderLegendItem).join(theme.fg("muted", " · "))}`);
-			const footerLines = (options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`).split("\n");
+			const rawFooterLines = (options.footerHint ?? `  Type to search/filter · Space toggles · ${options.confirmHint ?? "Enter saves"} · Esc cancels`).split("\n");
+			const footerLines = wrapHintLines(rawFooterLines, width);
 			for (const footerLine of footerLines) lines.push(theme.fg("muted", footerLine));
 			cachedWidth = width;
 			cachedLines = truncateLines(lines, width);

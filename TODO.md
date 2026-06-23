@@ -6,6 +6,16 @@ Scratchpad for research notes, open questions, and ideas that are not yet commit
 
 - Autoload is postponed and hidden from the public surface. Revisit only if users ask for it and Pi exposes a safe public package-install/settings-change event.
 
+## Fresh review notes — 2026-06-23
+
+- Done: untrusted projects are read-only/inspectable. Dashboard/status label raw declarations as not runtime-active, and load/save/run/dashboard mutations refuse until Pi trusts the project.
+- Done: package filter/direct-resource/package-removal `.pi/settings.json` edits now persist through Pi `SettingsManager` project setters after Construct's backup.
+- Done: dashboard/run package install/remove now use Pi's exported `DefaultPackageManager.installAndPersist()` / `removeAndPersist()` instead of shelling out to `pi install/remove` from inside Pi.
+- `/construct run <saved-name>` currently schedules every source as `Install`, unlike the dashboard saved-row path which skips active packages and enables disabled ones. That is slower, can do unnecessary network/package-manager work, and may ask for reload when nothing meaningful changed. Reuse project inventory to build only needed activate-only steps.
+- Available package child-resource picking is based on cache-only temporary resolution, then installs the package and writes filters from that cached list. For unpinned npm/git sources, the installed package may differ from the cached package. Re-resolve after install or warn/disable child picking for stale/unpinned cache results.
+- The package resource filter write planner lives inside `commands/dashboard.ts`. Extract the pure selection-to-filter planning into a small module and unit-test edge cases, especially same relative path across resource kinds and all-empty selections.
+- `/construct unload <source>` matches exact catalog id/source/name only. Make it use the same package source identity matching as load/dashboard so local path spelling and git URL equivalents work consistently.
+
 ## Ideas not yet committed
 
 - Future portable direct-resource export/import: design only if users need `.pi/extensions`, prompts, skills, or themes to move between projects without first becoming a Pi package. Current saved loadouts/share snippets stay package-source-only.

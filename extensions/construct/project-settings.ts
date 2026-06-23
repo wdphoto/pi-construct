@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ConstructPaths, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
-import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js";
+import { getAgentDir, SettingsManager, type PackageSource } from "@earendil-works/pi-coding-agent";
+import type { ConstructPaths, DirectResourceKind, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
+import { describeJsonReadIssue, isObject, readJson } from "./json.js";
 import { analyzePackageFilters, packageFiltersArePartial, packageFiltersDisableWholePackage, packageResourceFilterKeys } from "./package-filters.js";
 import { managedPackageSourceIdentity, packageSourceIdentity, packageSourceMatchValues } from "./sources.js";
 
@@ -144,6 +145,47 @@ export async function backupProjectSettingsIfPresent(paths: ConstructPaths): Pro
 	if (!existsSync(paths.projectSettingsPath)) return undefined;
 	const backupPath = `${paths.projectSettingsPath}.bak.${timestampForFile()}`;
 	await copyFile(paths.projectSettingsPath, backupPath);
+	return backupPath;
+}
+
+interface ProjectSettingsWriteOptions {
+	backupPath?: string;
+	projectTrusted?: boolean;
+}
+
+function assertTrustedProjectWrite(options: ProjectSettingsWriteOptions): void {
+	if (options.projectTrusted === false) throw new Error("Project is not trusted by Pi; refusing to edit project settings.");
+}
+
+function throwSettingsErrors(errors: ReturnType<SettingsManager["drainErrors"]>, action: string): void {
+	if (errors.length === 0) return;
+	throw new Error([`Pi SettingsManager could not ${action}.`, ...errors.map((error) => `${error.scope}: ${error.error.message}`)].join("\n"));
+}
+
+async function flushProjectSettings(settings: SettingsManager, action: string): Promise<void> {
+	await settings.flush();
+	throwSettingsErrors(settings.drainErrors(), action);
+}
+
+async function persistProjectPackages(paths: ConstructPaths, packages: unknown[], options: ProjectSettingsWriteOptions): Promise<string | undefined> {
+	assertTrustedProjectWrite(options);
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
+	const settings = SettingsManager.create(paths.cwd, getAgentDir(), { projectTrusted: options.projectTrusted ?? true });
+	settings.setProjectPackages(packages as PackageSource[]);
+	await flushProjectSettings(settings, "write project package settings");
+	return backupPath;
+}
+
+async function persistProjectDirectResourcePaths(paths: ConstructPaths, kind: DirectResourceKind, entries: unknown[], options: ProjectSettingsWriteOptions): Promise<string | undefined> {
+	assertTrustedProjectWrite(options);
+	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
+	const settings = SettingsManager.create(paths.cwd, getAgentDir(), { projectTrusted: options.projectTrusted ?? true });
+	const pathsValue = entries as string[];
+	if (kind === "extension") settings.setProjectExtensionPaths(pathsValue);
+	else if (kind === "skill") settings.setProjectSkillPaths(pathsValue);
+	else if (kind === "prompt") settings.setProjectPromptTemplatePaths(pathsValue);
+	else settings.setProjectThemePaths(pathsValue);
+	await flushProjectSettings(settings, `write project ${directResourceSettingsKeys[kind]} settings`);
 	return backupPath;
 }
 
@@ -348,7 +390,7 @@ export async function setMatchingPackageResourcesDisabled(
 	paths: ConstructPaths,
 	source: string,
 	disabled: boolean,
-	options: { backupPath?: string } = {},
+	options: ProjectSettingsWriteOptions = {},
 ): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean; blockedByPartialFilters?: boolean; blockedSource?: string }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { updated: false, settingsMissing: true };
@@ -371,9 +413,7 @@ export async function setMatchingPackageResourcesDisabled(
 	}
 	if (!updated) return { updated: false, settingsMissing: false };
 
-	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	settings.packages = nextPackages;
-	await writeJson(paths.projectSettingsPath, settings);
+	const backupPath = await persistProjectPackages(paths, nextPackages, options);
 	return { updated: true, backupPath, settingsMissing: false };
 }
 
@@ -381,7 +421,7 @@ export async function setMatchingPackageResourceFilters(
 	paths: ConstructPaths,
 	source: string,
 	filters: PackageResourceFilterUpdate,
-	options: { backupPath?: string } = {},
+	options: ProjectSettingsWriteOptions = {},
 ): Promise<{ updated: boolean; backupPath?: string; settingsMissing: boolean; matchedSource?: string }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { updated: false, settingsMissing: true };
@@ -403,9 +443,7 @@ export async function setMatchingPackageResourceFilters(
 	}
 	if (!updated) return { updated: false, settingsMissing: false };
 
-	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	settings.packages = nextPackages;
-	await writeJson(paths.projectSettingsPath, settings);
+	const backupPath = await persistProjectPackages(paths, nextPackages, options);
 	return { updated: true, backupPath, settingsMissing: false, matchedSource };
 }
 
@@ -423,7 +461,7 @@ export async function setDirectResourceEnabled(
 	paths: ConstructPaths,
 	resource: DirectResourceSummary,
 	enabled: boolean,
-	options: { backupPath?: string } = {},
+	options: ProjectSettingsWriteOptions = {},
 ): Promise<{ updated: boolean; backupPath?: string; reason?: string }> {
 	const relativePath = directResourceSettingsPath(resource);
 	if (!relativePath) return { updated: false, reason: `No safe project-relative settings path for ${resource.displayPath}.` };
@@ -434,12 +472,11 @@ export async function setDirectResourceEnabled(
 	const next = withoutExactResourceOverrides(current, relativePath);
 	next.push(`${enabled ? "+" : "-"}${relativePath}`);
 	settings[key] = next;
-	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	await writeJson(paths.projectSettingsPath, settings);
+	const backupPath = await persistProjectDirectResourcePaths(paths, resource.kind, next, options);
 	return { updated: true, backupPath };
 }
 
-export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: { backupPath?: string } = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
+export async function removeMatchingPackageDeclaration(paths: ConstructPaths, source: string, options: ProjectSettingsWriteOptions = {}): Promise<{ removed: boolean; backupPath?: string; settingsMissing: boolean }> {
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "missing") return { removed: false, settingsMissing: true };
 
@@ -461,8 +498,6 @@ export async function removeMatchingPackageDeclaration(paths: ConstructPaths, so
 	}
 	if (!removed) return { removed: false, settingsMissing: false };
 
-	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	settings.packages = nextPackages;
-	await writeJson(paths.projectSettingsPath, settings);
+	const backupPath = await persistProjectPackages(paths, nextPackages, options);
 	return { removed: true, backupPath, settingsMissing: false };
 }

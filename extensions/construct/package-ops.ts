@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, ConstructPaths, DirectResourceSummary } from "./types.js";
 import { deriveId } from "./catalog.js";
 import { readJson, writeJson } from "./json.js";
@@ -10,6 +10,7 @@ import {
 	uniqueManagedId,
 	upsertConstructItem,
 	removeMatchingConstructPackageItems,
+	readSettingsObject,
 	removeMatchingPackageDeclaration,
 	setDirectResourceEnabled,
 	setMatchingPackageResourceFilters,
@@ -36,6 +37,48 @@ function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof rea
 			},
 		},
 	};
+}
+
+export interface PackageOperationOptions {
+	projectTrusted?: boolean;
+}
+
+function projectWriteOptions(options: PackageOperationOptions = {}): PackageOperationOptions {
+	return { projectTrusted: options.projectTrusted };
+}
+
+function formatSettingsErrors(errors: ReturnType<SettingsManager["drainErrors"]>): string {
+	return errors.map((error) => `${error.scope}: ${error.error.message}`).join("\n");
+}
+
+function createProjectPackageManager(paths: ConstructPaths, options: PackageOperationOptions = {}): { manager: DefaultPackageManager; settings: SettingsManager } {
+	const agentDir = getAgentDir();
+	const settings = SettingsManager.create(paths.cwd, agentDir, { projectTrusted: options.projectTrusted ?? true });
+	const loadErrors = settings.drainErrors();
+	if (loadErrors.length > 0) throw new Error(`Pi SettingsManager could not read settings.\n${formatSettingsErrors(loadErrors)}`);
+	return {
+		manager: new DefaultPackageManager({ cwd: paths.cwd, agentDir, settingsManager: settings }),
+		settings,
+	};
+}
+
+async function flushNativePackageSettings(settings: SettingsManager, action: string): Promise<void> {
+	await settings.flush();
+	const errors = settings.drainErrors();
+	if (errors.length > 0) throw new Error(`Pi SettingsManager could not ${action}.\n${formatSettingsErrors(errors)}`);
+}
+
+async function installAndPersistProjectPackage(paths: ConstructPaths, source: string, options: PackageOperationOptions = {}): Promise<void> {
+	const { manager, settings } = createProjectPackageManager(paths, options);
+	await manager.installAndPersist(source, { local: true });
+	await flushNativePackageSettings(settings, "write project package settings");
+}
+
+async function removeAndPersistProjectPackage(paths: ConstructPaths, source: string, options: PackageOperationOptions = {}): Promise<boolean> {
+	const { manager, settings } = createProjectPackageManager(paths, options);
+	const removed = await manager.removeAndPersist(source, { local: true });
+	await flushNativePackageSettings(settings, "write project package settings");
+	return removed;
 }
 
 function updateConstructDirectResourceEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, resource: DirectResourceSummary, enabled: boolean) {
@@ -68,10 +111,11 @@ export interface LoadPackageResult {
 }
 
 export async function loadPackageIntoProject(
-	pi: ExtensionAPI,
 	paths: ConstructPaths,
 	input: { source: string; item?: CatalogItem },
+	options: PackageOperationOptions = {},
 ): Promise<LoadPackageResult> {
+	if (options.projectTrusted === false) return { ok: false, error: "Project is not trusted by Pi; refusing to install packages into project settings." };
 	const constructRead = await readJson(paths.projectConstructPath);
 	try {
 		parseProjectConstruct(constructRead);
@@ -79,7 +123,13 @@ export async function loadPackageIntoProject(
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
 
-	const beforePackages = getPackages(await readJson(paths.projectSettingsPath));
+	const beforeSettingsRead = await readJson(paths.projectSettingsPath);
+	try {
+		readSettingsObject(beforeSettingsRead);
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
+	const beforePackages = getPackages(beforeSettingsRead);
 	let backupPath: string | undefined;
 	try {
 		backupPath = await backupProjectSettingsIfPresent(paths);
@@ -87,9 +137,10 @@ export async function loadPackageIntoProject(
 		return { ok: false, error: `Could not back up .pi/settings.json; aborting load.\n${error instanceof Error ? error.message : String(error)}` };
 	}
 
-	const install = await pi.exec("pi", ["install", input.source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
-	if (install.code !== 0) {
-		return { ok: false, backupPath, exitCode: install.code, stdout: install.stdout, stderr: install.stderr };
+	try {
+		await installAndPersistProjectPackage(paths, input.source, options);
+	} catch (error) {
+		return { ok: false, backupPath, error: error instanceof Error ? error.message : String(error) };
 	}
 
 	const afterPackages = getPackages(await readJson(paths.projectSettingsPath));
@@ -126,10 +177,10 @@ export interface DisablePackageResult {
 	metadataOnlyFailure?: boolean;
 }
 
-export async function disablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }): Promise<DisablePackageResult> {
+export async function disablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
 	let backupPath: string | undefined;
 	try {
-		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, true);
+		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, true, projectWriteOptions(options));
 		backupPath = updated.backupPath;
 		if (!updated.updated) {
 			return {
@@ -159,10 +210,10 @@ export async function disablePackageResourcesInProject(paths: ConstructPaths, in
 	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
-export async function enablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }): Promise<DisablePackageResult> {
+export async function enablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
 	let backupPath: string | undefined;
 	try {
-		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, false);
+		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, false, projectWriteOptions(options));
 		backupPath = updated.backupPath;
 		if (!updated.updated) {
 			return {
@@ -195,10 +246,11 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 export async function setPackageResourceFiltersInProject(
 	paths: ConstructPaths,
 	input: { source: string; id?: string; filters: PackageResourceFilterUpdate; selectedCount: number },
+	options: PackageOperationOptions = {},
 ): Promise<DisablePackageResult> {
 	let backupPath: string | undefined;
 	try {
-		const updated = await setMatchingPackageResourceFilters(paths, input.source, input.filters);
+		const updated = await setMatchingPackageResourceFilters(paths, input.source, input.filters, projectWriteOptions(options));
 		backupPath = updated.backupPath;
 		if (!updated.updated) {
 			return {
@@ -224,10 +276,10 @@ export async function setPackageResourceFiltersInProject(
 	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
-async function setDirectResourceStateInProject(paths: ConstructPaths, resource: DirectResourceSummary, enabled: boolean): Promise<DisablePackageResult> {
+async function setDirectResourceStateInProject(paths: ConstructPaths, resource: DirectResourceSummary, enabled: boolean, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
 	let backupPath: string | undefined;
 	try {
-		const updated = await setDirectResourceEnabled(paths, resource, enabled);
+		const updated = await setDirectResourceEnabled(paths, resource, enabled, projectWriteOptions(options));
 		backupPath = updated.backupPath;
 		if (!updated.updated) return { ok: false, backupPath, error: updated.reason ?? `No matching project resource found for ${resource.displayPath}.` };
 	} catch (error) {
@@ -245,12 +297,12 @@ async function setDirectResourceStateInProject(paths: ConstructPaths, resource: 
 	return { ok: true, backupPath, changedProjectSettings: true, needsReload: true };
 }
 
-export async function disableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary): Promise<DisablePackageResult> {
-	return setDirectResourceStateInProject(paths, resource, false);
+export async function disableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
+	return setDirectResourceStateInProject(paths, resource, false, options);
 }
 
-export async function enableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary): Promise<DisablePackageResult> {
-	return setDirectResourceStateInProject(paths, resource, true);
+export async function enableDirectResourceInProject(paths: ConstructPaths, resource: DirectResourceSummary, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
+	return setDirectResourceStateInProject(paths, resource, true, options);
 }
 
 export interface UnloadPackageResult {
@@ -267,10 +319,11 @@ export interface UnloadPackageResult {
 }
 
 export async function removePackageFromProject(
-	pi: ExtensionAPI,
 	paths: ConstructPaths,
 	input: { source: string; id?: string },
+	options: PackageOperationOptions = {},
 ): Promise<UnloadPackageResult> {
+	if (options.projectTrusted === false) return { ok: false, error: "Project is not trusted by Pi; refusing to remove packages from project settings." };
 	let backupPath: string | undefined;
 	try {
 		backupPath = await backupProjectSettingsIfPresent(paths);
@@ -278,17 +331,25 @@ export async function removePackageFromProject(
 		return { ok: false, error: `Could not back up .pi/settings.json; aborting remove.\n${error instanceof Error ? error.message : String(error)}` };
 	}
 
-	const removal = await pi.exec("pi", ["remove", input.source, "-l", "--approve"], { timeout: 120_000, cwd: paths.cwd });
 	let fallbackWarning: string | undefined;
-	if (removal.code !== 0) {
-		try {
-			const removedByEdit = await removeMatchingPackageDeclaration(paths, input.source, { backupPath });
+	try {
+		const removed = await removeAndPersistProjectPackage(paths, input.source, options);
+		if (!removed) {
+			const removedByEdit = await removeMatchingPackageDeclaration(paths, input.source, { backupPath, projectTrusted: options.projectTrusted });
 			if (!removedByEdit.removed) {
-				return { ok: false, backupPath, exitCode: removal.code, stdout: removal.stdout, stderr: removal.stderr };
+				return { ok: false, backupPath, error: `No matching package declaration found for ${input.source}.` };
 			}
-			fallbackWarning = `pi remove did not match ${input.source}; removed it by editing .pi/settings.json instead.`;
-		} catch (error) {
-			return { ok: false, backupPath, error: `Construct remove failed during fallback settings edit.\n${error instanceof Error ? error.message : String(error)}` };
+			fallbackWarning = `Pi package manager did not match ${input.source}; removed it by editing .pi/settings.json instead.`;
+		}
+	} catch (error) {
+		try {
+			const removedByEdit = await removeMatchingPackageDeclaration(paths, input.source, { backupPath, projectTrusted: options.projectTrusted });
+			if (!removedByEdit.removed) {
+				return { ok: false, backupPath, error: error instanceof Error ? error.message : String(error) };
+			}
+			fallbackWarning = `Pi package manager remove failed for ${input.source}; removed it by editing .pi/settings.json instead. ${error instanceof Error ? error.message : String(error)}`;
+		} catch (fallbackError) {
+			return { ok: false, backupPath, error: `Construct remove failed during fallback settings edit.\n${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}` };
 		}
 	}
 

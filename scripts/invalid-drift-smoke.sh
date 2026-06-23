@@ -33,6 +33,21 @@ construct_pi() {
   )
 }
 
+trust_project() {
+  local home="$1"
+  local project="$2"
+  python3 - "$home" "$project" <<'PY'
+import json
+import pathlib
+import sys
+home = pathlib.Path(sys.argv[1])
+project = pathlib.Path(sys.argv[2]).resolve()
+trust_path = home / ".pi/agent/trust.json"
+trust_path.parent.mkdir(parents=True, exist_ok=True)
+trust_path.write_text(json.dumps({str(project): True}, indent=2) + "\n")
+PY
+}
+
 write_settings_with_pkg() {
   local project="$1"
   mkdir -p "$project/.pi"
@@ -51,6 +66,7 @@ HOME_A="$TMP/home-invalid-catalog"
 PROJECT_A="$TMP/project-invalid-catalog"
 mkdir -p "$HOME_A/.pi/agent/construct" "$PROJECT_A"
 write_settings_with_pkg "$PROJECT_A"
+trust_project "$HOME_A" "$PROJECT_A"
 printf '{ invalid catalog\n' > "$HOME_A/.pi/agent/construct/catalog.json"
 OUTPUT="$(construct_pi "$HOME_A" "$PROJECT_A" '/construct load' 2>&1)"
 grep -Fq 'Construct load failed.' <<<"$OUTPUT"
@@ -64,6 +80,7 @@ HOME_B="$TMP/home-invalid-settings"
 PROJECT_B="$TMP/project-invalid-settings"
 mkdir -p "$HOME_B" "$PROJECT_B/.pi"
 printf '{ invalid settings\n' > "$PROJECT_B/.pi/settings.json"
+trust_project "$HOME_B" "$PROJECT_B"
 OUTPUT="$(construct_pi "$HOME_B" "$PROJECT_B" '/construct load' 2>&1)"
 grep -Fq 'Construct load failed.' <<<"$OUTPUT"
 grep -Fq '.pi/settings.json could not be read or parsed as JSON' <<<"$OUTPUT"
@@ -76,6 +93,7 @@ HOME_C="$TMP/home-invalid-construct"
 PROJECT_C="$TMP/project-invalid-construct"
 mkdir -p "$HOME_C" "$PROJECT_C/.pi"
 write_settings_with_pkg "$PROJECT_C"
+trust_project "$HOME_C" "$PROJECT_C"
 printf '{ invalid construct\n' > "$PROJECT_C/.pi/construct.json"
 OUTPUT="$(construct_pi "$HOME_C" "$PROJECT_C" '/construct load' 2>&1)"
 grep -Fq 'Construct load failed.' <<<"$OUTPUT"
@@ -89,6 +107,7 @@ PROJECT_DUP="$TMP/project-duplicate-catalog-ids"
 SOURCE_ONE="$TMP/one/tool"
 SOURCE_TWO="$TMP/two/tool"
 mkdir -p "$HOME_DUP/.pi/agent/construct" "$PROJECT_DUP/.pi" "$SOURCE_ONE" "$SOURCE_TWO"
+trust_project "$HOME_DUP" "$PROJECT_DUP"
 python3 - "$HOME_DUP" "$PROJECT_DUP" "$SOURCE_ONE" "$SOURCE_TWO" <<'PY'
 import json
 import pathlib
@@ -126,26 +145,34 @@ PY
 printf '== direct load source selects matching declaration ==\n'
 HOME_DIRECT="$TMP/home-direct-load"
 PROJECT_DIRECT="$TMP/project-direct-load"
-mkdir -p "$HOME_DIRECT" "$PROJECT_DIRECT/.pi"
-cat > "$PROJECT_DIRECT/.pi/settings.json" <<'JSON'
-{
-  "packages": ["npm:construct-direct-one", "npm:construct-direct-two"]
-}
-JSON
-OUTPUT="$(construct_pi "$HOME_DIRECT" "$PROJECT_DIRECT" '/construct load npm:construct-direct-one' 2>&1)"
+DIRECT_ONE="$TMP/construct-direct-one"
+DIRECT_TWO="$TMP/construct-direct-two"
+mkdir -p "$HOME_DIRECT" "$PROJECT_DIRECT/.pi" "$DIRECT_ONE" "$DIRECT_TWO"
+python3 - "$PROJECT_DIRECT" "$DIRECT_ONE" "$DIRECT_TWO" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+one = str(pathlib.Path(sys.argv[2]).resolve())
+two = str(pathlib.Path(sys.argv[3]).resolve())
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [one, two]}, indent=2) + "\n")
+PY
+trust_project "$HOME_DIRECT" "$PROJECT_DIRECT"
+OUTPUT="$(construct_pi "$HOME_DIRECT" "$PROJECT_DIRECT" "/construct load $DIRECT_ONE" 2>&1)"
 grep -Fq 'Construct load complete.' <<<"$OUTPUT"
-python3 - "$HOME_DIRECT" "$PROJECT_DIRECT" <<'PY'
+python3 - "$HOME_DIRECT" "$PROJECT_DIRECT" "$DIRECT_ONE" <<'PY'
 import json
 import pathlib
 import sys
 home = pathlib.Path(sys.argv[1])
 project = pathlib.Path(sys.argv[2])
+source = str(pathlib.Path(sys.argv[3]).resolve())
 catalog = json.loads((home / ".pi/agent/construct/catalog.json").read_text())
 construct = json.loads((project / ".pi/construct.json").read_text())
-assert [item.get("source") for item in catalog.get("items", [])] == ["npm:construct-direct-one"], catalog
+assert [item.get("source") for item in catalog.get("items", [])] == [source], catalog
 items = list(construct.get("items", {}).values())
 assert len(items) == 1, construct
-assert items[0].get("source") == "npm:construct-direct-one", construct
+assert items[0].get("source") == source, construct
 assert items[0].get("enabled") is True, construct
 PY
 
@@ -247,6 +274,7 @@ source = sys.argv[2]
   }
 }, indent=2) + "\n")
 PY
+trust_project "$HOME_REARM" "$PROJECT_REARM"
 OUTPUT="$(construct_pi "$HOME_REARM" "$PROJECT_REARM" '/construct load' 2>&1)"
 grep -Fq 'Project items armed: 1' <<<"$OUTPUT"
 OUTPUT="$(construct_pi "$HOME_REARM" "$PROJECT_REARM" '/construct status' 2>&1)"
@@ -317,6 +345,7 @@ project = pathlib.Path(sys.argv[1])
   }
 }, indent=2) + "\n")
 PY
+trust_project "$HOME_G" "$PROJECT_G"
 OUTPUT="$(construct_pi "$HOME_G" "$PROJECT_G" '/construct load' 2>&1)"
 grep -Fq 'No project resources are waiting to be loaded.' <<<"$OUTPUT"
 test ! -e "$HOME_G/.pi/agent/construct/catalog.json"
@@ -355,6 +384,7 @@ relative = "../../pi-tripwire"
   }
 }, indent=2) + "\n")
 PY
+trust_project "$HOME_I" "$PROJECT_I"
 OUTPUT="$(construct_pi "$HOME_I" "$PROJECT_I" '/construct' 2>&1)"
 grep -Fq '0 active · 1 disabled · 0 available · 0 unloaded' <<<"$OUTPUT"
 grep -Fq 'pi-tripwire' <<<"$OUTPUT"
@@ -390,6 +420,7 @@ source = sys.argv[2]
   "themes": []
 }]}, indent=2) + "\n")
 PY
+trust_project "$HOME_H" "$PROJECT_H"
 OUTPUT="$(construct_pi "$HOME_H" "$PROJECT_H" '/construct load' 2>&1)"
 grep -Fq 'Construct load complete.' <<<"$OUTPUT"
 python3 - "$PROJECT_H" <<'PY'

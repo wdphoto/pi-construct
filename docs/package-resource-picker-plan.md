@@ -137,6 +137,37 @@ Important Pi detail:
 - `+path` is force-include, not a narrowing include by itself.
 - For “only this resource,” use plain exact path entries.
 
+## Stage 3.1 — parent/child selection polish plan
+
+Goal: make package-contained resource selection feel predictable without turning the dashboard into a custom package browser.
+
+Preferred behavior:
+
+- A package row remains the whole-package action when no child resources have been changed.
+- Once a user changes one or more child resources, the package row becomes an aggregate indicator for that package's resource target state.
+- Partial child selection shows the package row as selected-but-partial, preferably a colored `[x]` marker plus row copy such as `partial`, so users can see from the root that this package has narrowed resource choices.
+- Collapsing a package must not discard child target state. Re-expanding should show the same child checks until the user applies or cancels the dashboard.
+- Pressing Space on the package row after children are loaded should select all package-contained child resources when the package is partial or not all selected. Pressing Space again when all children are selected should clear all child resources for that package.
+- Enter with dirty child resource state writes package filters and ignores whole-package row toggles for that package, preserving the current safety model.
+- Enter on an Available package row with no dirty children still installs the whole package with Pi defaults.
+- Enter on an Active/Disabled package row with no dirty children still uses the existing whole-package enable/disable behavior.
+
+Implementation shape:
+
+1. Keep the dashboard's inline tree. Do not add a new slash command, modal resource browser, or saved-loadout filter recipe.
+2. Add a small aggregate-selection seam to the shared checkbox picker, e.g. parent rows can declare child ids that should drive their displayed marker and Space behavior.
+3. Compute aggregate marker state from current child checks:
+   - none selected: unchecked/normal;
+   - some selected: selected partial;
+   - all selected: selected full.
+4. Keep changed/dirty tracking per child id, so resource filter plans remain based on actual child changes.
+5. Update package resource confirmation copy to call out partial package selections clearly.
+6. Add smoke or focused test coverage for: child partial marker, collapse/re-expand persistence, parent Space selects all children, parent Space clears all children when all selected, and Enter writes resource filters instead of whole-package toggles when child state is dirty.
+
+Open UX choice before implementation:
+
+- Decision: use `[~]` for partial package rows. It is more accessible than relying on color alone and stays clear in plain terminals, low-contrast themes, screenshots, logs, and screen-reader-ish output.
+
 ## Stage 4 — saved loadout decision, later
 
 Do not include package filters in saved loadouts yet.

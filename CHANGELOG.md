@@ -6,9 +6,14 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.22 - 2026-06-23
+
 ### Changed
+- Treat untrusted projects as read-only but inspectable: dashboard/status show declared resources as not runtime-active, while load/save/run/dashboard mutations refuse until Pi trusts the project.
+- Persist project package filters, direct-resource toggles, package removals, and package installs through Pi-native `SettingsManager` / `DefaultPackageManager` APIs instead of Construct-owned settings writes or `pi install/remove` subprocesses.
 - Skip whole-package enable/disable actions for selected package rows that already have partial Pi filters, showing a guided no-op instead of running into the package-filter guard.
 - Show package child-resource target state with the row state icon instead of preselecting enabled children with `[x]` markers.
+- Wrap dashboard/TUI footer key hints across multiple rows at separator boundaries so controls stay readable in narrow terminals.
 
 ## 0.0.21 - 2026-06-23
 

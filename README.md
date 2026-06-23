@@ -30,10 +30,12 @@ Run:
 
 If the project has never been loaded into Construct, the dashboard shows a quiet “no Construct metadata yet” hint. Nothing is written until you run `/construct load` or apply an explicit dashboard action.
 
+If Pi has not trusted the current project, Construct stays read-only: it can inspect declared resources, but it treats them as not runtime-active and refuses load/save/run/dashboard mutations until the project is trusted.
+
 Example:
 
 ```text
-pi-construct@0.0.19
+pi-construct@0.0.22
 ===================
 Project: /Users/you/site
 2 active · 1 disabled · 3 available · 1 unloaded

@@ -362,6 +362,10 @@ export function formatLoadResult(result: ConstructLoadResult): string {
 export async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const loadArgs = parseLoadArgs(args);
 	const paths = await getPaths(ctx);
+	if (!ctx.isProjectTrusted()) {
+		showText(ctx, ["Construct load failed.", "Project is not trusted by Pi, so Construct will not write project metadata here.", "Trust this project in Pi, then run /construct load again."].join("\n"));
+		return;
+	}
 
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "invalid") {

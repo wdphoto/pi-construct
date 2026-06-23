@@ -66,6 +66,7 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	const directProjectResources = inventory.directResources.resources.length;
 	const warnings = [
 		...argumentWarnings,
+		...(data.trusted ? [] : ["Project is not trusted by Pi; shown project declarations are read-only and are not runtime-active until trusted."]),
 		...inventory.catalog.warnings,
 		...inventory.knownProjects.warnings,
 		...inventory.directResources.warnings,
@@ -254,6 +255,7 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		"",
 		"Project Pi state",
 		"----------------",
+		data.trusted ? undefined : "! Project is not trusted by Pi; raw project settings are shown for inspection only, not as runtime-active Pi state.",
 		`Project settings: ${describeRead(inventory.reads.projectSettings)}`,
 		`Package declarations: ${inventory.packageDeclarations.length}`,
 		...formatList(packageLines, "no project packages declared"),

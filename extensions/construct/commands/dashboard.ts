@@ -259,9 +259,11 @@ function dashboardCounts(packages: DashboardItem[]): { active: number; disabled:
 	};
 }
 
-function dashboardSummary(packages: DashboardItem[]): string {
+function dashboardSummary(packages: DashboardItem[], projectTrusted = true): string {
 	const counts = dashboardCounts(packages);
-	return `${counts.active} active · ${counts.disabled} disabled · ${counts.available} available · ${counts.unloaded} unloaded`;
+	const activeLabel = projectTrusted ? "active" : "declared active";
+	const disabledLabel = projectTrusted ? "disabled" : "declared disabled";
+	return `${counts.active} ${activeLabel} · ${counts.disabled} ${disabledLabel} · ${counts.available} available · ${counts.unloaded} unloaded`;
 }
 
 function dashboardPickerTitle(_packages: DashboardItem[]): string {
@@ -302,17 +304,19 @@ function stateLabel(section: DashboardSection): string {
 	return section;
 }
 
-function selectionMarker(item: DashboardItem): string {
+function selectionMarker(item: DashboardItem, projectTrusted = true): string {
+	if (!projectTrusted) return "[!]";
 	return item.section === "Unloaded" ? "[!]" : item.disabled ? "   " : "[ ]";
 }
 
-function dashboardLine(item: DashboardItem, labelWidth: number): string {
+function dashboardLine(item: DashboardItem, labelWidth: number, projectTrusted = true): string {
 	const paddedLabel = item.label + " ".repeat(Math.max(0, labelWidth - item.label.length));
 	const value = item.type === "package" ? item.displaySource : item.value;
-	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
+	return `${selectionMarker(item, projectTrusted)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
 }
 
-function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: boolean): string {
+function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: boolean, projectTrusted = true): string {
+	if (!projectTrusted) return "Project is not trusted by Pi. Construct is read-only here; trust the project to load, run, or edit package settings.";
 	const counts = dashboardCounts(packages);
 	if (projectMetadataMissing && counts.unloaded > 0) return "No Construct metadata yet. Run /construct load to adopt unloaded project resources.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
@@ -323,22 +327,22 @@ function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: 
 	return "Install a Pi package normally, then run /construct load to remember it.";
 }
 
-function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[], projectMetadataMissing: boolean): string {
-	const lines: string[] = [CONSTRUCT_TITLE, "=".repeat(CONSTRUCT_TITLE.length), `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
+function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[], projectMetadataMissing: boolean, projectTrusted = true): string {
+	const lines: string[] = [CONSTRUCT_TITLE, "=".repeat(CONSTRUCT_TITLE.length), `Project: ${paths.cwd}`, dashboardSummary(packages, projectTrusted), ""];
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		if (section === "Saved" && sectionItems.length === 0) continue;
 		const label = sectionLabel(section);
 		lines.push(label, "-".repeat(label.length));
-		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
+		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth, projectTrusted)) : ["- none"]), "");
 	}
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
 		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · → unfolds known package resources · ← folds · i details · r removes selected from project · Esc cancels.",
 		"",
-		dashboardFooterHint(packages, projectMetadataMissing),
+		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
 	return lines.join("\n");
 }
@@ -735,14 +739,21 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 	];
 }
 
-export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
+	const projectTrusted = ctx.isProjectTrusted();
+	const trustWarnings = projectTrusted ? warnings : ["Project is not trusted by Pi; project declarations are read-only and are not runtime-active until trusted.", ...warnings];
 	if (ctx.mode !== "tui") {
-		showText(ctx, dashboardText(paths, packages, warnings, projectMetadataMissing));
+		showText(ctx, dashboardText(paths, packages, trustWarnings, projectMetadataMissing, projectTrusted));
 		return;
 	}
 
 	const sessionPackageResources: PackageResourceInventory = packageResources ?? { resources: [], warnings: [] };
+	if (!projectTrusted) {
+		showText(ctx, dashboardText(paths, packages, trustWarnings, projectMetadataMissing, projectTrusted));
+		return;
+	}
+
 	const pickerItems = dashboardPickerItems(packages, sessionPackageResources);
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		titleBold: false,
@@ -783,10 +794,10 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 					let filterSource = plan.item.source;
 					let metadataId = plan.item.managed ? plan.item.id : undefined;
 					if (plan.item.section === "Available") {
-						const load = await loadPackageIntoProject(pi, paths, {
+						const load = await loadPackageIntoProject(paths, {
 							source: plan.item.source,
 							item: { id: plan.item.id, kind: "package", source: plan.item.source },
-						});
+						}, { projectTrusted });
 						if (load.needsReload) needsReload = true;
 						if (!load.ok) {
 							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
@@ -797,7 +808,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 						filterSource = load.declaredSource ?? plan.item.source;
 						metadataId = load.itemId ?? metadataId;
 					}
-					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount });
+					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted });
 					if (result.needsReload) needsReload = true;
 					if (!result.ok) failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
 					else succeeded.add(plan.item.rowId);
@@ -869,7 +880,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			}
 
 			const outcome = await runConstructOperationSteps({
-				pi,
+				ctx,
 				paths,
 				steps,
 				update,

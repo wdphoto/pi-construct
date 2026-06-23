@@ -130,7 +130,7 @@ assert resolved == source, settings
 PY
 
 printf '== project A construct load remembers raw install ==\n'
-LOAD_OUTPUT="$(construct_pi "$PROJECT_A" '/construct load' 2>&1)"
+LOAD_OUTPUT="$(trusted_construct_pi "$PROJECT_A" '/construct load' 2>&1)"
 grep -Fq 'Construct load complete.' <<<"$LOAD_OUTPUT"
 grep -Fq 'Added to Construct: 1' <<<"$LOAD_OUTPUT"
 grep -Fq 'Errors: 0' <<<"$LOAD_OUTPUT"
@@ -193,9 +193,9 @@ grep -Fq 'prompt:pr-review' <<<"$RESOURCE_DASHBOARD_OUTPUT"
 grep -Fq 'theme:tokyo' <<<"$RESOURCE_DASHBOARD_OUTPUT"
 
 printf '== save and run saved loadout ==\n'
-SAVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&1)"
+SAVE_PROFILE_OUTPUT="$(trusted_construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&1)"
 grep -Fq 'Saved loadout: pi-projects' <<<"$SAVE_PROFILE_OUTPUT"
-SAVE_AGAIN_OUTPUT="$(construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&1)"
+SAVE_AGAIN_OUTPUT="$(trusted_construct_pi "$PROJECT_A" '/construct save pi-projects' 2>&1)"
 grep -Fq 'Saved loadout already exists: pi-projects' <<<"$SAVE_AGAIN_OUTPUT"
 PROFILE_LIST_OUTPUT="$(construct_pi "$PROJECT_A" '/construct list' 2>&1)"
 grep -Fq 'pi-projects' <<<"$PROFILE_LIST_OUTPUT"
@@ -214,7 +214,7 @@ IMPORT_JSON="{\"kind\":\"construct-loadout\",\"version\":1,\"name\":\"shared\",\
 IMPORT_PREVIEW_OUTPUT="$(construct_pi "$PROJECT_B" "/construct import $IMPORT_JSON" 2>&1)"
 grep -Fq 'Construct loadout import preview' <<<"$IMPORT_PREVIEW_OUTPUT"
 grep -Fq 'No files were changed. Run /construct import in TUI to confirm.' <<<"$IMPORT_PREVIEW_OUTPUT"
-APPLY_PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct run pi-projects' 2>&1)"
+APPLY_PROFILE_OUTPUT="$(trusted_construct_pi "$PROJECT_B" '/construct run pi-projects' 2>&1)"
 grep -Fq 'Ran saved loadout: pi-projects' <<<"$APPLY_PROFILE_OUTPUT"
 grep -Fq 'Turned on: 1/1' <<<"$APPLY_PROFILE_OUTPUT"
 python3 - "$HOME_DIR" "$PROJECT_B" "$PKG_DIR" <<'PY'
@@ -282,7 +282,7 @@ printf '== save active unloaded package declarations ==\n'
   cd "$PROJECT_SAVE_UNLOADED"
   HOME="$HOME_DIR" pi install "$PKG_DIR" -l --approve >/dev/null 2>&1
 )
-SAVE_UNLOADED_OUTPUT="$(construct_pi "$PROJECT_SAVE_UNLOADED" '/construct save unloaded-package' 2>&1)"
+SAVE_UNLOADED_OUTPUT="$(trusted_construct_pi "$PROJECT_SAVE_UNLOADED" '/construct save unloaded-package' 2>&1)"
 grep -Fq 'Saved loadout: unloaded-package' <<<"$SAVE_UNLOADED_OUTPUT"
 grep -Fq 'Included packages: 1' <<<"$SAVE_UNLOADED_OUTPUT"
 grep -Fq 'Loaded into Construct: 1' <<<"$SAVE_UNLOADED_OUTPUT"

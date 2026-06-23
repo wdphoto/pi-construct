@@ -197,7 +197,6 @@ async function confirmReplaceSavedLoadout(ctx: ExtensionCommandContext, id: stri
 }
 
 async function runSavedLoadoutOperations(
-	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	paths: ConstructPaths,
 	loadoutId: string,
@@ -232,7 +231,6 @@ async function runSavedLoadoutOperations(
 		};
 	});
 	const outcome = await runConstructOperationSteps({
-		pi,
 		ctx,
 		paths,
 		steps,
@@ -281,6 +279,10 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	const requestedName = name.trim();
 	if (!requestedName) {
 		showText(ctx, "Usage: /construct save <loadout-name>");
+		return;
+	}
+	if (!ctx.isProjectTrusted()) {
+		showText(ctx, ["Saved loadout not created.", "Project is not trusted by Pi, so Construct will not treat project declarations as active.", "Trust this project in Pi, then run /construct save again."].join("\n"));
 		return;
 	}
 	const paths = await getPaths(ctx);
@@ -436,10 +438,14 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	);
 }
 
-async function runSavedLoadout(pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
+async function runSavedLoadout(_pi: ExtensionAPI, ctx: ExtensionCommandContext, query: string): Promise<void> {
 	const requested = query.trim();
 	if (!requested) {
 		showText(ctx, "Usage: /construct run <saved-name>");
+		return;
+	}
+	if (!ctx.isProjectTrusted()) {
+		showText(ctx, ["Saved loadout run failed.", "Project is not trusted by Pi, so Construct will not edit project package settings here.", "Trust this project in Pi, then run /construct run again."].join("\n"));
 		return;
 	}
 	const paths = await getPaths(ctx);
@@ -465,7 +471,7 @@ async function runSavedLoadout(pi: ExtensionAPI, ctx: ExtensionCommandContext, q
 			preparingLine: "Preparing saved loadout run…",
 			applyingHint: "Applying package changes…",
 			failureTitle: "Saved loadout run failed",
-			run: (update, signal) => runSavedLoadoutOperations(pi, ctx, paths, profile.id, requested, update, signal),
+			run: (update, signal) => runSavedLoadoutOperations(ctx, paths, profile.id, requested, update, signal),
 		});
 		if (result.closeAction === "confirm" && result.confirmAction === "reload") {
 			await ctx.reload();
@@ -473,7 +479,7 @@ async function runSavedLoadout(pi: ExtensionAPI, ctx: ExtensionCommandContext, q
 		return;
 	}
 
-	const result = await runSavedLoadoutOperations(pi, ctx, paths, profile.id, requested);
+	const result = await runSavedLoadoutOperations(ctx, paths, profile.id, requested);
 	await showSummary(ctx, runResultText(result));
 }
 

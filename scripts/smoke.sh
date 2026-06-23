@@ -153,7 +153,7 @@ project = pathlib.Path(sys.argv[1])
 source = sys.argv[2]
 (project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
 PY
-LOAD_OUTPUT="$(run_pi '/construct load')"
+LOAD_OUTPUT="$(run_pi_approved '/construct load')"
 [[ "$LOAD_OUTPUT" == *"Construct load complete."* ]]
 [[ "$LOAD_OUTPUT" == *"Added to Construct: 1"* ]]
 python3 - "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR" <<'PY'

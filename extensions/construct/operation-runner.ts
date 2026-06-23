@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { CatalogItem, ConstructPaths, DirectResourceSummary } from "./types.js";
 import {
@@ -61,25 +61,24 @@ export function operationProgressLines(steps: ConstructOperationStep[], complete
 	];
 }
 
-async function applyOperation(pi: ExtensionAPI, paths: ConstructPaths, step: ConstructOperationStep) {
+async function applyOperation(paths: ConstructPaths, step: ConstructOperationStep, options: { projectTrusted?: boolean } = {}) {
 	if (step.item.direct) {
-		if (step.action === "Enable") return enableDirectResourceInProject(paths, step.item.direct);
-		if (step.action === "Disable") return disableDirectResourceInProject(paths, step.item.direct);
+		if (step.action === "Enable") return enableDirectResourceInProject(paths, step.item.direct, options);
+		if (step.action === "Disable") return disableDirectResourceInProject(paths, step.item.direct, options);
 		return { ok: false, error: `${step.action} is not supported for direct project resources.` };
 	}
 	if (step.action === "Install") {
-		return loadPackageIntoProject(pi, paths, {
+		return loadPackageIntoProject(paths, {
 			source: step.item.source,
 			item: step.item.catalogItem ?? { id: step.item.id, kind: "package", source: step.item.source },
-		});
+		}, options);
 	}
-	if (step.action === "Enable") return enablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
-	if (step.action === "Disable") return disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
-	return removePackageFromProject(pi, paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined });
+	if (step.action === "Enable") return enablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined }, options);
+	if (step.action === "Disable") return disablePackageResourcesInProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined }, options);
+	return removePackageFromProject(paths, { source: step.item.source, id: step.item.managed ? step.item.id : undefined }, options);
 }
 
 export async function runConstructOperationSteps(input: {
-	pi: ExtensionAPI;
 	ctx?: ExtensionCommandContext;
 	paths: ConstructPaths;
 	steps: ConstructOperationStep[];
@@ -90,7 +89,8 @@ export async function runConstructOperationSteps(input: {
 	progressItemPrefix?: string;
 	statusKind?: string;
 }): Promise<ConstructOperationOutcome> {
-	const { pi, ctx, paths, steps, update, signal, progressTitle, completeLabel, progressItemPrefix = "", statusKind } = input;
+	const { ctx, paths, steps, update, signal, progressTitle, completeLabel, progressItemPrefix = "", statusKind } = input;
+	const projectTrusted = ctx?.isProjectTrusted();
 	const completed: Array<{ action: ConstructOperationAction; item: ConstructOperationItem }> = [];
 	const partialRuntimeChanges: ConstructOperationPartialChange[] = [];
 	const failures: string[] = [];
@@ -103,7 +103,7 @@ export async function runConstructOperationSteps(input: {
 			step.state = "running";
 			update?.(progressTitle, operationProgressLines(steps, completeLabel, progressItemPrefix));
 			if (ctx && statusKind) setConstructStatus(ctx, progressStatus(statusKind, completed.length + partialRuntimeChanges.length + failures.length + 1, steps.length, step.item.label));
-			const result = await applyOperation(pi, paths, step);
+			const result = await applyOperation(paths, step, { projectTrusted });
 			if (result.needsReload) needsReload = true;
 			if (result.ok) {
 				completed.push({ action: step.action, item: step.item });
