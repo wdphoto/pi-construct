@@ -151,8 +151,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			relatedIds: [],
 			description:
 				sources.length === 0
-					? "Saved loadout has no package sources."
-					: `Saved package-source loadout${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Press Enter to activate it in this project, or Space to select member package rows for manual actions.`,
+					? "Empty loadout recipe."
+					: `Loadout recipe${profile.name && profile.name !== profile.id ? ` (${profile.name})` : ""}. Enter runs it; Space selects recipe items.`,
 		});
 	}
 
@@ -179,11 +179,11 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			matchSources: uniqueSorted([source, ...matchSources]),
 			description: declared
 				? disabledByFilters
-					? "Active in this project, but package resources are disabled by Pi filters. Press Enter to enable selected packages, or r to remove them from this project."
-					: "Active in this project. Press Enter to disable selected packages, or r to remove them from this project."
+					? "Disabled package. Enter enables selected; r removes selected."
+					: "Active package. Enter disables selected; r removes selected."
 				: missingDeclarationDrift
-					? "Drift: Construct metadata exists, but .pi/settings.json has no matching package declaration. Press Enter to install/restore selected packages."
-					: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
+					? "Drifted package. Enter restores selected."
+					: "Available package. Enter installs selected.",
 		});
 	}
 
@@ -199,7 +199,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Available",
 			checked: false,
 			matchSources: [item.source],
-			description: "Remembered by Construct, not installed in this project. Press Enter to install selected packages.",
+			description: "Available package. Enter installs selected.",
 		});
 	}
 
@@ -218,9 +218,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			disabled: true,
 			disabledByFilters: pkg.disabledByFilters,
 			matchSources: uniqueSorted([pkg.source, normalized]),
-			description: pkg.disabledByFilters
-				? "Read-only here. Declared in this project and disabled by filters, but not loaded into Construct yet. Run /construct load to load it into Construct."
-				: "Read-only here. Active in this project, but not loaded into Construct yet. Run /construct load to load it into Construct.",
+			description: "Read-only package. Run /construct load to adopt it.",
 		});
 	}
 
@@ -240,11 +238,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			resource,
 			description: resource.managed
 				? resource.enabled
-					? `Project ${resource.kind} is loaded into Construct metadata. Press Enter to disable it with a Pi resource filter.`
-					: `Project ${resource.kind} is loaded into Construct metadata and disabled by Pi resource filters. Press Enter to enable it.`
-				: resource.enabled
-					? `Read-only here. Project ${resource.kind} is active but not loaded into Construct yet. Run /construct load to adopt it.`
-					: `Read-only here. Project ${resource.kind} is disabled by Pi resource filters and not loaded into Construct yet. Run /construct load to adopt it.`,
+					? `Active ${resource.kind}. Enter disables selected.`
+					: `Disabled ${resource.kind}. Enter enables selected.`
+				: `Read-only ${resource.kind}. Run /construct load to adopt it.`,
 		});
 	}
 
@@ -254,13 +250,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		saved.value = summary.value;
 		saved.relatedIds = summary.relatedIds;
 		if (saved.sources.length > 0) {
-			saved.description = [
-				`Saved package-source loadout${saved.label ? `: ${saved.label}` : ""}.`,
-				`Recipe items: ${summary.value}. Rows marked [·] are part of the focused recipe.`,
-				"Press Enter to activate it: install/enable package sources that are not active.",
-				"Activate-only: Enter does not disable, remove, or exact-match anything outside the recipe.",
-				"Press Space to select member package rows for manual package actions.",
-			].join("\n");
+			saved.description = `Loadout recipe: ${summary.value}. Enter runs it; Space selects recipe items.`;
 		}
 	}
 
@@ -288,7 +278,15 @@ function dashboardPickerTitle(packages: DashboardItem[]): string {
 	return `Loadout: ${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded`;
 }
 
-function sectionTone(_section: DashboardSection): CheckboxPickerTone {
+function sectionLabel(section: DashboardSection): string {
+	return section === "Saved" ? "Loadouts" : section;
+}
+
+function sectionTone(section: DashboardSection): CheckboxPickerTone {
+	if (section === "Active") return "green";
+	if (section === "Disabled") return "mutedGreen";
+	if (section === "Available") return "warning";
+	if (section === "Unloaded") return "muted";
 	return "accent";
 }
 
@@ -318,7 +316,7 @@ function selectionMarker(item: DashboardItem): string {
 }
 
 function kindText(item: DashboardItem): string {
-	if (item.type === "saved") return "set";
+	if (item.type === "saved") return "";
 	if (item.type === "package") return "pkg";
 	if (item.resource.kind === "extension") return "ext";
 	if (item.resource.kind === "skill") return "skl";
@@ -338,13 +336,14 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
 		if (section === "Saved" && sectionItems.length === 0) continue;
-		lines.push(section, "-".repeat(section.length));
+		const label = sectionLabel(section);
+		lines.push(label, "-".repeat(label.length));
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
 	}
 	lines.push(...warnings.map((warning) => `! ${warning}`));
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Controls: Space selects · on set, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
+		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
 		"",
 		"Run /construct load to add unloaded resources to the Construct.",
 	);
@@ -467,7 +466,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		label: item.label,
 		value: item.type === "package" ? item.displaySource : item.value,
 		description: item.description,
-		section: item.section,
+		section: sectionLabel(item.section),
 		sectionTone: sectionTone(item.section),
 		checked: false,
 		disabled: item.disabled,
@@ -487,8 +486,9 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		highlightFocused: false,
 		confirmHint: "Enter applies/runs",
 		filterLabel: "Filter",
-		filterHint: "Type to narrow · Backspace edits",
-		footerHint: "  Controls: Space select · Enter apply/run · r remove · Esc cancel\n  Markers: [!] read-only · [·] recipe item",
+		filterHint: "type to narrow",
+		filterHintInline: true,
+		footerHint: "  Space select · Enter apply/run · r remove · Esc cancel\n  [!] read-only · [·] recipe item",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
 		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),

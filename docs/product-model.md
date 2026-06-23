@@ -73,7 +73,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 /construct load
 /construct unload
 /construct autoload
-/construct save <name>
+/construct save <loadout-name>
 /construct list
 /construct run <saved-name>
 /construct share <saved-name>

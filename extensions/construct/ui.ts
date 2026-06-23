@@ -180,6 +180,7 @@ export interface CheckboxPickerOptions {
 	footerHint?: string;
 	filterLabel?: string;
 	filterHint?: string;
+	filterHintInline?: boolean;
 	titleBold?: boolean;
 	highlightFocused?: boolean;
 	stateLegend?: CheckboxPickerLegendItem[];
@@ -339,7 +340,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const filterHint = options.filterHint ?? "Type to narrow by name/source · Backspace edits";
 			const filterValue = query ? theme.fg("accent", query) : theme.fg("muted", "all items");
 			const renderedTitle = options.titleBold === false ? theme.fg("accent", title) : theme.fg("accent", theme.bold(title));
-			const lines: string[] = [renderedTitle, `${filterLabel}: ${filterValue}`, theme.fg("muted", `  ${filterHint}`), ""];
+			const filterLine = options.filterHintInline ? `${filterLabel}: ${filterValue}${filterHint ? theme.fg("muted", ` · ${filterHint}`) : ""}` : `${filterLabel}: ${filterValue}`;
+			const lines: string[] = [renderedTitle, filterLine];
+			if (!options.filterHintInline && filterHint) lines.push(theme.fg("muted", `  ${filterHint}`));
+			lines.push("");
 			if (items.length === 0) {
 				lines.push(theme.fg("muted", "  No items available"), "", theme.fg("muted", "  Esc to close"));
 				cachedWidth = width;

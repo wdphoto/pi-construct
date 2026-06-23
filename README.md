@@ -2,9 +2,9 @@
 
 # The Construct
 
-The Construct is a global extension for [Pi](https://pi.dev) that stores and manages project-level resources.
+The Construct is a global extension for [Pi](https://pi.dev) that manages project-level resources.
 
-Just fire up `/construct`, tap your **spacebar** to select a resource, then hit **Enter** to install it or deactivate it.
+Fire up `/construct`, tap your **spacebar** to select a resource, then hit **Enter** to install it or deactivate it. I did my best to make setting up a new project as fast as possible.
 
 ## Loadout menu
 
@@ -25,6 +25,7 @@ Project: /Users/you/site
 Saved
 -----
 [ ] ◆  web-stack       3 package sources
+[ ] ◆  go-stuff        2 package sources + 1 skill
 
 Active
 ------
@@ -123,7 +124,7 @@ Or run `/construct`, focus a saved loadout and press Enter to activate it, or se
 /construct scan [path]               # find unloaded trusted local project resources
 /construct load [id-or-source-or-path ...] # adopt project resources into Construct
 /construct unload [id-or-source ...]       # forget resources from Construct
-/construct save <name>               # save active Construct package sources as a named loadout
+/construct save <loadout-name>       # save active Construct package sources as a named loadout
 /construct list                      # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project
 /construct share <saved-name>        # print a shareable saved-loadout JSON snippet
@@ -143,7 +144,7 @@ Notes:
 - `/construct scan` reports unloaded resources over trusted Pi paths. `/construct scan <path>` scans a specific local tree, useful for monorepos or project parent folders. Both modes scan only Pi-trusted projects and skip noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`. In TUI mode, selected findings can be loaded into Construct; print mode stays read-only and ends with `No files were changed.`
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
-- `/construct save <name>` includes active Construct package sources. Disabled package declarations are skipped. Saving an existing name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
+- `/construct save <loadout-name>` includes active Construct package sources. Disabled package declarations are skipped. Saving an existing loadout name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety. In TUI, active package declarations not loaded into Construct can be selected for inclusion.
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.

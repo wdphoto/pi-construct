@@ -93,7 +93,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct load [id-or-source-or-path ...]",
 					"- /construct unload [id-or-source ...]",
 					"- /construct autoload [on|off|status]",
-					"- /construct save <name>",
+					"- /construct save <loadout-name>",
 					"- /construct list",
 					"- /construct run <saved-name>",
 					"- /construct share <saved-name>",

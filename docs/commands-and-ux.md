@@ -11,7 +11,7 @@ Construct is centered on one primary command: `/construct`.
 /construct load [id-or-source-or-path ...] # add current project resources to the Construct
 /construct unload [id-or-source ...]         # remove resources from the Construct
 /construct autoload                # optional exit prompt for loading new resources
-/construct save <name>             # save active Construct package sources as a named loadout
+/construct save <loadout-name>     # save active Construct package sources as a named loadout
 /construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
 /construct share <saved-name>      # print a shareable saved-loadout JSON snippet
@@ -111,7 +111,7 @@ Saved loadouts are named groups of active Construct package sources. `profile` r
 
 Save rules:
 
-- `/construct save <name>` includes active Construct package sources.
+- `/construct save <loadout-name>` includes active Construct package sources.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct are offered; selected rows are loaded into Construct and included, unselected rows are skipped.
 - Saving over an existing name never appends or merges. TUI asks before replacing; non-TUI replacement refuses for now.

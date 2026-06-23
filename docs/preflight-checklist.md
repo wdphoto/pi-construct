@@ -22,7 +22,7 @@ Protect the manual product model:
 /construct load [id-or-source-or-path ...]
 /construct unload [id-or-source ...]
 /construct autoload
-/construct save <name>
+/construct save <loadout-name>
 /construct list
 /construct run <saved-name>
 /construct share <saved-name>
@@ -86,7 +86,7 @@ Expected:
 
 Expected:
 
-- `/construct save <name>` saves active Construct package sources from the current project.
+- `/construct save <loadout-name>` saves active Construct package sources from the current project.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.

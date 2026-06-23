@@ -30,7 +30,7 @@ function usage(): string {
 		"Saved Construct loadouts",
 		"========================",
 		"/construct list",
-		"/construct save <name>",
+		"/construct save <loadout-name>",
 		"/construct run <saved-name>",
 		"/construct share <saved-name>",
 		"/construct wipe <saved-name>",
@@ -230,7 +230,7 @@ function runResultText(result: ConstructOperationRunResult): string {
 async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<void> {
 	const requestedName = name.trim();
 	if (!requestedName) {
-		showText(ctx, "Usage: /construct save <name>");
+		showText(ctx, "Usage: /construct save <loadout-name>");
 		return;
 	}
 	const paths = await getPaths(ctx);
