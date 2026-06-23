@@ -186,6 +186,7 @@ export interface CheckboxPickerOptions {
 		remove?: boolean;
 	};
 	removeConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
+	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction) => CheckboxPickerConfirmation | undefined;
 	onSubmit?: (
 		selectedIds: string[],
 		update: (title: string, lines: string[]) => void,
@@ -215,8 +216,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		const checked = new Set(options.initialSelection === "empty" ? [] : items.filter((item) => item.checked).map((item) => item.id));
 		let query = "";
 		let selected = 0;
-		let phase: "pick" | "confirmRemove" | "applying" | "done" = "pick";
+		let phase: "pick" | "confirmSubmit" | "applying" | "done" = "pick";
 		let submittedIds: string[] | undefined;
+		let confirmationAction: CheckboxPickerSubmitAction = "remove";
 		let confirmationTitle = "Remove from this project?";
 		let confirmationLines: string[] = [];
 		let confirmationHint = "Press Enter to remove · Esc cancels";
@@ -326,7 +328,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function render(width: number): string[] {
-			if (phase === "confirmRemove") return renderConfirmation(width);
+			if (phase === "confirmSubmit") return renderConfirmation(width);
 			if (phase !== "pick") return renderApply(width);
 			if (cachedLines && cachedWidth === width) return cachedLines;
 			const visibleItems = filteredItems();
@@ -411,21 +413,26 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			done(result);
 		}
 
-		function startRemove(): void {
-			const ids = selectedIds();
-			const confirmation = options.removeConfirmation?.(ids);
-			if (!confirmation) {
-				startSubmit("remove");
-				return;
-			}
+		function startConfirmation(action: CheckboxPickerSubmitAction, confirmation: CheckboxPickerConfirmation, ids: string[]): void {
 			submittedIds = ids;
+			confirmationAction = action;
 			confirmationTitle = confirmation.title;
 			confirmationLines = confirmation.lines;
-			confirmationHint = confirmation.confirmHint ?? "Press Enter to remove · Esc cancels";
+			confirmationHint = confirmation.confirmHint ?? (action === "remove" ? "Press Enter to remove · Esc cancels" : "Press Enter to apply · Esc cancels");
 			confirmationScroll = 0;
-			phase = "confirmRemove";
+			phase = "confirmSubmit";
 			invalidate();
 			tui.requestRender();
+		}
+
+		function startRemove(): void {
+			const ids = selectedIds();
+			const confirmation = options.removeConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "remove");
+			if (!confirmation) {
+				startSubmit("remove", ids);
+				return;
+			}
+			startConfirmation("remove", confirmation, ids);
 		}
 
 		function startSubmit(action: CheckboxPickerSubmitAction, idsOverride?: string[]): void {
@@ -457,7 +464,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function handleInput(data: string): void {
 			if (phase !== "pick") {
-				if (phase === "confirmRemove") {
+				if (phase === "confirmSubmit") {
 					if (keybindings.matches(data, "tui.select.up")) {
 						confirmationScroll = Math.max(0, confirmationScroll - 1);
 						invalidate();
@@ -471,7 +478,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						return;
 					}
 					if (keybindings.matches(data, "tui.select.confirm")) {
-						startSubmit("remove");
+						startSubmit(confirmationAction, submittedIds);
 						return;
 					}
 					if (keybindings.matches(data, "tui.select.cancel")) {
@@ -552,7 +559,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 			if (keybindings.matches(data, "tui.select.confirm")) {
 				const item = selectedItem();
-				startSubmit("confirm", checked.size === 0 && item?.confirmOnFocus && !item.disabled ? [item.id] : undefined);
+				const ids = checked.size === 0 && item?.confirmOnFocus && !item.disabled ? [item.id] : selectedIds();
+				const confirmation = options.submitConfirmation?.(ids, "confirm");
+				if (confirmation) startConfirmation("confirm", confirmation, ids);
+				else startSubmit("confirm", ids);
 				return;
 			}
 			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~") && checked.size > 0) {

@@ -406,6 +406,26 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 	};
 }
 
+function disableConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
+	const selected = new Set(ids);
+	const disableTargets = packages.filter((item): item is DashboardPackage | DashboardDirectResource => (item.type === "package" || item.type === "direct") && selected.has(item.rowId) && item.section === "Active");
+	if (disableTargets.length === 0) return undefined;
+	const preview = disableTargets.slice(0, 8).map((item) => `- ${item.label}: ${item.type === "package" ? item.source : item.resource.displayPath}`);
+	const extra = disableTargets.length > preview.length ? [`…and ${disableTargets.length - preview.length} more`] : [];
+	return {
+		title: "Disable selected project resources?",
+		confirmHint: "Press Enter to disable · Esc cancels",
+		lines: [
+			`This will disable ${disableTargets.length} active project resource${disableTargets.length === 1 ? "" : "s"} by writing Pi resource filters.`,
+			"It edits .pi/settings.json after creating a backup.",
+			"It does not uninstall packages, remove package declarations, or forget Construct library items.",
+			"",
+			...preview,
+			...extra,
+		],
+	};
+}
+
 function operationFromPackage(item: DashboardPackage): DashboardOperationItem {
 	return { id: item.id, label: item.label, source: item.source, displaySource: item.displaySource, managed: item.managed };
 }
@@ -484,6 +504,7 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 		footerHint: "  Space selects · on Saved, selects members · Enter applies/runs · r removes active/disabled · Esc cancels",
 		actions: { remove: true },
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
+		submitConfirmation: (ids, action) => (action === "confirm" ? disableConfirmationFor(packages, ids) : undefined),
 		onSubmit: async (ids, update, signal, submitAction) => {
 			const selected = new Set(ids);
 			const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
