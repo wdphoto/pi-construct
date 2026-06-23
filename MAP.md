@@ -79,6 +79,18 @@ Completed as a small no-new-command cleanup pass. The goal was to turn remaining
   - Decision: keep known-project counts out of dashboard rows for now.
   - Counts remain informational in status/unload contexts only; the index is package-only and not full filesystem usage.
 
+## v0.0.x — package resource picker
+
+Plan: `docs/package-resource-picker-plan.md`. Research: `docs/package-resource-plucking-research.md`.
+
+- [x] Research Pi-native package resource plucking through package filters.
+- [x] Add read-only `/construct status full` visibility for project package-contained resources.
+- [ ] Add package filter reader/planner module and tests.
+- [ ] Recalibrate whole-package toggles so partial filters are not silently clobbered.
+- [ ] Add read-only dashboard package-row drill-down.
+- [ ] Add write-enabled package resource picker that writes Pi package filters after confirmation.
+- [ ] Defer saved-loadout filter recipes until there is explicit product demand.
+
 ## Later
 
 - [x] Lazy-load heavier Construct command modules from the entrypoint so completions/unknown commands stay light.
