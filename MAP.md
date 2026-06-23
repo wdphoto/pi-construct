@@ -57,9 +57,9 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
 - [x] Keep package-internal resource browsing/filter recipes out of this cleanup; treat that as a separate product design if needed.
 
-## v0.0.x — decision cleanup next
+## v0.0.x — decision cleanup
 
-Do this as a small no-new-command cleanup pass. The goal is to turn remaining product questions into explicit documented decisions, not to add feature surface.
+Completed as a small no-new-command cleanup pass. The goal was to turn remaining product questions into explicit documented decisions, not to add feature surface.
 
 - [x] Decide and document package filter restoration policy.
   - Decision: keep Construct package toggles whole-package only for now.
