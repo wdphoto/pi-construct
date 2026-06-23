@@ -57,12 +57,27 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
 - [x] Keep package-internal resource browsing/filter recipes out of this cleanup; treat that as a separate product design if needed.
 
+## v0.0.x — decision cleanup next
+
+Do this as a small no-new-command cleanup pass. The goal is to turn remaining product questions into explicit documented decisions, not to add feature surface.
+
+- [ ] Decide and document package filter restoration policy.
+  - Recommended decision: keep Construct package toggles whole-package only for now.
+  - Do not snapshot/restore partial Pi package filters yet.
+  - Make docs and any relevant confirmation copy explicit: disabling a package writes empty resource filters; enabling removes those filters; users needing partial package resource selection should use Pi settings directly for now.
+- [ ] Decide and document saved-loadout direct-resource policy.
+  - Recommended decision: keep saved loadouts/share snippets package-source-only.
+  - Direct project-local resources remain project-local Construct metadata only.
+  - Do not design a portable direct-resource export/import format yet.
+- [ ] Add stale known-project visibility without adding a command.
+  - Do not add `/construct doctor` yet.
+  - Add lightweight missing-path notes to `/construct status full` for known-project entries whose paths no longer exist.
+  - Do not prune known-project entries automatically yet.
+
 ## Later
 
 - [x] Lazy-load heavier Construct command modules from the entrypoint so completions/unknown commands stay light.
 - [x] Polish package source labels in the dashboard, especially local paths, toward short labels like `local:<name>` while preserving exact source strings in metadata.
-- [ ] Keep package enable/disable whole-package for now; consider filter snapshots only if users need partial package-filter restoration.
-- [ ] Review when saved loadouts/share snippets should include portable direct resources; current decision is package-source-only.
 - [ ] Optional local-file packaging/export for `.pi/extensions`, prompts, skills, and themes.
 - [ ] Optional parallel package installs/removals, but only after safe locking or merge semantics exist.
 - [ ] Revisit autoload only if there is clear demand and preferably a future public Pi package-install or settings-change event.
