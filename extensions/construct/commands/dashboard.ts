@@ -300,6 +300,14 @@ function dashboardLine(item: DashboardItem, labelWidth: number): string {
 	return `${selectionMarker(item)} ${stateIcon(item.section)}  ${paddedLabel}  ${value}`;
 }
 
+function dashboardFooterHint(packages: DashboardItem[]): string {
+	const counts = dashboardCounts(packages);
+	if (counts.unloaded > 0) return "Run /construct load to add unloaded resources to the Construct.";
+	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
+	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
+	return "Install a Pi package normally, then run /construct load to remember it.";
+}
+
 function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warnings: string[]): string {
 	const lines: string[] = [CONSTRUCT_TITLE, "=".repeat(CONSTRUCT_TITLE.length), `Project: ${paths.cwd}`, dashboardSummary(packages), ""];
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
@@ -315,7 +323,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
 		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
 		"",
-		"Run /construct load to add unloaded resources to the Construct.",
+		dashboardFooterHint(packages),
 	);
 	return lines.join("\n");
 }

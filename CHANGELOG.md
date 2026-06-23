@@ -9,6 +9,7 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 ### Changed
 - Postponed autoload and removed it from the public command/help/docs surface, including the dormant command module.
 - Started the inventory cleanup by moving shared dashboard/status/save/load candidate reconciliation into a read-only inventory module.
+- Made the printed dashboard footer hint match the current project state instead of always suggesting `/construct load`.
 
 ## 0.0.18 - 2026-06-23
 
