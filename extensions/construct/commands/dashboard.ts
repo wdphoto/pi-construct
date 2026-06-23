@@ -1,14 +1,14 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceKind, DirectResourceSummary } from "../types.js";
 import { deriveId } from "../catalog.js";
-import { collectProjectPackageResources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
+import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory } from "../project-inventory.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { formatPackageSourceLabel } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { packageResourceFilterKeys, type PackageResourceFilterKey } from "../package-filters.js";
-import { setPackageResourceFiltersInProject } from "../package-ops.js";
+import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 
@@ -150,8 +150,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 					? "Disabled package. Enter enables the whole package; r removes."
 					: "Active package. Enter disables the whole package; r removes."
 			: missingDeclarationDrift
-				? "Drifted package. Enter restores."
-				: "Available package. Enter installs.";
+				? "Drifted package. Enter restores; if resources are available, Right Arrow selects individual package resources."
+				: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.";
 		packages.push({
 			type: "package",
 			rowId: rowId("managed", item.id, source),
@@ -179,7 +179,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Available",
 			checked: false,
 			matchSources: [item.source],
-			description: "Available package. Enter installs.",
+			description: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.",
 		});
 	}
 
@@ -231,7 +231,16 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		}
 	}
 
-	const packageResources = ctx.mode === "tui" ? await collectProjectPackageResources(ctx, inventory) : undefined;
+	let packageResources: PackageResourceInventory | undefined;
+	if (ctx.mode === "tui") {
+		const projectResources = await collectProjectPackageResources(ctx, inventory);
+		const availableSources = packages.filter((item): item is DashboardPackage => item.type === "package" && item.section === "Available" && !item.disabled).map((item) => item.source);
+		const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, availableSources);
+		packageResources = {
+			resources: [...projectResources.resources, ...availableResources.resources],
+			warnings: [...projectResources.warnings, ...availableResources.warnings],
+		};
+	}
 	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
 	return { paths, packages, warnings, projectMetadataMissing, packageResources };
@@ -347,7 +356,8 @@ function noChangeLines(action: CheckboxPickerSubmitAction): string[] {
 	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to load/adopt them into Construct."];
 	return [
 		"No active or disabled project packages were selected to remove.",
-		"Select Active or Disabled packages, then press r.",
+		"Select Active or Disabled package rows, then press r.",
+		"Package-contained child resources are filtered, not removed: use Space then Enter to write package filters.",
 		"Available packages are not installed in this project; use /construct unload to forget them from the Construct library.",
 		"Unloaded resources are read-only here; remove them with Pi directly if needed.",
 	];
@@ -477,7 +487,9 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 		`Package: ${item.label}`,
 		`Source: ${item.source}`,
 		"",
-		"Read-only for now. This view uses Pi's native package resource resolver; future picking will write Pi package filters in .pi/settings.json.",
+		item.section === "Available"
+			? "Available package resources were inspected with Pi's temporary package resolver. Selecting children installs the package into this project with native Pi filters; no package files are copied into .pi/."
+			: "This view uses Pi's native package resource resolver. Selecting children writes native Pi package filters in .pi/settings.json; no package files are copied.",
 	];
 	if (resources.length === 0) {
 		lines.push("", "No package-contained resources resolved for this package.");
@@ -504,14 +516,17 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 	for (const kind of directResourceKinds) {
 		const kindResources = resources.filter((resource) => resource.kind === kind);
 		for (const resource of kindResources) {
-			const editable = item.section === "Active" || item.section === "Disabled";
+			const editable = item.section === "Active" || item.section === "Disabled" || item.section === "Available";
 			children.push({
 				id: packageResourceChildRowId(item, resource),
 				parentId: item.rowId,
 				depth: 1,
 				label: resourceLabel(resource),
 				value: resource.packageRelativePath,
-				description: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.",
+				description:
+					item.section === "Available"
+						? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters."
+						: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters.",
 				checked: resource.enabled,
 				disabled: !editable,
 				stateText: resource.enabled ? "✓" : "–",
@@ -563,7 +578,7 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 	if (!packageResources || changedIds.length === 0) return [];
 	const selected = new Set(selectedIds);
 	const changed = new Set(changedIds);
-	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled"));
+	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled" || item.section === "Available"));
 	const changedPackages = new Set<string>();
 	for (const item of packageItems) {
 		for (const resource of resourcesForPackage(item, packageResources)) {
@@ -598,15 +613,24 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 
 function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): CheckboxPickerConfirmation | undefined {
 	if (plans.length === 0) return undefined;
+	const installCount = plans.filter((plan) => plan.item.section === "Available").length;
+	const updateCount = plans.length - installCount;
 	const lines = [
-		`This will update native Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`,
+		installCount > 0 && updateCount > 0
+			? `This will install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources and update filters for ${updateCount} existing package${updateCount === 1 ? "" : "s"}.`
+			: installCount > 0
+				? `This will install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources.`
+				: `This will update native Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`,
 		"It edits this project's .pi/settings.json after creating a backup.",
-		"No package files are copied and no saved loadout recipe is changed.",
+	];
+	if (installCount > 0) lines.push("Available packages are installed project-local, then immediately narrowed with native Pi package filters.");
+	lines.push(
+		"No package files are copied into .pi/ and no saved loadout recipe is changed.",
 		"Package row selections are ignored while resource-level changes are pending.",
 		"",
-	];
+	);
 	for (const plan of plans.slice(0, 6)) {
-		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`);
+		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected${plan.item.section === "Available" ? " (install)" : ""}`);
 		for (const kind of directResourceKinds) {
 			const kindResources = plan.resources.filter((resource) => resource.kind === kind);
 			if (kindResources.length === 0) continue;
@@ -622,7 +646,7 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 	return [
 		`${complete}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} complete`,
 		"",
-		...plans.map((plan, index) => `${index < complete ? "✓" : " "} Filter ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} resources`),
+		...plans.map((plan, index) => `${index < complete ? "✓" : " "} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} resources`),
 		...failures.map((failure) => `! ${failure}`),
 	];
 }
@@ -665,26 +689,49 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 				if (!ready) return { title: "Package resource update cancelled", lines: ["No files were changed."] };
 
 				const failures: string[] = [];
+				const succeeded = new Set<string>();
 				let complete = 0;
 				let needsReload = false;
 				update("Applying package resource filters", packageResourceProgressLines(resourcePlans));
 				for (const plan of resourcePlans) {
 					if (signal.aborted) break;
-					const result = await setPackageResourceFiltersInProject(paths, { source: plan.item.source, id: plan.item.managed ? plan.item.id : undefined, filters: plan.filters, selectedCount: plan.selectedCount });
+					let filterSource = plan.item.source;
+					let metadataId = plan.item.managed ? plan.item.id : undefined;
+					if (plan.item.section === "Available") {
+						const load = await loadPackageIntoProject(pi, paths, {
+							source: plan.item.source,
+							item: { id: plan.item.id, kind: "package", source: plan.item.source },
+						});
+						if (load.needsReload) needsReload = true;
+						if (!load.ok) {
+							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
+							complete += 1;
+							update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures));
+							continue;
+						}
+						filterSource = load.declaredSource ?? plan.item.source;
+						metadataId = load.itemId ?? metadataId;
+					}
+					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount });
 					if (result.needsReload) needsReload = true;
-					if (!result.ok) failures.push(`${plan.item.label}: ${result.error ?? "unknown error"}`);
+					if (!result.ok) failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
+					else succeeded.add(plan.item.rowId);
 					complete += 1;
 					update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures));
 				}
-				const changed = resourcePlans.length - failures.length;
+				const changed = succeeded.size;
+				const installedWithFilters = resourcePlans.filter((plan) => plan.item.section === "Available" && succeeded.has(plan.item.rowId));
+				const updatedWithFilters = resourcePlans.filter((plan) => plan.item.section !== "Available" && succeeded.has(plan.item.rowId));
 				return {
 					title: signal.aborted ? (changed > 0 ? "Package resource update cancelled after partial changes" : "Package resource update cancelled") : failures.length > 0 ? "Package resource filters applied with errors" : "Package resource filters applied",
 					confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
 					confirmAction: needsReload ? "reload" : undefined,
 					lines: [
 						signal.aborted ? "Cancelled before remaining changes." : undefined,
-						changed > 0 ? `Updated package filters: ${changed}` : undefined,
-						...resourcePlans.filter((plan) => !failures.some((failure) => failure.startsWith(`${plan.item.label}:`))).map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						installedWithFilters.length > 0 ? `Installed with selected resources: ${installedWithFilters.length}` : undefined,
+						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						updatedWithFilters.length > 0 ? `Updated package filters: ${updatedWithFilters.length}` : undefined,
+						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
 						failures.length > 0 ? `Failures: ${failures.length}` : undefined,
 						...failures.map((failure) => `! ${failure}`),
 						needsReload ? "Reload Pi to use the updated package resource filters." : undefined,

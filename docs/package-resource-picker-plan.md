@@ -43,8 +43,9 @@ Likely policy:
 
 ## Constraints for first implementation
 
-- Project packages only (`scope === "project"`).
-- Installed/resolved packages only; no remote browsing.
+- Project packages use `DefaultPackageManager.resolve()` and `scope === "project"`.
+- Available packages may be inspected with Pi's temporary package resolver, then installed project-local only after the user confirms a child-resource selection.
+- No remote package browsing outside remembered Construct package sources.
 - No saved-loadout filter recipes.
 - No share/import of filter selections.
 - No global package filtering.
@@ -100,7 +101,7 @@ Panel content:
 
 ## Stage 3 — write-enabled package picker
 
-Status: first implementation landed in the dashboard inline scaffold.
+Status: first implementation landed in the dashboard inline scaffold, including install-with-filters for Available package rows.
 
 Flow:
 
@@ -114,6 +115,7 @@ Flow:
    - backup note;
    - reload needed note.
 5. On confirm:
+   - for Available package rows, install the remembered source project-local first;
    - backup `.pi/settings.json`;
    - re-read settings;
    - write object-form package filters using exact package-relative paths;
@@ -163,4 +165,7 @@ Coverage targets:
 - Should the dashboard show a clearer dirty/target marker for child rows after Space changes a resource target?
 - Should partially filtered packages get their own dashboard row copy/state, or just a description badge?
 - Should picker write all four resource filter arrays or only arrays touched by the user?
-- Should `r` remove remain package-level only from the dashboard, with resource-level remove unavailable?
+
+## Decisions made
+
+- `r` remove remains package-level only from the dashboard. Package-contained child resources are filtered with Space/Enter rather than removed individually.

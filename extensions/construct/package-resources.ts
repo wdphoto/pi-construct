@@ -57,29 +57,17 @@ function packageRelativePath(resource: ResolvedResource): string {
 	return relativeIfInside(resource.metadata.baseDir, resource.path) ?? toPosixPath(resource.path);
 }
 
-export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, inventory: ProjectInventory): Promise<PackageResourceInventory> {
-	const warnings: string[] = [];
-	if (!ctx.isProjectTrusted() && inventory.packageDeclarations.length > 0) {
-		return { resources: [], warnings: ["Project package resources were not inspected because the project is not trusted by Pi."] };
-	}
-	const managedIds = await managedPackageIdsBySource(inventory);
-	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
-	try {
-		const agentDir = getAgentDir();
-		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
-		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
-		resolved = await packageManager.resolve(async () => "skip");
-		const errors = settingsManager.drainErrors();
-		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for package resource inventory: ${error.error.message}`));
-	} catch (error) {
-		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`] };
-	}
-
-	const settingsDir = dirname(inventory.paths.projectSettingsPath);
+async function resolvedResourcesForInventory(input: {
+	inventory: ProjectInventory;
+	resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	scope: "project" | "temporary";
+}): Promise<PackageResourceSummary[]> {
+	const managedIds = await managedPackageIdsBySource(input.inventory);
+	const settingsDir = dirname(input.inventory.paths.projectSettingsPath);
 	const resources: PackageResourceSummary[] = [];
 	for (const kind of directResourceKinds) {
-		for (const entry of resolved[resolvedResourceKeys[kind]]) {
-			if (entry.metadata.origin !== "package" || entry.metadata.scope !== "project") continue;
+		for (const entry of input.resolved[resolvedResourceKeys[kind]]) {
+			if (entry.metadata.origin !== "package" || entry.metadata.scope !== input.scope) continue;
 			const normalizedSource = await normalizeSourceForLibrary(entry.metadata.source, settingsDir);
 			const managedId = managedIds.get(entry.metadata.source) ?? managedIds.get(normalizedSource);
 			const relativePath = packageRelativePath(entry);
@@ -103,5 +91,52 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 			a.name.localeCompare(b.name) ||
 			a.packageRelativePath.localeCompare(b.packageRelativePath),
 	);
-	return { resources, warnings };
+	return resources;
+}
+
+export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, inventory: ProjectInventory): Promise<PackageResourceInventory> {
+	const warnings: string[] = [];
+	if (!ctx.isProjectTrusted() && inventory.packageDeclarations.length > 0) {
+		return { resources: [], warnings: ["Project package resources were not inspected because the project is not trusted by Pi."] };
+	}
+	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	try {
+		const agentDir = getAgentDir();
+		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
+		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
+		resolved = await packageManager.resolve(async () => "skip");
+		const errors = settingsManager.drainErrors();
+		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for package resource inventory: ${error.error.message}`));
+	} catch (error) {
+		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`] };
+	}
+
+	return { resources: await resolvedResourcesForInventory({ inventory, resolved, scope: "project" }), warnings };
+}
+
+export async function collectTemporaryPackageResourcesForSources(
+	ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">,
+	inventory: ProjectInventory,
+	sources: string[],
+): Promise<PackageResourceInventory> {
+	const uniqueSources = [...new Set(sources.filter((source) => source.trim().length > 0))];
+	if (uniqueSources.length === 0) return { resources: [], warnings: [] };
+	if (!ctx.isProjectTrusted()) {
+		return { resources: [], warnings: ["Available package resources were not inspected because the project is not trusted by Pi."] };
+	}
+
+	const warnings: string[] = [];
+	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	try {
+		const agentDir = getAgentDir();
+		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
+		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
+		resolved = await packageManager.resolveExtensionSources(uniqueSources, { temporary: true });
+		const errors = settingsManager.drainErrors();
+		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for available package resource inventory: ${error.error.message}`));
+	} catch (error) {
+		return { resources: [], warnings: [`Could not inspect available package resources: ${error instanceof Error ? error.message : String(error)}`] };
+	}
+
+	return { resources: await resolvedResourcesForInventory({ inventory, resolved, scope: "temporary" }), warnings };
 }

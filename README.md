@@ -85,7 +85,7 @@ Use `/construct load` to adopt unloaded package declarations into Construct. Dir
 
 Package disable/enable is a whole-package toggle for unfiltered or whole-package-disabled declarations. Disabling writes empty Pi package resource filters; enabling clears those all-empty filters. If a package already has partial Pi package filters, Construct refuses the whole-package toggle rather than clobbering resource-level selections.
 
-On a package row, Right Arrow unfolds Pi-resolved package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. No package files are copied, and saved loadout recipes stay package-source-only.
+On a package row, Right Arrow unfolds Pi-resolved package resources inline. Space toggles a child resource's target state and Enter previews/writes native Pi package filters in `.pi/settings.json` after a backup. For `Available` packages, child selection installs the package project-local first, then immediately narrows it to the selected resources. No package files are copied, and saved loadout recipes stay package-source-only.
 
 After runtime-affecting loadout changes, press Enter on the final Construct panel to reload Pi. Esc cancels reload and returns to the session; run `/reload` later when ready.
 
@@ -176,7 +176,7 @@ Notes:
 - `/construct wipe <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
 - In `/construct`, Enter on a focused loadout activates it additively. Space on a loadout selects its recipe item rows instead, so normal Enter/`r` package-row actions apply to those package rows.
-- Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.
+- Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project. Package-contained child resources are filtered with Space/Enter, not removed individually.
 
 ## How it works
 

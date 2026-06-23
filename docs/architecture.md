@@ -16,7 +16,7 @@ The current implementation inventories and toggles packages plus direct project 
    - Direct project resource rows are read-only until adopted; after `/construct load` adopts them into metadata, Enter toggles them with Pi-native top-level resource filters.
    - Uses selected rows plus one fast normal action and one destructive action rather than treating checkboxes as current package state.
    - Enter applies/runs the obvious action for actionable rows: run Loadouts, install Available, disable Active, or enable Disabled.
-   - `r` asks for confirmation, then removes selected Active or Disabled project package declarations.
+   - `r` asks for confirmation, then removes selected Active or Disabled project package declarations; package-contained child resources are filtered, not removed individually.
    - Keeps Unloaded rows clearly labeled as project declarations/resources not yet loaded into Construct; `/construct load` is the adoption path.
    - In TUI mode, keeps the title quiet while showing the package/version string and count line, keeps cursor/checkbox markers plain, colors row content by state, and bolds focused row content: saved/loadout and active heading accent, disabled muted, available yellow, unloaded/read-only gray.
    - Treats loadout rows as recipe/spotlight rows: focusing one marks recipe item rows with `[·]`, Enter runs the recipe additively, and Space quick-selects recipe item rows for normal package actions; disable/remove remains a package-row action.
@@ -26,6 +26,7 @@ The current implementation inventories and toggles packages plus direct project 
      ```bash
      pi install <source> -l --approve
      ```
+   - For Available package child-resource selection, inspects remembered sources with Pi's temporary resolver, then installs project-local and writes package filters for the selected resources.
    - Disables installed/active sources by keeping the package declaration and setting Pi package resource filters to empty arrays.
    - Enables disabled sources by clearing those all-empty package resource filters.
    - Toggles Construct-managed direct resources by writing Pi-native top-level `+path` / `-path` filters in `.pi/settings.json`.
@@ -156,7 +157,7 @@ For package rows, disabling keeps the package declaration in `.pi/settings.json`
 
 Enabling a package clears those all-empty filter keys and may collapse `{ "source": "..." }` back to string form. Decision: Construct does not snapshot and restore arbitrary prior partial filters. Package rows are whole-package loadout toggles only when the package is unfiltered or whole-package disabled; if a declaration already has partial Pi package filters, Construct refuses the whole-package toggle instead of overwriting those native resource-level selections.
 
-For intentional partial package selection, the dashboard unfolds package rows with Right Arrow and writes exact package-relative path filters from child resource selections. If all visible resources of a kind are selected, Construct clears that filter key back to Pi defaults; if no package resources are selected, Construct writes all four package resource keys as empty arrays so the package is whole-package disabled. Construct never copies package-contained files into project `.pi/` resource folders.
+For intentional partial package selection, the dashboard unfolds package rows with Right Arrow and writes exact package-relative path filters from child resource selections. Active and Disabled rows use Pi's project package resolver; Available rows use Pi's temporary package resolver for inspection and become project-local package declarations only after confirmation. If all visible resources of a kind are selected, Construct clears that filter key back to Pi defaults; if no package resources are selected, Construct writes all four package resource keys as empty arrays so the package is whole-package disabled. Construct never copies package-contained files into project `.pi/` resource folders.
 
 For adopted direct project resources, disabling/enabling writes top-level Pi filter overrides such as `-skills/review/SKILL.md` or `+skills/review/SKILL.md` in the matching resource array. Construct never deletes direct resource files.
 

@@ -137,7 +137,7 @@ Controls:
 - type to search/filter;
 - Space selects rows; on a loadout row, Space selects that recipe's selectable package rows instead of selecting the loadout row itself;
 - row grammar separates selection from state: `[x]` means selected, `[·]` means included by the focused loadout recipe, `[!]` means read-only, while compact icons `◆`, `✓`, `–`, `+`, or `◇` describe current state; section headings carry the state words;
-- Right Arrow on a package row unfolds package-contained resources inline using Pi's native resolver; Left Arrow folds. Space on child rows changes target enabled state, and Enter previews/writes native Pi package filters. `i` still opens a detail panel;
+- Right Arrow on a package row unfolds package-contained resources inline using Pi's native resolver; Left Arrow folds. Space on child rows changes target enabled state, and Enter previews/writes native Pi package filters. For `Available` package rows, child selection installs the package project-local first and then immediately narrows it with native Pi package filters. `i` still opens a detail panel;
 - keep rows compact; do not repeat `Active`, `Disabled`, `Available`, or `Unloaded` as a word column for every package;
 - make the filter obvious with a compact line such as `Filter: all items · type to narrow`;
 - in TUI, use a quiet title with the package/version string and a count line like `1 active | 0 disabled | 3 available | 0 unloaded`;
@@ -149,7 +149,7 @@ Controls:
 - package disable/enable remains a whole-package toggle for unfiltered or whole-package-disabled packages. Construct now refuses this toggle when a package already has partial Pi package filters, rather than silently clobbering resource-level selections; package-row child selection is the native Pi-filter path for intentional partial changes;
 - Enter on a focused saved loadout with no selected rows is activate-only: it installs available package sources and enables disabled package sources, but does not disable/remove active member packages, remove packages outside the recipe, or exact-match the project to the recipe;
 - Unloaded rows are not selectable in `/construct`; use `/construct load` to load/adopt them into Construct;
-- `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages;
+- `r` asks for confirmation, then removes selected `Active` or `Disabled` package declarations from the project; saved loadout rows do not remove their member packages; package-contained child resources are filtered with Space/Enter rather than removed individually;
 - Esc cancels without writing before apply;
 - after apply, Enter reloads Pi when runtime-affecting settings changed;
 - after apply, Esc cancels reload and returns to the session.
