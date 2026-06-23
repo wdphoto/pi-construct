@@ -111,7 +111,7 @@ Save the active package sources as a named loadout recipe:
 /construct save web-stack
 ```
 
-If active package declarations have not been loaded into Construct yet, TUI save shows them as optional packages you can select to load/include. Direct project-local resources are not included in saved loadouts yet; save warns when those are present.
+If active package declarations have not been loaded into Construct yet, TUI save shows them as optional packages you can select to load/include. Direct project-local resources are intentionally not included in saved loadouts or share snippets; save warns when those are present.
 
 To update that recipe later, make the desired package sources active and save the same name again. Construct replaces the saved recipe; it does not append or merge.
 

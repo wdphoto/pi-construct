@@ -65,8 +65,8 @@ Do this as a small no-new-command cleanup pass. The goal is to turn remaining pr
   - Decision: keep Construct package toggles whole-package only for now.
   - Do not snapshot/restore partial Pi package filters yet.
   - Docs and dashboard confirmation copy are explicit: disabling a package writes empty resource filters; enabling removes those filters; users needing partial package resource selection should use Pi settings directly for now.
-- [ ] Decide and document saved-loadout direct-resource policy.
-  - Recommended decision: keep saved loadouts/share snippets package-source-only.
+- [x] Decide and document saved-loadout direct-resource policy.
+  - Decision: keep saved loadouts/share snippets package-source-only.
   - Direct project-local resources remain project-local Construct metadata only.
   - Do not design a portable direct-resource export/import format yet.
 - [ ] Add stale known-project visibility without adding a command.

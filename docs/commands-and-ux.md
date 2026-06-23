@@ -74,7 +74,7 @@ If a project package declaration has not been loaded into Construct, it appears 
 
 ## Saved loadouts
 
-Saved loadouts are named groups of active package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Active unloaded package declarations are offered for explicit loading/inclusion when saving in TUI. Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed, and save output should warn when direct resources are present.
+Saved loadouts are named groups of active package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Active unloaded package declarations are offered for explicit loading/inclusion when saving in TUI. Decision: saved loadouts and share snippets are package-source-only for now. Adopted direct project-local resources are intentionally excluded and stay project-local Construct metadata; save output should warn when direct resources are present.
 
 ```text
 /construct save www

@@ -20,7 +20,7 @@ Construct is a project-level Pi resource manager. Package loadouts are the curre
 
 System prompt files are also native Pi project resources, but should be handled as a later explicit file-resource slice.
 
-Current direct-resource support includes inventory in `/construct status full`, rows in `/construct`, `/construct load` adoption into project-local Construct metadata, and dashboard toggles for adopted direct resources using Pi-native `+path` / `-path` filters. Direct resources remain project-local unless a future portable path/export/package model is deliberately designed.
+Current direct-resource support includes inventory in `/construct status full`, rows in `/construct`, `/construct load` adoption into project-local Construct metadata, and dashboard toggles for adopted direct resources using Pi-native `+path` / `-path` filters. Decision: direct resources remain project-local for now and are not saved/shared unless a future portable path/export/package model is deliberately designed.
 
 ## Current package workflow
 
@@ -60,7 +60,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 - Pi owns package resolution, dependency installs, updates, caches, resource discovery, and trust.
 - Construct remembers package source strings and project-local direct-resource metadata; it does not invent arbitrary install scripts.
 - Saved loadouts and shared snippets are package-source data for now, not executable scripts.
-- Project-local direct resources are not saved/shared or portable to other projects until Construct has a safe copy/export/package flow.
+- Project-local direct resources are not saved/shared or portable to other projects in the current product model; they require a future explicit copy/export/package flow before becoming portable.
 - Package enable/disable is whole-package only for now. Construct does not snapshot partial Pi package filters; users who need partial package resource selection should edit Pi settings directly.
 - Construct does not write secrets, tokens, API keys, or auth material.
 

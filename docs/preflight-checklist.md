@@ -84,7 +84,7 @@ Expected:
 - `/construct wipe <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.
 - `/construct import` opens a TUI paste box; `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
 - Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
-- Saved loadouts store ids/package sources, not package code, scripts, or direct project-local resource files.
+- Saved loadouts store ids/package sources, not package code, scripts, direct project-local resource files, or portable direct-resource recipes.
 
 Manual TUI import write check:
 
@@ -135,7 +135,7 @@ Before adding new behavior, ask:
 - Does every mutating path require explicit user action?
 - Are we relying on Pi package/settings primitives instead of rebuilding package management?
 - Is `.pi/settings.json` still the source of truth and `.pi/construct.json` only advisory?
-- Do saved loadouts still store only library ids/sources and run explicitly?
+- Do saved loadouts still store only library ids/sources, exclude direct project-local resources, and run explicitly?
 - Is Enter still the fastest safe path for common install/disable/enable actions?
 - Is `/construct load` still the only adoption path for Unloaded rows?
 

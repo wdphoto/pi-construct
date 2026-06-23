@@ -5,12 +5,12 @@ Scratchpad for research notes, open questions, and ideas that are not yet commit
 ## Current open questions
 
 - Autoload is postponed and hidden from the public surface. Revisit only if users ask for it and Pi exposes a safe public package-install/settings-change event.
-- Should saved loadouts ever include portable direct resources, or should package sources remain the only shareable unit?
 - Should stale paths in `~/.pi/agent/construct/projects.json` be pruned automatically when seen, or only through an explicit cleanup/doctor command?
 - Should known-project counts ever appear in dashboard rows, or stay limited to status/unload contexts?
 
 ## Ideas not yet committed
 
+- Future portable direct-resource export/import: design only if users need `.pi/extensions`, prompts, skills, or themes to move between projects without first becoming a Pi package. Current saved loadouts/share snippets stay package-source-only.
 - First-run/never-loaded messaging for projects with no `.pi/construct.json`, triggered only by explicit `/construct`.
 - Optional onboarding/startup automation behind explicit opt-in only.
 - A lightweight doctor report for duplicate package/resource provenance, overlapping runtime tool names, and stale known-project entries.

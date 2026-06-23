@@ -2,7 +2,7 @@
 
 Construct is a global Pi extension / Pi package with one primary command: `/construct`.
 
-The current implementation inventories and toggles packages plus direct project Pi extensions, skills, prompt templates, and themes. The portable library/saved-loadout model remains package-source-only until a direct-resource portability/export model is designed.
+The current implementation inventories and toggles packages plus direct project Pi extensions, skills, prompt templates, and themes. Decision: the portable library/saved-loadout model remains package-source-only for now; direct resources stay project-local until a direct-resource portability/export model is deliberately designed.
 
 ## Layers
 
@@ -101,7 +101,7 @@ Rules:
 
 - `source` is replayed by dashboard operations through Pi's normal project-local package install.
 - Preserve source strings exactly except local path normalization during load.
-- Future direct-resource catalog items may use `kind: "extension" | "skill" | "prompt" | "theme"` plus a path/ref and portability marker; existing package items remain valid. Current saved loadouts/share snippets remain package-source-only.
+- Future direct-resource catalog items may use `kind: "extension" | "skill" | "prompt" | "theme"` plus a path/ref and portability marker; existing package items remain valid. Current saved loadouts/share snippets are deliberately package-source-only.
 - Unknown item fields should be preserved where possible for forward compatibility.
 
 ### Project metadata: `.pi/construct.json`
