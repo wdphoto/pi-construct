@@ -145,7 +145,7 @@ export interface CheckboxPickerItem {
 	uncheckedStateText?: string;
 	checkedStateTone?: CheckboxPickerTone;
 	uncheckedStateTone?: CheckboxPickerTone;
-	hideSelectionMarker?: boolean;
+	selectionMarkerMode?: "checked" | "changed";
 	relatedIds?: string[];
 	quickSelectIds?: string[];
 	confirmOnFocus?: boolean;
@@ -238,6 +238,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 	return ctx.ui.custom<CheckboxPickerResult | undefined>((tui, theme, keybindings, done) => {
 		const checked = new Set(options.initialSelection === "empty" ? [] : items.filter((item) => item.checked).map((item) => item.id));
+		const initiallyChecked = new Set(checked);
 		const changed = new Set<string>();
 		let query = "";
 		let selected = 0;
@@ -345,14 +346,21 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return item.stateTone;
 		}
 
+		function markerChecked(item: CheckboxPickerItem): boolean {
+			return item.selectionMarkerMode === "changed" ? changed.has(item.id) : checked.has(item.id);
+		}
+
 		function selectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
-			if (item.hideSelectionMarker) return item.marker ?? "   ";
-			return checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
+			return markerChecked(item) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
 		}
 
 		function plainSelectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
-			if (item.hideSelectionMarker) return item.marker ?? "   ";
-			return item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
+			return item.marker ?? (markerChecked(item) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
+		}
+
+		function syncChanged(id: string): void {
+			if (checked.has(id) === initiallyChecked.has(id)) changed.delete(id);
+			else changed.add(id);
 		}
 
 		function setApplyState(nextTitle: string, nextLines: string[]): void {
@@ -578,7 +586,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						const parentIndex = items.findIndex((candidate) => candidate.id === item.id);
 						items.splice(parentIndex >= 0 ? parentIndex + 1 : items.length, 0, ...newChildren);
 						for (const child of newChildren) {
-							if (child.checked) checked.add(child.id);
+							if (child.checked) {
+								checked.add(child.id);
+								initiallyChecked.add(child.id);
+							}
 						}
 						refreshItemIndex();
 						expanded.add(item.id);
@@ -786,12 +797,12 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						for (const id of targetIds) {
 							if (allTargetsChecked) checked.delete(id);
 							else checked.add(id);
-							changed.add(id);
+							syncChanged(id);
 						}
 					} else if (!item.quickSelectIds) {
 						if (checked.has(item.id)) checked.delete(item.id);
 						else checked.add(item.id);
-						changed.add(item.id);
+						syncChanged(item.id);
 					}
 				}
 				invalidate();

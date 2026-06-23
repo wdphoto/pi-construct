@@ -601,7 +601,7 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 				uncheckedStateText: available ? undefined : "–",
 				checkedStateTone: available ? undefined : "success",
 				uncheckedStateTone: available ? undefined : "muted",
-				hideSelectionMarker: !available,
+				selectionMarkerMode: available ? "checked" : "changed",
 				marker: editable ? undefined : "   ",
 			});
 		}
