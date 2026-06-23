@@ -53,7 +53,7 @@ See `CHANGELOG.md` for version-by-version detail.
 
 - [x] Centralize package metadata drift wording so scan, status, and dashboard stay aligned.
 - [x] Extract a small project inventory module for shared package/direct-resource reconciliation.
-- [ ] Continue moving command-specific callers onto the shared inventory where it fits; dashboard, status, save, and load candidate discovery now use it, while scan stays conservative file parsing and load still owns its write operations.
+- [x] Move command-specific callers onto the shared inventory where it fits; dashboard, status, save, and load candidate discovery now use it, while scan stays conservative file parsing and load still owns its write operations.
 - [x] Keep the inventory interface read-only; route all writes through existing load/dashboard operation helpers.
 - [x] Keep package-internal resource browsing/filter recipes out of this cleanup; treat that as a separate product design if needed.
 
