@@ -98,7 +98,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - `/construct status` is read-only and must not create `.pi/construct.json`; print-mode `/construct scan` is read-only, while TUI `/construct scan` may create/update `.pi/construct.json` only when the user selects findings and presses Enter to load them.
 - Autoload is off by default, trusted-project/TUI-only, and always confirms before writing. It scans on trusted TUI quit only; no live `.pi/settings.json` watcher.
 - Saved loadouts are named groups of active package sources. `profile` is mostly the internal catalog term.
-- `/construct save <name>` includes active package sources, loads/includes active unloaded package declarations by default (TUI lets users deselect them), skips disabled package declarations, and warns that direct project-local resources are not included.
+- `/construct save <name>` includes active Construct-managed package sources, offers active unloaded package declarations for explicit loading/inclusion in TUI, skips disabled package declarations, and warns that direct project-local resources are not included. Non-TUI save may auto-load active unloaded package declarations so scripted saves can complete.
 - Saved loadouts and share snippets are package-source-only for now; adopted direct project-local resources are project-local toggle metadata only until a portable direct-resource path/export decision is made.
 - Saving over an existing loadout never appends or merges; TUI asks before replacing.
 - `/construct run <saved-name>` applies the saved loadout once. Projects are not live-linked to saved loadouts.

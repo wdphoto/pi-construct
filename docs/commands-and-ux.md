@@ -98,7 +98,7 @@ Autoload rules:
 
 ## Saved loadouts
 
-Saved loadouts are named groups of active package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Active unloaded package declarations are loaded into Construct and included by default when saving (TUI lets users deselect them). Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed, and save output should warn when direct resources are present.
+Saved loadouts are named groups of active package sources. `profile` remains the internal catalog word; user-facing copy should prefer saved loadout / saved. Active unloaded package declarations are offered for explicit loading/inclusion when saving in TUI. Adopted direct project-local resources are intentionally excluded from saved loadouts and share snippets until a portable direct-resource format is designed, and save output should warn when direct resources are present.
 
 ```text
 /construct save www
@@ -111,7 +111,7 @@ Saved loadouts are named groups of active package sources. `profile` remains the
 
 Save rules:
 
-- `/construct save <loadout-name>` includes active package sources, loading/including active unloaded package declarations by default; TUI lets users deselect those package declarations before saving.
+- `/construct save <loadout-name>` includes active Construct-managed package sources; TUI shows active unloaded package declarations as optional load/include rows before saving.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct are offered; selected rows are loaded into Construct and included, unselected rows are skipped.
 - Saving over an existing name never appends or merges. TUI asks before replacing; non-TUI replacement refuses for now.

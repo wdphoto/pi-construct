@@ -94,7 +94,8 @@ if catalog_path.exists():
     assert catalog.get("items", []) == [], catalog
 PY
 RESOURCE_SAVE_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct save direct-only' 2>&1)"
-grep -Fq 'No active Construct package sources were selected' <<<"$RESOURCE_SAVE_ONLY_OUTPUT"
+grep -Fq 'No active package sources were selected' <<<"$RESOURCE_SAVE_ONLY_OUTPUT"
+grep -Fq 'Direct project-local resources not included: 4' <<<"$RESOURCE_SAVE_ONLY_OUTPUT"
 RESOURCE_SHARE_ONLY_OUTPUT="$(trusted_construct_pi "$PROJECT_RES" '/construct share direct-only' 2>&1)"
 grep -Fq 'Saved loadout not found: direct-only' <<<"$RESOURCE_SHARE_ONLY_OUTPUT"
 python3 - "$HOME_DIR" <<'PY'
@@ -283,9 +284,9 @@ printf '== save active unloaded package declarations ==\n'
 )
 SAVE_UNLOADED_OUTPUT="$(construct_pi "$PROJECT_SAVE_UNLOADED" '/construct save unloaded-package' 2>&1)"
 grep -Fq 'Saved loadout: unloaded-package' <<<"$SAVE_UNLOADED_OUTPUT"
-grep -Fq 'Included package sources: 1' <<<"$SAVE_UNLOADED_OUTPUT"
-grep -Fq 'Loaded into Construct and included package sources: 1' <<<"$SAVE_UNLOADED_OUTPUT"
-grep -Fq 'Skipped active package declarations not loaded into Construct: 0' <<<"$SAVE_UNLOADED_OUTPUT"
+grep -Fq 'Included packages: 1' <<<"$SAVE_UNLOADED_OUTPUT"
+grep -Fq 'Loaded into Construct: 1' <<<"$SAVE_UNLOADED_OUTPUT"
+! grep -Fq 'Active package declarations not loaded into Construct: 0' <<<"$SAVE_UNLOADED_OUTPUT"
 
 printf '== removed sync/reload command surface ==\n'
 SYNC_OUTPUT="$(construct_pi "$PROJECT_B" '/construct sync' 2>&1)"

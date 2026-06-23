@@ -74,24 +74,45 @@ async function activeUnloadedPackageSources(paths: ConstructPaths): Promise<Arra
 	return candidates.adoptable.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: candidate.id, source: candidate.source }));
 }
 
-async function promptForUnloadedSources(ctx: ExtensionCommandContext, name: string, candidates: Array<{ id: string; source: string }>): Promise<string[] | undefined> {
+async function promptForUnloadedSources(
+	ctx: ExtensionCommandContext,
+	name: string,
+	managedSources: string[],
+	candidates: Array<{ id: string; source: string }>,
+): Promise<string[] | undefined> {
 	if (candidates.length === 0) return [];
 	if (ctx.mode !== "tui") return candidates.map((candidate) => candidate.source);
 
-	const pickerItems: CheckboxPickerItem[] = candidates.map((candidate) => ({
+	const managedItems: CheckboxPickerItem[] = managedSources.map((source) => ({
+		id: `managed:${source}`,
+		label: deriveId(source),
+		value: source,
+		description: "Already loaded into Construct and included automatically.",
+		checked: false,
+		disabled: true,
+		marker: "[·]",
+		stateText: "✓",
+		stateTone: "accent",
+		section: "Already included",
+	}));
+	const candidateItems: CheckboxPickerItem[] = candidates.map((candidate) => ({
 		id: candidate.source,
 		label: candidate.id,
 		value: candidate.source,
-		description: "Active package declaration in this project, but not loaded into Construct. Keep selected to load it into Construct and include it in the saved loadout.",
-		checked: true,
-		section: "ACTIVE PACKAGES — not loaded into Construct",
+		description: "Not loaded into Construct yet. Select to load it into Construct and include it in this saved loadout.",
+		checked: false,
+		stateText: "+",
+		stateTone: "warning",
+		section: "Optional: load and include",
 	}));
-	const selected = await pickCheckboxes(ctx, `Save loadout: ${name}`, pickerItems, {
-		initialSelection: "checked",
-		confirmHint: "Enter continues",
-		filterLabel: "Filter package declarations",
-		filterHint: "Type to narrow active package declarations not loaded into Construct",
-		footerHint: "  Space toggles · Enter continues · Esc cancels",
+	const selected = await pickCheckboxes(ctx, `Save loadout: ${name}`, [...managedItems, ...candidateItems], {
+		initialSelection: "empty",
+		subtitle: "Review the active package sources. Select optional packages to add to this loadout.",
+		confirmHint: "Enter saves",
+		filterLabel: "Filter",
+		filterHint: "type to narrow",
+		filterHintInline: true,
+		footerHint: "  Space include/exclude · Enter save · Esc cancel\n  [·] already included",
 	});
 	if (!selected) return undefined;
 	const candidateSources = new Set(candidates.map((candidate) => candidate.source));
@@ -106,11 +127,42 @@ async function directResourceSaveNotice(ctx: ExtensionCommandContext, paths: Con
 	const unloaded = active.filter((resource) => !resource.managed).length;
 	return [
 		...direct.warnings.map((warning) => `! ${warning}`),
-		active.length > 0 ? `Direct project-local resources not included: ${active.length}${unloaded > 0 ? ` (${unloaded} not loaded into Construct)` : ""}` : undefined,
+		active.length > 0 ? `! Direct project-local resources not included: ${active.length}${unloaded > 0 ? ` (${unloaded} not loaded into Construct)` : ""}` : undefined,
 		active.length > 0 ? "! Saved loadouts are package-source-only for now; direct .pi resources stay project-local." : undefined,
 		...active.slice(0, 6).map((resource) => `! ${resource.kind} ${resource.name}: ${resource.displayPath}`),
 		active.length > 6 ? `! ... ${active.length - 6} more direct project-local resources not included` : undefined,
 	].filter((line): line is string => line !== undefined);
+}
+
+function saveNotCreatedText(lines: string[]): string {
+	return ["Saved loadout not created.", ...lines].join("\n");
+}
+
+function saveSummaryText(options: {
+	id: string;
+	currentSources: string[];
+	loadedSources: string[];
+	skippedActiveUnloaded: number;
+	skippedDisabled: number;
+	directNotice: string[];
+}): string {
+	const notIncluded = [
+		options.skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${options.skippedActiveUnloaded}` : undefined,
+		options.skippedDisabled > 0 ? `! Disabled package declarations: ${options.skippedDisabled}` : undefined,
+		...options.directNotice,
+	].filter((line): line is string => line !== undefined);
+	return [
+		`Saved loadout: ${options.id}`,
+		"",
+		`Included packages: ${options.currentSources.length}`,
+		...options.currentSources.map((source) => `- ${source}`),
+		options.loadedSources.length > 0 ? "" : undefined,
+		options.loadedSources.length > 0 ? `Loaded into Construct: ${options.loadedSources.length}` : undefined,
+		...options.loadedSources.map((source) => `+ ${source}`),
+		notIncluded.length > 0 ? "" : undefined,
+		notIncluded.length > 0 ? "Not included" : undefined,
+		...notIncluded,
+	].filter((line): line is string => line !== undefined).join("\n");
 }
 
 async function confirmReplaceSavedLoadout(ctx: ExtensionCommandContext, id: string, existingSources: string[], nextSources: string[]): Promise<boolean> {
@@ -263,7 +315,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	}
 	const directNotice = await directResourceSaveNotice(ctx, paths);
 
-	const selectedBeforeWait = await promptForUnloadedSources(ctx, requestedName, initialUnloaded);
+	const selectedBeforeWait = await promptForUnloadedSources(ctx, requestedName, initialManaged, initialUnloaded);
 	if (!selectedBeforeWait) {
 		showText(ctx, "Saved loadout cancelled. No files were changed.");
 		return;
@@ -273,15 +325,14 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 		const skippedDisabled = await disabledProjectPackageCount(paths);
 		showText(
 			ctx,
-			[
-				"Saved loadout not created.",
-				"No active Construct package sources were selected for this saved loadout.",
-				initialUnloaded.length > 0 ? `Skipped active package declarations not loaded into Construct: ${initialUnloaded.length}` : undefined,
-				skippedDisabled > 0 ? `Skipped disabled package declarations: ${skippedDisabled}` : undefined,
-				...directNotice,
-			]
-				.filter((line): line is string => line !== undefined)
-				.join("\n"),
+			saveNotCreatedText(
+				[
+					"No active package sources were selected for this saved loadout.",
+					initialUnloaded.length > 0 ? `! Active package declarations not loaded into Construct: ${initialUnloaded.length}` : undefined,
+					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
+					...directNotice,
+				].filter((line): line is string => line !== undefined),
+			),
 		);
 		return;
 	}
@@ -313,15 +364,14 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	if (currentSources.length === 0) {
 		showText(
 			ctx,
-			[
-				"Saved loadout not created.",
-				"No active Construct package sources were selected for this saved loadout.",
-				skippedActiveUnloaded > 0 ? `Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
-				skippedDisabled > 0 ? `Skipped disabled package declarations: ${skippedDisabled}` : undefined,
-				...directNotice,
-			]
-				.filter((line): line is string => line !== undefined)
-				.join("\n"),
+			saveNotCreatedText(
+				[
+					"No active package sources were selected for this saved loadout.",
+					skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
+					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
+					...directNotice,
+				].filter((line): line is string => line !== undefined),
+			),
 		);
 		return;
 	}
@@ -390,17 +440,14 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	await writeJson(catalogPaths.userCatalogPath, { ...catalog, version: 1, profiles });
 	await showSummary(
 		ctx,
-		[
-			`Saved loadout: ${id}`,
-			`Included package sources: ${currentSources.length}`,
-			selectedToLoad.length > 0 ? `Loaded into Construct and included package sources: ${selectedToLoad.length}` : undefined,
-			`Skipped active package declarations not loaded into Construct: ${skippedActiveUnloaded}`,
-			`Skipped disabled package declarations: ${skippedDisabled}`,
-			...directNotice,
-			...currentSources.map((source) => `- ${source}`),
-		]
-			.filter((line): line is string => line !== undefined)
-			.join("\n"),
+		saveSummaryText({
+			id,
+			currentSources,
+			loadedSources: selectedToLoad,
+			skippedActiveUnloaded,
+			skippedDisabled,
+			directNotice,
+		}),
 	);
 }
 

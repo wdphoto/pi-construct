@@ -95,7 +95,7 @@ Save the active package sources as a named loadout recipe:
 /construct save web-stack
 ```
 
-If active package declarations have not been loaded into Construct yet, save loads/includes them by default and reports what was included. Direct project-local resources are not included in saved loadouts yet; save warns when those are present.
+If active package declarations have not been loaded into Construct yet, TUI save shows them as optional packages you can select to load/include. Direct project-local resources are not included in saved loadouts yet; save warns when those are present.
 
 To update that recipe later, make the desired package sources active and save the same name again. Construct replaces the saved recipe; it does not append or merge.
 
@@ -151,7 +151,7 @@ Notes:
 - `/construct load <source>` adopts an existing declaration from `.pi/settings.json`; it does not install new packages. `/construct load` can also adopt direct project-local Pi resources into `.pi/construct.json` metadata only.
 - `/construct unload <source>` makes Construct forget a resource; it does not edit `.pi/settings.json` and does not disable or remove packages from projects.
 - `/construct autoload [on|off|status]` is off by default. When enabled, trusted TUI sessions check for unloaded project resources on exit and ask before loading them. Autoload never installs packages, enables resources, reloads Pi, or edits `.pi/settings.json`.
-- `/construct save <loadout-name>` includes active package sources. Active package declarations not loaded into Construct are loaded/included by default, and TUI lets you deselect them. Disabled package declarations are skipped. Direct project-local resources are not included yet and are reported when present. Saving an existing loadout name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety.
+- `/construct save <loadout-name>` includes active Construct-managed package sources. Active package declarations not loaded into Construct are shown as optional load/include rows in TUI. Disabled package declarations are skipped. Direct project-local resources are not included yet and are reported when present. Saving an existing loadout name replaces that saved recipe rather than appending or merging; TUI asks before replacing, while non-TUI refuses overwrite for safety.
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.

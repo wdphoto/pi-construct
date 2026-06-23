@@ -86,7 +86,7 @@ Expected:
 
 Expected:
 
-- `/construct save <loadout-name>` saves active package sources from the current project, including active unloaded package declarations by default; TUI lets users deselect those declarations.
+- `/construct save <loadout-name>` saves active Construct-managed package sources from the current project; TUI shows active unloaded package declarations as optional load/include rows.
 - Disabled package declarations are skipped.
 - In TUI, active package declarations not loaded into Construct can be selected for loading/inclusion; unselected rows are skipped.
 - Saving over an existing name asks before replacing in TUI and refuses replacement in non-TUI.
