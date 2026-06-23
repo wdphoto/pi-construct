@@ -4,7 +4,21 @@
 
 The Construct is a global extension for [Pi](https://pi.dev) that manages project-level loadouts.
 
-Run `/construct`, tap **Space** to select a resource, then hit **Enter** to apply.
+Run `/construct`, tap **Space** to select a resource, then hit **Enter** to apply. Life is good.
+
+## Install Construct
+
+Install flavours:
+
+```bash
+pi install npm:pi-construct
+# or
+pi install git:github.com/wdphoto/pi-construct
+# or
+pi install https://github.com/wdphoto/pi-construct
+# or
+pi install ~/Code/pi-construct
+```
 
 ## Loadout menu
 
@@ -164,22 +178,6 @@ Notes:
 - `.pi/construct.json` is advisory metadata for Construct's UI.
 - `~/.pi/agent/construct/catalog.json` is your user-local Construct library and saved-loadout store.
 - `~/.pi/agent/construct/projects.json` is a user-local index of projects Construct has touched; assignment counts are informational only.
-
-## Install Construct
-
-Install from npm:
-
-```bash
-pi install npm:pi-construct
-```
-
-Install from git:
-
-```bash
-pi install git:github.com/wdphoto/pi-construct
-# or
-pi install https://github.com/wdphoto/pi-construct
-```
 
 ## Remove Construct
 
