@@ -48,7 +48,7 @@ interface SavePackageSnapshot {
 function savePackageSnapshotFromInventory(inventory: ProjectInventory): SavePackageSnapshot {
 	if (inventory.reads.projectConstruct.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", inventory.reads.projectConstruct)}`);
 	return {
-		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active").map((item) => item.metadata.identityKey ?? item.source)),
+		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active").map((item) => item.source)),
 		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
 		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
 	};
