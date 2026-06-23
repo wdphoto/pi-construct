@@ -308,7 +308,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 		lines.push(label, "-".repeat(label.length));
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth)) : ["- none"]), "");
 	}
-	lines.push(...warnings.map((warning) => `! ${warning}`));
+	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
 		"Space selects · on Loadouts, selects recipe items · Enter applies/runs · r removes selected from project · Esc cancels.",
