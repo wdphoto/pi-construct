@@ -182,6 +182,8 @@ export interface CheckboxPickerLegendItem {
 export interface CheckboxPickerLoadChildrenResult {
 	children: CheckboxPickerItem[];
 	empty?: CheckboxPickerConfirmation;
+	emptyDescription?: string;
+	quietEmpty?: boolean;
 }
 
 export interface CheckboxPickerOptions {
@@ -255,10 +257,12 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let applyStartedAt = Date.now();
 		let submitAbort: AbortController | undefined;
 		let loadingToken = 0;
+		let loadingPanelVisible = false;
+		let loadingPanelTimer: ReturnType<typeof setTimeout> | undefined;
 		let spinnerTick = 0;
 		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 		const animationTimer = setInterval(() => {
-			if (phase !== "applying" && phase !== "loading") return;
+			if (phase !== "applying" && !(phase === "loading" && loadingPanelVisible)) return;
 			spinnerTick += 1;
 			invalidate();
 			tui.requestRender();
@@ -377,7 +381,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function render(width: number): string[] {
 			if (phase === "confirmSubmit" || phase === "inspect") return renderConfirmation(width);
-			if (phase !== "pick") return renderApply(width);
+			if (phase !== "pick" && !(phase === "loading" && !loadingPanelVisible)) return renderApply(width);
 			if (cachedLines && cachedWidth === width) return cachedLines;
 			const visibleItems = filteredItems();
 			if (selected >= visibleItems.length) selected = Math.max(0, visibleItems.length - 1);
@@ -468,6 +472,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 
 		function close(result: CheckboxPickerResult | undefined): void {
 			submitAbort?.abort();
+			if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
 			clearInterval(animationTimer);
 			done(result);
 		}
@@ -515,19 +520,30 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (!options.loadChildren) return;
 			const token = ++loadingToken;
 			phase = "loading";
+			loadingPanelVisible = false;
+			if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
 			applyStartedAt = Date.now();
 			spinnerTick = 0;
-			setApplyState(`Inspecting ${item.label}`, [
-				"Resolving package-contained resources with Pi.",
-				"For Available packages, this may clone/cache package sources before showing child rows.",
-				"Press Esc to return to the dashboard; already-started Pi resolution may still finish in the background.",
-			]);
+			loadingPanelTimer = setTimeout(() => {
+				if (token !== loadingToken || phase !== "loading") return;
+				loadingPanelVisible = true;
+				setApplyState(`Inspecting ${item.label}`, [
+					"Resolving package-contained resources with Pi.",
+					"For Available packages, this may clone/cache package sources before showing child rows.",
+					"Press Esc to return to the dashboard; already-started Pi resolution may still finish in the background.",
+				]);
+			}, 200);
 			void (async () => {
 				try {
 					const result = await options.loadChildren!(item);
 					if (token !== loadingToken) return;
+					if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
+					loadingPanelTimer = undefined;
+					loadingPanelVisible = false;
 					const children = Array.isArray(result) ? result : result.children;
 					const empty = Array.isArray(result) ? undefined : result.empty;
+					const quietEmpty = Array.isArray(result) ? false : result.quietEmpty;
+					const emptyDescription = Array.isArray(result) ? undefined : result.emptyDescription;
 					const existingIds = new Set(items.map((candidate) => candidate.id));
 					const newChildren = children.filter((child) => !existingIds.has(child.id));
 					if (newChildren.length > 0) {
@@ -549,6 +565,13 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 					}
 					item.expandable = false;
 					item.lazyChildren = false;
+					if (emptyDescription) item.description = emptyDescription;
+					if (quietEmpty) {
+						phase = "pick";
+						invalidate();
+						tui.requestRender();
+						return;
+					}
 					confirmationTitle = empty?.title ?? `Package resources: ${item.label}`;
 					confirmationLines = empty?.lines ?? ["No package-contained resources resolved for this package."];
 					confirmationHint = empty?.confirmHint ?? "Press Enter/Esc to return";
@@ -558,6 +581,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 					invalidate();
 					tui.requestRender();
 				} catch (error) {
+					if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
+					loadingPanelTimer = undefined;
+					loadingPanelVisible = false;
 					if (token !== loadingToken) return;
 					confirmationTitle = `Could not inspect ${item.label}`;
 					confirmationLines = [`! ${error instanceof Error ? error.message : String(error)}`];
@@ -604,6 +630,9 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				if (phase === "loading") {
 					if (keybindings.matches(data, "tui.select.cancel")) {
 						loadingToken += 1;
+						if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
+						loadingPanelTimer = undefined;
+						loadingPanelVisible = false;
 						phase = "pick";
 						invalidate();
 						tui.requestRender();
@@ -772,6 +801,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			}
 		}
 
-		return { render, handleInput, invalidate, dispose: () => clearInterval(animationTimer) };
+		return {
+			render,
+			handleInput,
+			invalidate,
+			dispose: () => {
+				if (loadingPanelTimer) clearTimeout(loadingPanelTimer);
+				clearInterval(animationTimer);
+			},
+		};
 	});
 }

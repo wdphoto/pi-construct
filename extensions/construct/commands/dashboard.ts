@@ -7,7 +7,7 @@ import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { formatPackageSourceLabel } from "../sources.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
-import { packageResourceFilterKeys, type PackageResourceFilterKey } from "../package-filters.js";
+import { type PackageResourceFilterKey } from "../package-filters.js";
 import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
@@ -601,15 +601,10 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 			if (selected.has(packageResourceChildRowId(item, resource))) selectedPaths.add(resource.packageRelativePath);
 		}
 		const filters: Partial<Record<PackageResourceFilterKey, string[] | null>> = {};
-		if (selectedPaths.size === 0) {
-			for (const key of packageResourceFilterKeys) filters[key] = [];
-		} else {
-			for (const kind of directResourceKinds) {
-				const kindResources = resources.filter((resource) => resource.kind === kind);
-				if (kindResources.length === 0) continue;
-				const selectedKindPaths = kindResources.filter((resource) => selectedPaths.has(resource.packageRelativePath)).map((resource) => resource.packageRelativePath).sort();
-				filters[packageFilterKeyForKind[kind]] = selectedKindPaths.length === kindResources.length ? null : selectedKindPaths;
-			}
+		for (const kind of directResourceKinds) {
+			const kindResources = resources.filter((resource) => resource.kind === kind);
+			const selectedKindPaths = kindResources.filter((resource) => selectedPaths.has(resource.packageRelativePath)).map((resource) => resource.packageRelativePath).sort();
+			filters[packageFilterKeyForKind[kind]] = selectedKindPaths;
 		}
 		plans.push({ item, resources, selectedPaths, filters, selectedCount: selectedPaths.size });
 	}
@@ -630,6 +625,7 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	];
 	if (installCount > 0) lines.push("Available packages are installed project-local, then immediately narrowed with native Pi package filters.");
 	lines.push(
+		"Resource-level selection writes an explicit package-resource allowlist; future package-added resources stay disabled until selected.",
 		"No package files are copied into .pi/ and no saved loadout recipe is changed.",
 		"Package row selections are ignored while resource-level changes are pending.",
 		"",
@@ -688,19 +684,22 @@ export async function handleDashboard(pi: ExtensionAPI, ctx: ExtensionCommandCon
 			const resources = resourcesForPackage(packageItem, sessionPackageResources);
 			const children = packageResourceChildren(packageItem, sessionPackageResources);
 			if (resources.length > 1) return children;
+			const emptyLines =
+				resources.length === 1
+					? [
+						"Inspected: one package resource found, so this stays a whole-package row.",
+						`${resourceLabel(resources[0])}: ${resources[0].packageRelativePath}`,
+						"Select the package row and press Enter to install it normally.",
+					]
+					: ["Inspected: no package-contained resources resolved.", "Select the package row and press Enter to install it normally."];
 			return {
 				children: [],
+				quietEmpty: true,
+				emptyDescription: emptyLines.join("\n"),
 				empty: {
 					title: `Package resources: ${packageItem.label}`,
 					confirmHint: "Press Enter/Esc to return",
-					lines:
-						resources.length === 1
-							? [
-								"This package contains one Pi resource, so Construct keeps it as a whole-package row instead of opening a child picker.",
-								`- ${resourceLabel(resources[0])}: ${resources[0].packageRelativePath}`,
-								"Select the package row and press Enter to install it normally.",
-							]
-							: ["No package-contained resources resolved for this package.", "Select the package row and press Enter to install it normally."],
+					lines: emptyLines,
 				},
 			};
 		},

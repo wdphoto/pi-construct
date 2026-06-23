@@ -128,8 +128,8 @@ Filter encoding:
 
 - selected resources use plain exact relative paths, e.g. `skills/foo/SKILL.md`;
 - empty arrays disable all resources of that kind;
-- omitted keys mean package defaults;
-- when all currently visible resources of a kind are selected, Construct clears that key back to Pi defaults;
+- omitted keys mean package defaults and are used by whole-package row actions, not by child-resource plucking;
+- child-resource selection writes an explicit allowlist across all four package resource kinds, so future package-added resources remain disabled until selected;
 - when no resources are selected for a package, Construct writes all four keys as empty arrays so the package is whole-package disabled.
 
 Important Pi detail:
