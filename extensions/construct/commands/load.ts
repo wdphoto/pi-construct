@@ -32,21 +32,22 @@ interface LoadArgs {
 	queries: string[];
 }
 
-async function constructManagedSources(paths: Awaited<ReturnType<typeof getPaths>>): Promise<Set<string>> {
+async function constructManagedPackageStates(paths: Awaited<ReturnType<typeof getPaths>>): Promise<Map<string, boolean | undefined>> {
 	const construct = await readJson(paths.projectConstructPath);
-	const sources = new Set<string>();
+	const sources = new Map<string, boolean | undefined>();
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return sources;
 	for (const value of Object.values(construct.data.items)) {
 		if (!isObject(value) || value.kind !== "package") continue;
 		const identity = await managedPackageSourceIdentity(value, paths);
-		for (const source of identity.matchSources) sources.add(source);
+		const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
+		for (const source of identity.matchSources) sources.set(source, enabled);
 	}
 	return sources;
 }
 
 export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof getPaths>>): Promise<{ adoptable: LoadCandidate[]; alreadyManaged: LoadCandidate[] }> {
 	const settings = await readJson(paths.projectSettingsPath);
-	const managedSources = await constructManagedSources(paths);
+	const managedPackageStates = await constructManagedPackageStates(paths);
 	const { catalog } = await loadCatalog({ cwd: paths.cwd });
 	const catalogItemsBySource = new Map<string, string>();
 	for (const item of catalog.items) {
@@ -64,7 +65,9 @@ export async function projectLoadCandidates(paths: Awaited<ReturnType<typeof get
 		seen.add(source);
 		const catalogId = catalogItemsBySource.get(pkg.source) ?? catalogItemsBySource.get(source);
 		const candidate: LoadCandidate = { kind: "package", id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined, disabledByFilters: pkg.disabledByFilters };
-		if (managedSources.has(pkg.source) || managedSources.has(source)) alreadyManaged.push(candidate);
+		const managedState = managedPackageStates.has(pkg.source) ? managedPackageStates.get(pkg.source) : managedPackageStates.get(source);
+		if (managedState === false && !pkg.disabledByFilters) adoptable.push(candidate);
+		else if (managedState !== undefined || managedPackageStates.has(pkg.source) || managedPackageStates.has(source)) alreadyManaged.push(candidate);
 		else adoptable.push(candidate);
 	}
 	return {

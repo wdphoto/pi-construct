@@ -219,6 +219,35 @@ grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json'
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct scan .' 2>&1)"
 grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
 
+printf '== load re-arms disabled metadata with active settings ==\n'
+HOME_REARM="$TMP/home-rearm-drift"
+PROJECT_REARM="$TMP/project-rearm-drift"
+mkdir -p "$HOME_REARM" "$PROJECT_REARM/.pi"
+python3 - "$PROJECT_REARM" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+project = pathlib.Path(sys.argv[1])
+source = sys.argv[2]
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [source]}, indent=2) + "\n")
+(project / ".pi/construct.json").write_text(json.dumps({
+  "version": 1,
+  "managedBy": "the-construct",
+  "items": {
+    "construct-invalid-drift-package": {
+      "kind": "package",
+      "source": source,
+      "enabled": False
+    }
+  }
+}, indent=2) + "\n")
+PY
+OUTPUT="$(construct_pi "$HOME_REARM" "$PROJECT_REARM" '/construct load' 2>&1)"
+grep -Fq 'Project items armed: 1' <<<"$OUTPUT"
+OUTPUT="$(construct_pi "$HOME_REARM" "$PROJECT_REARM" '/construct status' 2>&1)"
+grep -Fq 'Construct-managed: 1 enabled · 0 disabled' <<<"$OUTPUT"
+! grep -Fq 'drift:' <<<"$OUTPUT"
+
 printf '== normalized local path does not drift ==\n'
 HOME_F="$TMP/home-normalized-status"
 PROJECT_F="$TMP/project-normalized-status"
