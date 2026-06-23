@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Show read-only project package internals in `/construct status full` as groundwork for future dashboard package-resource inspection.
+
 ## 0.0.19 - 2026-06-23
 
 ### Changed

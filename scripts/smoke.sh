@@ -10,7 +10,7 @@ PROJECT_DIR="$TMP/project"
 PKG_DIR="$TMP/pkg"
 PKG2_DIR="$TMP/pkg-two"
 SCAN_PROJECT_DIR="$TMP/scan-project"
-mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG2_DIR/extensions" "$SCAN_PROJECT_DIR/.pi/skills/helper" "$SCAN_PROJECT_DIR/.pi/prompts" "$SCAN_PROJECT_DIR/.pi/themes" "$SCAN_PROJECT_DIR/.pi/extensions/tool"
+mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG_DIR/skills/helper" "$PKG_DIR/prompts" "$PKG_DIR/themes" "$PKG2_DIR/extensions" "$SCAN_PROJECT_DIR/.pi/skills/helper" "$SCAN_PROJECT_DIR/.pi/prompts" "$SCAN_PROJECT_DIR/.pi/themes" "$SCAN_PROJECT_DIR/.pi/extensions/tool"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -18,7 +18,10 @@ cat > "$PKG_DIR/package.json" <<'JSON'
   "version": "0.0.0",
   "type": "module",
   "pi": {
-    "extensions": ["extensions/noop.ts"]
+    "extensions": ["extensions/noop.ts"],
+    "skills": ["skills/helper/SKILL.md"],
+    "prompts": ["prompts/review.md"],
+    "themes": ["themes/simple.json"]
   }
 }
 JSON
@@ -26,6 +29,21 @@ JSON
 cat > "$PKG_DIR/extensions/noop.ts" <<'TS'
 export default function noop() {}
 TS
+cat > "$PKG_DIR/skills/helper/SKILL.md" <<'MD'
+---
+name: package-helper
+description: Helps package resource smoke tests.
+---
+# Package Helper
+MD
+cat > "$PKG_DIR/prompts/review.md" <<'MD'
+Review this package resource.
+MD
+cat > "$PKG_DIR/themes/simple.json" <<'JSON'
+{
+  "name": "package-simple"
+}
+JSON
 
 cat > "$PKG2_DIR/package.json" <<'JSON'
 {
@@ -90,6 +108,14 @@ run_pi() {
   run_pi_in "$PROJECT_DIR" "$1"
 }
 
+run_pi_approved() {
+  local prompt="$1"
+  (
+    cd "$PROJECT_DIR"
+    HOME="$HOME_DIR" pi --no-extensions -e "$ROOT" --approve -p "$prompt"
+  )
+}
+
 quiet_pi() {
   run_pi "$1" >/dev/null 2>&1
 }
@@ -146,6 +172,14 @@ printf '== dashboard sees managed package ==\n'
 DASHBOARD_OUTPUT="$(run_pi '/construct')"
 [[ "$DASHBOARD_OUTPUT" == *"Active"* ]]
 [[ "$DASHBOARD_OUTPUT" == *"construct-fixture-pkg"* || "$DASHBOARD_OUTPUT" == *"pkg"* ]]
+STATUS_FULL_OUTPUT="$(run_pi_approved '/construct status full')"
+[[ "$STATUS_FULL_OUTPUT" == *"Package-contained resources: 4 (project packages only)"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"extensions: 1"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"skills: 1"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"prompts: 1"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"themes: 1"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"skill helper (enabled)"* ]]
+[[ "$STATUS_FULL_OUTPUT" == *"skills/helper/SKILL.md"* ]]
 
 printf '== disabled package filters are recognized ==\n'
 python3 - "$PROJECT_DIR" "$PKG_DIR" <<'PY'

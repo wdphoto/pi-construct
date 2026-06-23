@@ -49,6 +49,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Tighten verbose status reporting for normalized local package paths vs raw `.pi/settings.json` strings.
 - [x] Add read-only verbose status visibility for effective runtime command/tool sources and duplicate public names.
 - [x] Add quiet first-run dashboard messaging when a project has no `.pi/construct.json`; this is informational only and does not create metadata.
+- [x] Add read-only `/construct status full` visibility for project package-contained resources as the first package-plucking research step.
 
 ## v0.0.x — inventory/reconciliation cleanup
 

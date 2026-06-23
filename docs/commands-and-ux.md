@@ -24,7 +24,7 @@ User-facing copy should prefer **library** over **catalog** except when naming t
 
 ## `/construct status`
 
-Status is read-only. `/construct status` gives a compact current-project summary, and `/construct status full` gives diagnostics for JSON files, Construct library state, project package/direct-resource inventory, and runtime command/tool inventory. Verbose status may also note known-project entries whose saved paths no longer exist; those notes are informational only and Construct does not prune the known-project index automatically.
+Status is read-only. `/construct status` gives a compact current-project summary, and `/construct status full` gives diagnostics for JSON files, Construct library state, project package/direct-resource inventory, project package-contained resource inventory, and runtime command/tool inventory. Package-contained resources are reported read-only for now as groundwork for a future dashboard inspection/plucking flow. Verbose status may also note known-project entries whose saved paths no longer exist; those notes are informational only and Construct does not prune the known-project index automatically.
 
 ## `/construct scan`
 

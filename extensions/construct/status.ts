@@ -3,11 +3,12 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { formatCatalogItem } from "./catalog.js";
 import { describeRead } from "./json.js";
 import { CONSTRUCT_TITLE } from "./metadata.js";
+import { collectProjectPackageResources, type PackageResourceInventory, type PackageResourceSummary } from "./package-resources.js";
 import { collectProjectInventory, type ProjectInventory } from "./project-inventory.js";
 import { formatList } from "./project-settings.js";
 import { missingKnownProjectEntries } from "./projects.js";
 import { directResourceKinds, resourcePlural } from "./resources.js";
-import { normalizeSourceForLibrary } from "./sources.js";
+import { formatPackageSourceLabel, normalizeSourceForLibrary } from "./sources.js";
 
 interface StatusData {
 	inventory: ProjectInventory;
@@ -17,6 +18,7 @@ interface StatusData {
 	mode: ExtensionCommandContext["mode"];
 	hasUI: boolean;
 	trusted: boolean;
+	packageResources?: PackageResourceInventory;
 }
 
 function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
@@ -30,15 +32,17 @@ function parseStatusMode(args = ""): { verbose: boolean; warnings: string[] } {
 	return { verbose, warnings };
 }
 
-async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<StatusData> {
+async function collectStatusData(pi: ExtensionAPI, ctx: ExtensionCommandContext, options: { packageResources?: boolean } = {}): Promise<StatusData> {
+	const inventory = await collectProjectInventory(ctx);
 	return {
-		inventory: await collectProjectInventory(ctx),
+		inventory,
 		commands: pi.getCommands(),
 		tools: pi.getAllTools(),
 		activeTools: pi.getActiveTools(),
 		mode: ctx.mode,
 		hasUI: ctx.hasUI,
 		trusted: ctx.isProjectTrusted(),
+		packageResources: options.packageResources ? await collectProjectPackageResources(ctx, inventory) : undefined,
 	};
 }
 
@@ -117,6 +121,38 @@ function directResourceLine(resource: ProjectInventory["directResources"]["resou
 	return `- ${resource.kind} ${resource.name} (${enabled}, ${resource.source}, ${directResourceState(resource)}${settingsPath}) — ${resource.displayPath}`;
 }
 
+function packageResourceLine(resource: PackageResourceSummary): string {
+	const enabled = resource.enabled ? "enabled" : "disabled";
+	return `  - ${resource.kind} ${resource.name} (${enabled}) — ${resource.packageRelativePath}`;
+}
+
+function packageResourceGroupLines(packageResources: PackageResourceInventory | undefined): string[] {
+	if (!packageResources) return ["Package-contained resources: not collected"];
+	const resources = packageResources.resources;
+	if (resources.length === 0) return ["Package-contained resources: 0", "- no project package resources resolved"];
+	const bySource = new Map<string, PackageResourceSummary[]>();
+	for (const resource of resources) {
+		const group = bySource.get(resource.packageSource) ?? [];
+		group.push(resource);
+		bySource.set(resource.packageSource, group);
+	}
+	const lines = [`Package-contained resources: ${resources.length} (project packages only)`];
+	for (const [source, group] of [...bySource.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+		const enabled = group.filter((resource) => resource.enabled).length;
+		const disabled = group.length - enabled;
+		const managed = group.some((resource) => resource.packageManaged);
+		const managedId = group.find((resource) => resource.packageManagedId)?.packageManagedId;
+		lines.push(`- ${formatPackageSourceLabel(source)}: ${enabled} enabled · ${disabled} disabled${managedId ? ` · managed ${managedId}` : managed ? " · managed" : " · unmanaged"}`);
+		for (const kind of directResourceKinds) {
+			const kindResources = group.filter((resource) => resource.kind === kind);
+			if (kindResources.length === 0) continue;
+			lines.push(`  ${resourcePlural(kind)}: ${kindResources.length}`);
+			lines.push(...kindResources.map(packageResourceLine));
+		}
+	}
+	return lines;
+}
+
 async function packageDeclarationLine(pkg: ProjectInventory["packageDeclarations"][number], settingsDir: string): Promise<string> {
 	const details: string[] = [pkg.form];
 	if (pkg.disabledByFilters) details.push("disabled by filters");
@@ -185,6 +221,7 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		const resources = inventory.directResources.resources.filter((resource) => resource.kind === kind);
 		return [`${resourcePlural(kind)}: ${resources.length}`, ...formatList(resources.map(directResourceLine), `no project ${resourcePlural(kind)}`)];
 	});
+	const packageResourceLines = packageResourceGroupLines(data.packageResources);
 
 	return [
 		"Construct status details",
@@ -218,6 +255,8 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		`Project settings: ${describeRead(inventory.reads.projectSettings)}`,
 		`Package declarations: ${inventory.packageDeclarations.length}`,
 		...formatList(packageLines, "no project packages declared"),
+		...packageResourceLines,
+		...(data.packageResources?.warnings ?? []).map((warning) => `! ${warning}`),
 		`Construct metadata: ${describeRead(inventory.reads.projectConstruct)}`,
 		`Construct-managed items: ${inventory.managedItems.length}`,
 		...formatList(managedLines, "no Construct-managed items"),
@@ -239,6 +278,6 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 
 export async function buildStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext, args = ""): Promise<string> {
 	const mode = parseStatusMode(args);
-	const data = await collectStatusData(pi, ctx);
+	const data = await collectStatusData(pi, ctx, { packageResources: mode.verbose });
 	return mode.verbose ? await buildVerboseStatus(data, mode.warnings) : buildCompactStatus(data, mode.warnings);
 }
