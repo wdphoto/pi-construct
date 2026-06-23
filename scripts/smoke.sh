@@ -256,7 +256,7 @@ UNKNOWN_OUTPUT="$(run_pi '/construct sync')"
 [[ "$UNKNOWN_OUTPUT" == *"/construct unload"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct list"* ]]
 [[ "$UNKNOWN_OUTPUT" == *"/construct share <saved-name>"* ]]
-[[ "$UNKNOWN_OUTPUT" == *"/construct remove <saved-name>"* ]]
+[[ "$UNKNOWN_OUTPUT" == *"/construct wipe <saved-name>"* ]]
 RELOAD_OUTPUT="$(run_pi '/construct reload')"
 [[ "$RELOAD_OUTPUT" == *"Unknown /construct subcommand: reload"* ]]
 COPY_OUTPUT="$(run_pi '/construct copy')"
@@ -270,7 +270,9 @@ RUN_OUTPUT="$(run_pi '/construct run')"
 SHARE_OUTPUT="$(run_pi '/construct share')"
 [[ "$SHARE_OUTPUT" == *"Usage: /construct share <saved-name>"* ]]
 REMOVE_OUTPUT="$(run_pi '/construct remove')"
-[[ "$REMOVE_OUTPUT" == *"Usage: /construct remove <saved-name>"* ]]
+[[ "$REMOVE_OUTPUT" == *"Unknown /construct subcommand: remove"* ]]
+WIPE_OUTPUT="$(run_pi '/construct wipe')"
+[[ "$WIPE_OUTPUT" == *"Usage: /construct wipe <saved-name>"* ]]
 DASHBOARD_ALIAS_OUTPUT="$(run_pi '/construct dashboard')"
 [[ "$DASHBOARD_ALIAS_OUTPUT" == *"Unknown /construct subcommand: dashboard"* ]]
 

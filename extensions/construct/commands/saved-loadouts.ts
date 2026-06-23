@@ -33,7 +33,7 @@ function usage(): string {
 		"/construct save <name>",
 		"/construct run <saved-name>",
 		"/construct share <saved-name>",
-		"/construct remove <saved-name>",
+		"/construct wipe <saved-name>",
 		"/construct import [json]",
 		"",
 		"Saved loadouts are named groups of active Construct package sources. Direct project-local resources are not included yet.",
@@ -425,14 +425,14 @@ async function runSavedLoadout(pi: ExtensionAPI, ctx: ExtensionCommandContext, q
 	await showSummary(ctx, runResultText(result));
 }
 
-async function confirmRemoveSavedLoadout(ctx: ExtensionCommandContext, profile: CatalogProfile, sources: string[]): Promise<boolean> {
+async function confirmWipeSavedLoadout(ctx: ExtensionCommandContext, profile: CatalogProfile, sources: string[]): Promise<boolean> {
 	if (ctx.mode !== "tui") return true;
 	return ctx.ui.custom<boolean>((_tui, theme, keybindings, done) => {
 		const lines = [
 			`Saved loadout: ${profile.id}`,
 			`Package sources: ${sources.length}`,
 			"",
-			"This removes only the saved recipe.",
+			"This deletes only the saved recipe.",
 			"It will not uninstall packages, disable resources, edit this project, or remove sources from the Construct library.",
 		];
 		let cachedWidth: number | undefined;
@@ -443,7 +443,7 @@ async function confirmRemoveSavedLoadout(ctx: ExtensionCommandContext, profile: 
 		}
 		function render(width: number): string[] {
 			if (cachedLines && cachedWidth === width) return cachedLines;
-			const rendered = [theme.fg("warning", theme.bold(`Remove saved loadout: ${profile.id}`)), "", ...lines, "", theme.fg("warning", "  Enter removes · Esc cancels")];
+			const rendered = [theme.fg("warning", theme.bold(`Wipe saved loadout: ${profile.id}`)), "", ...lines, "", theme.fg("warning", "  Enter wipes · Esc cancels")];
 			cachedWidth = width;
 			cachedLines = rendered.map((line) => truncateToWidth(line, width));
 			return cachedLines;
@@ -456,15 +456,15 @@ async function confirmRemoveSavedLoadout(ctx: ExtensionCommandContext, profile: 
 	});
 }
 
-async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
+async function wipeSavedLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
 	const requested = query.trim();
 	if (!requested) {
-		showText(ctx, "Usage: /construct remove <saved-name>");
+		showText(ctx, "Usage: /construct wipe <saved-name>");
 		return;
 	}
 	const before = await loadCatalog(ctx);
 	if (before.read.state === "ok" && before.warnings.length > 0) {
-		showText(ctx, ["Saved loadout not removed.", `Fix ${before.paths.userCatalogPath} first.`, ...before.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		showText(ctx, ["Saved loadout not wiped.", `Fix ${before.paths.userCatalogPath} first.`, ...before.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 	const profile = findSavedLoadout(before.catalog, requested);
@@ -473,19 +473,19 @@ async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): 
 		return;
 	}
 	const sources = savedLoadoutSources(before.catalog, profile);
-	const confirmed = await confirmRemoveSavedLoadout(ctx, profile, sources);
+	const confirmed = await confirmWipeSavedLoadout(ctx, profile, sources);
 	if (!confirmed) {
-		showText(ctx, "Saved loadout removal cancelled. No files were changed.");
+		showText(ctx, "Saved loadout wipe cancelled. No files were changed.");
 		return;
 	}
-	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct remove saved loadout");
+	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct wipe saved loadout");
 	if (!ready) {
-		showText(ctx, "Saved loadout removal cancelled. No files were changed.");
+		showText(ctx, "Saved loadout wipe cancelled. No files were changed.");
 		return;
 	}
 	const fresh = await loadCatalog(ctx);
 	if (fresh.read.state === "ok" && fresh.warnings.length > 0) {
-		showText(ctx, ["Saved loadout not removed.", `Fix ${fresh.paths.userCatalogPath} first.`, ...fresh.warnings.map((warning) => `! ${warning}`)].join("\n"));
+		showText(ctx, ["Saved loadout not wiped.", `Fix ${fresh.paths.userCatalogPath} first.`, ...fresh.warnings.map((warning) => `! ${warning}`)].join("\n"));
 		return;
 	}
 	const current = findSavedLoadout(fresh.catalog, profile.id) ?? findSavedLoadout(fresh.catalog, requested);
@@ -495,7 +495,7 @@ async function removeSavedLoadout(ctx: ExtensionCommandContext, query: string): 
 	}
 	const profiles = fresh.catalog.profiles.filter((entry) => entry.id !== current.id);
 	await writeJson(fresh.paths.userCatalogPath, { ...fresh.catalog, version: 1, profiles });
-	await showSummary(ctx, [`Removed saved loadout: ${current.id}`, "No project files were changed."].join("\n"));
+	await showSummary(ctx, [`Wiped saved loadout: ${current.id}`, "No project files were changed."].join("\n"));
 }
 
 async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promise<void> {
@@ -754,8 +754,8 @@ export async function handleSavedLoadoutCommand(pi: ExtensionAPI, args: string, 
 		await shareLoadout(ctx, rest);
 		return;
 	}
-	if (command === "remove") {
-		await removeSavedLoadout(ctx, rest);
+	if (command === "wipe") {
+		await wipeSavedLoadout(ctx, rest);
 		return;
 	}
 	if (command === "import") {

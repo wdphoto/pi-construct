@@ -26,7 +26,7 @@ Protect the manual product model:
 /construct list
 /construct run <saved-name>
 /construct share <saved-name>
-/construct remove <saved-name>
+/construct wipe <saved-name>
 /construct import [json]
 ```
 
@@ -94,7 +94,7 @@ Expected:
 - `/construct run <saved-name>` turns those package sources on in the current project and uses the TUI progress/result/reload panel.
 - Saved loadouts appear as compact `◆` rows in `/construct`; focusing one marks member package rows with `[·]`, pressing Enter runs it additively, and pressing Space quick-selects its selectable member package rows.
 - `/construct share <saved-name>` prints a package-source JSON snippet and warns for local paths.
-- `/construct remove <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.
+- `/construct wipe <saved-name>` deletes only the saved recipe and does not edit project files, uninstall/disable packages, or remove package sources from the Construct library.
 - `/construct import` opens a TUI paste box; `/construct import <json>` validates snippets, previews in non-TUI without writing, and confirms before writing in TUI.
 - Saved loadouts are stored in `~/.pi/agent/construct/catalog.json` as internal profiles.
 - Saved loadouts store ids/package sources, not package code, scripts, or direct project-local resource files.

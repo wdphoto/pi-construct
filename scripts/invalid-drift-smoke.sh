@@ -219,6 +219,7 @@ grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json'
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct scan .' 2>&1)"
 grep -Fq 'Drifted Construct metadata: 1' <<<"$OUTPUT"
 grep -Fq 'Drifted Construct metadata' <<<"$OUTPUT"
+grep -Fq 'Run /construct scan in TUI to select drifted metadata for reconciliation. Print scan is read-only.' <<<"$OUTPUT"
 grep -Fq 'disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"
 OUTPUT="$(construct_pi "$HOME_E" "$PROJECT_E" '/construct' 2>&1)"
 grep -Fq 'drift: disabled in Construct metadata, missing from .pi/settings.json' <<<"$OUTPUT"

@@ -9,6 +9,7 @@ import {
 	parseProjectConstruct,
 	uniqueManagedId,
 	upsertConstructItem,
+	removeMatchingConstructPackageItems,
 	removeMatchingPackageDeclaration,
 	setDirectResourceEnabled,
 	setMatchingPackageResourcesDisabled,
@@ -238,10 +239,9 @@ export async function removePackageFromProject(
 	}
 
 	try {
-		if (input.id) {
-			const construct = await readJson(paths.projectConstructPath);
-			await writeJson(paths.projectConstructPath, updateConstructItemEnabled(construct, input.id, false));
-		}
+		const construct = await readJson(paths.projectConstructPath);
+		const removedMetadata = await removeMatchingConstructPackageItems(construct, paths, input.source, { id: input.id });
+		if (removedMetadata.removed > 0) await writeJson(paths.projectConstructPath, removedMetadata.construct);
 		await rememberKnownProject({ cwd: paths.cwd });
 	} catch (error) {
 		return {

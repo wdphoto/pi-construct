@@ -231,9 +231,9 @@ assert any(str((pathlib.Path(entry) if pathlib.Path(entry).is_absolute() else pr
 assert any((item.get("source") == source or item.get("requestedSource") == source) and item.get("enabled") is True for item in construct.get("items", {}).values()), construct
 PY
 
-printf '== remove saved loadout recipe only ==\n'
-REMOVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct remove pi-projects' 2>&1)"
-grep -Fq 'Removed saved loadout: pi-projects' <<<"$REMOVE_PROFILE_OUTPUT"
+printf '== wipe saved loadout recipe only ==\n'
+REMOVE_PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct wipe pi-projects' 2>&1)"
+grep -Fq 'Wiped saved loadout: pi-projects' <<<"$REMOVE_PROFILE_OUTPUT"
 grep -Fq 'No project files were changed.' <<<"$REMOVE_PROFILE_OUTPUT"
 PROFILE_LIST_AFTER_REMOVE="$(construct_pi "$PROJECT_B" '/construct list' 2>&1)"
 ! grep -Fq 'pi-projects' <<<"$PROFILE_LIST_AFTER_REMOVE"
@@ -286,5 +286,7 @@ PROFILE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct profile list' 2>&1)"
 grep -Fq 'Unknown /construct subcommand: profile' <<<"$PROFILE_OUTPUT"
 SAVED_OUTPUT="$(construct_pi "$PROJECT_B" '/construct saved' 2>&1)"
 grep -Fq 'Unknown /construct subcommand: saved' <<<"$SAVED_OUTPUT"
+REMOVE_OUTPUT="$(construct_pi "$PROJECT_B" '/construct remove pi-projects' 2>&1)"
+grep -Fq 'Unknown /construct subcommand: remove' <<<"$REMOVE_OUTPUT"
 
 printf 'e2e smoke ok\n'

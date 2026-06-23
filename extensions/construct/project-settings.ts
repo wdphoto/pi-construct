@@ -194,6 +194,71 @@ function sourceSetsOverlap(a: Set<string>, b: Set<string>): boolean {
 	return false;
 }
 
+export function removeConstructItemsById(construct: JsonObject, ids: Iterable<string>): { construct: JsonObject; removed: number } {
+	const removals = new Set(ids);
+	if (removals.size === 0) return { construct, removed: 0 };
+	const items = isObject(construct.items) ? construct.items : {};
+	const nextItems: JsonObject = {};
+	let removed = 0;
+	for (const [id, value] of Object.entries(items)) {
+		if (removals.has(id)) {
+			removed += 1;
+			continue;
+		}
+		nextItems[id] = value;
+	}
+	if (removed === 0) return { construct, removed: 0 };
+	return {
+		construct: {
+			...construct,
+			version: 1,
+			managedBy: "the-construct",
+			items: nextItems,
+		},
+		removed,
+	};
+}
+
+export async function removeMatchingConstructPackageItems(
+	constructRead: JsonReadResult,
+	paths: ConstructPaths,
+	source: string,
+	options: { id?: string } = {},
+): Promise<{ construct: JsonObject; removed: number }> {
+	const construct = parseProjectConstruct(constructRead);
+	const items = isObject(construct.items) ? construct.items : {};
+	const targetIdentity = await packageSourceIdentity(source, source, paths);
+	const nextItems: JsonObject = {};
+	let removed = 0;
+	for (const [id, value] of Object.entries(items)) {
+		if (!isObject(value) || value.kind !== "package") {
+			nextItems[id] = value;
+			continue;
+		}
+		if (options.id === id) {
+			removed += 1;
+			continue;
+		}
+		const identity = await managedPackageSourceIdentity(value, paths);
+		const normalizedMatches = Boolean(identity.normalizedInstallSource && targetIdentity.normalizedInstallSource && identity.normalizedInstallSource === targetIdentity.normalizedInstallSource);
+		if (normalizedMatches || sourceSetsOverlap(identity.matchSources, targetIdentity.matchSources)) {
+			removed += 1;
+			continue;
+		}
+		nextItems[id] = value;
+	}
+	if (removed === 0) return { construct, removed: 0 };
+	return {
+		construct: {
+			...construct,
+			version: 1,
+			managedBy: "the-construct",
+			items: nextItems,
+		},
+		removed,
+	};
+}
+
 export async function uniqueManagedIdInConstruct(construct: JsonObject, baseId: string, declaredSource: string, requestedSource: string, paths: ConstructPaths): Promise<string> {
 	const items = isObject(construct.items) ? construct.items : {};
 	const targetIdentity = await packageSourceIdentity(declaredSource, requestedSource, paths);

@@ -77,7 +77,7 @@ Current direct-resource support includes inventory in `/construct status full`, 
 /construct list
 /construct run <saved-name>
 /construct share <saved-name>
-/construct remove <saved-name>
+/construct wipe <saved-name>
 /construct import [json]
 ```
 

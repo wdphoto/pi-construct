@@ -5,8 +5,8 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { deriveId, parseCatalog } from "../catalog.js";
 import { loadProjectResourcesIntoConstruct } from "./load.js";
-import { describeJsonReadIssue, isObject, readJson } from "../json.js";
-import { collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages } from "../project-settings.js";
+import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
+import { collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages, removeConstructItemsById } from "../project-settings.js";
 import { directResourceKey, directResourceKinds, directResourceName } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import type { ConstructPaths, DirectResourceKind, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "../types.js";
@@ -173,6 +173,19 @@ function formatPackageFinding(pkg: ScanPackageFinding): string {
 
 function formatResourceFinding(resource: ScanResourceFinding): string {
 	return `${resource.kind} ${resource.name} — ${resource.relativePath}`;
+}
+
+const scanResourceKindOrder: DirectResourceKind[] = ["extension", "skill", "prompt", "theme"];
+
+function resourceKindLabel(kind: DirectResourceKind): string {
+	if (kind === "extension") return "Direct extensions";
+	if (kind === "skill") return "Direct skills";
+	if (kind === "prompt") return "Direct prompts";
+	return "Direct themes";
+}
+
+function scanSectionLabel(display: ScanDisplayContext, project: ScanProject, label: string): string {
+	return `${formatProjectPath(display, project)} · ${label}`;
 }
 
 async function directChildren(dir: string): Promise<import("node:fs").Dirent[]> {
@@ -346,6 +359,10 @@ function projectHasUnloaded(project: ScanProject): boolean {
 	return project.unloadedPackages.length > 0 || project.unloadedResources.length > 0;
 }
 
+function projectHasScanFindings(project: ScanProject): boolean {
+	return projectHasUnloaded(project) || project.driftedMetadata.length > 0;
+}
+
 function formatProjectPath(display: ScanDisplayContext, project: Pick<ScanProject, "path">): string {
 	if (!display.basePath) return toPosixPath(project.path);
 	const rel = relative(display.basePath, project.path);
@@ -376,15 +393,23 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 		lines.push("", "Unloaded resources", "------------------");
 		for (const project of projectsWithUnloaded) {
 			lines.push(formatProjectPath(display, project));
-			for (const pkg of project.unloadedPackages) lines.push(`- package ${formatPackageFinding(pkg)}`);
-			for (const resource of project.unloadedResources) lines.push(`- ${formatResourceFinding(resource)}`);
+			if (project.unloadedPackages.length > 0) {
+				lines.push("  Package declarations");
+				for (const pkg of project.unloadedPackages) lines.push(`  - package ${formatPackageFinding(pkg)}`);
+			}
+			for (const kind of scanResourceKindOrder) {
+				const resources = project.unloadedResources.filter((resource) => resource.kind === kind);
+				if (resources.length === 0) continue;
+				lines.push(`  ${resourceKindLabel(kind)}`);
+				for (const resource of resources) lines.push(`  - ${formatResourceFinding(resource)}`);
+			}
 			lines.push("");
 		}
 		while (lines.at(-1) === "") lines.pop();
 	}
 
 	if (projectsWithDrift.length > 0) {
-		lines.push("", "Drifted Construct metadata", "--------------------------");
+		lines.push("", "Drifted Construct metadata", "--------------------------", "Run /construct scan in TUI to select drifted metadata for reconciliation. Print scan is read-only.");
 		for (const project of projectsWithDrift) {
 			lines.push(formatProjectPath(display, project));
 			for (const finding of project.driftedMetadata) lines.push(`- ${formatManagedItemDrift(finding)}`);
@@ -545,10 +570,39 @@ export async function buildScan(ctx: Pick<ExtensionCommandContext, "cwd" | "isPr
 	return formatScan(result.display, result.projects, result.skippedProjects, result.warnings);
 }
 
+type DriftRepairAction = "load" | "remove-metadata" | "mark-enabled" | "mark-disabled";
+
+interface DriftRepairSelection {
+	id: string;
+	action: DriftRepairAction;
+}
+
+interface ScanSelectionRequest {
+	project: ScanProject;
+	queries: string[];
+	drift: DriftRepairSelection[];
+}
+
+function driftRepairAction(item: ManagedItemSummary): DriftRepairAction | undefined {
+	if (item.kind !== "package" || !item.source || !item.drift) return undefined;
+	if (item.drift === "disabled in Construct metadata, still active in .pi/settings.json") return "load";
+	if (item.drift === "enabled in Construct metadata, disabled by package filters") return "mark-disabled";
+	if (item.drift.endsWith("missing from .pi/settings.json")) return "remove-metadata";
+	return undefined;
+}
+
+function driftRepairDescription(action: DriftRepairAction | undefined): string {
+	if (action === "load") return "Re-arm Construct metadata from the active package declaration.";
+	if (action === "mark-disabled") return "Mark Construct metadata disabled to match Pi package filters.";
+	if (action === "remove-metadata") return "Remove stale project Construct metadata; .pi/settings.json is not edited.";
+	return "Inspect drift; no automatic repair is available.";
+}
+
 function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 	const items: CheckboxPickerItem[] = [];
-	for (const project of result.projects.filter(projectHasUnloaded)) {
-		const section = formatProjectPath(result.display, project);
+	for (const project of result.projects.filter(projectHasScanFindings)) {
+		const packageSection = scanSectionLabel(result.display, project, "Package declarations");
+		const driftSection = scanSectionLabel(result.display, project, "Drifted metadata");
 		for (let index = 0; index < project.unloadedPackages.length; index += 1) {
 			const pkg = project.unloadedPackages[index]!;
 			items.push({
@@ -557,7 +611,7 @@ function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 				value: pkg.source,
 				description: `${pkg.missing.join(", ")}. Press Enter to load selected scan rows into Construct.`,
 				checked: false,
-				section,
+				section: packageSection,
 				sectionTone: "accent",
 				stateText: "pkg",
 				stateTone: "accent",
@@ -571,21 +625,38 @@ function scanFindingItems(result: ScanResult): CheckboxPickerItem[] {
 				value: resource.relativePath,
 				description: `Unadopted project ${resource.kind}. Press Enter to load selected scan rows into Construct.`,
 				checked: false,
-				section,
+				section: scanSectionLabel(result.display, project, resourceKindLabel(resource.kind)),
 				sectionTone: "accent",
 				stateText: resource.kind,
 				stateTone: resource.kind === "extension" ? "success" : "muted",
+			});
+		}
+		for (let index = 0; index < project.driftedMetadata.length; index += 1) {
+			const item = project.driftedMetadata[index]!;
+			const action = driftRepairAction(item);
+			items.push({
+				id: `drift:${project.path}:${index}`,
+				label: item.id,
+				value: item.source ?? item.drift ?? item.kind,
+				description: `${item.drift ?? "metadata drift"}. ${driftRepairDescription(action)}`,
+				checked: false,
+				disabled: action === undefined,
+				section: driftSection,
+				sectionTone: "accent",
+				stateText: "drift",
+				stateTone: "warning",
 			});
 		}
 	}
 	return items;
 }
 
-function selectedScanRequests(result: ScanResult, selectedIds: string[]): Array<{ project: ScanProject; queries: string[] }> {
+function selectedScanRequests(result: ScanResult, selectedIds: string[]): ScanSelectionRequest[] {
 	const selected = new Set(selectedIds);
-	const requests: Array<{ project: ScanProject; queries: string[] }> = [];
+	const requests: ScanSelectionRequest[] = [];
 	for (const project of result.projects) {
 		const queries: string[] = [];
+		const drift: DriftRepairSelection[] = [];
 		for (let index = 0; index < project.unloadedPackages.length; index += 1) {
 			if (selected.has(`package:${project.path}:${index}`)) queries.push(project.unloadedPackages[index]!.source);
 		}
@@ -593,9 +664,78 @@ function selectedScanRequests(result: ScanResult, selectedIds: string[]): Array<
 			const resource = project.unloadedResources[index]!;
 			if (selected.has(`${resource.kind}:${project.path}:${index}`)) queries.push(resource.relativePath);
 		}
-		if (queries.length > 0) requests.push({ project, queries });
+		for (let index = 0; index < project.driftedMetadata.length; index += 1) {
+			if (!selected.has(`drift:${project.path}:${index}`)) continue;
+			const item = project.driftedMetadata[index]!;
+			const action = driftRepairAction(item);
+			if (!action) continue;
+			if (action === "load" && item.source) queries.push(item.source);
+			else if (action !== "load") drift.push({ id: item.id, action });
+		}
+		if (queries.length > 0 || drift.length > 0) requests.push({ project, queries, drift });
 	}
 	return requests;
+}
+
+async function currentDriftedMetadata(projectDir: string): Promise<{ paths: ConstructPaths; construct: JsonReadResult; items: ManagedItemSummary[] }> {
+	const paths = projectPaths(projectDir);
+	paths.realCwd = await realpath(projectDir).catch(() => projectDir);
+	const [settings, construct] = await Promise.all([readJson(paths.projectSettingsPath), readJson(paths.projectConstructPath)]);
+	if (settings.state === "invalid") throw new Error(`Cannot repair drift because ${describeJsonReadIssue(".pi/settings.json", settings)}`);
+	if (settings.state === "ok" && !isObject(settings.data)) throw new Error("Cannot repair drift because .pi/settings.json is not a JSON object.");
+	if (construct.state === "invalid") throw new Error(`Cannot repair drift because ${describeJsonReadIssue(".pi/construct.json", construct)}`);
+	if (construct.state === "ok" && !isObject(construct.data)) throw new Error("Cannot repair drift because .pi/construct.json is not a JSON object.");
+	const settingsDir = dirname(paths.projectSettingsPath);
+	const packageSourceSets = await collectPackageSourceSets(getPackages(settings), settingsDir);
+	return {
+		paths,
+		construct,
+		items: (await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources)).filter((item) => item.drift),
+	};
+}
+
+async function repairDriftedMetadata(projectDir: string, selections: DriftRepairSelection[]): Promise<{ removed: number; updated: number; skipped: number; warnings: string[] }> {
+	if (selections.length === 0) return { removed: 0, updated: 0, skipped: 0, warnings: [] };
+	const warnings: string[] = [];
+	const selectedActionById = new Map(selections.map((selection) => [selection.id, selection.action]));
+	const { construct, items } = await currentDriftedMetadata(projectDir);
+	if (construct.state === "missing") return { removed: 0, updated: 0, skipped: selections.length, warnings: ["Project Construct metadata disappeared before repair."] };
+	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return { removed: 0, updated: 0, skipped: selections.length, warnings: ["Project Construct metadata has no items to repair."] };
+
+	const currentActionById = new Map<string, DriftRepairAction>();
+	for (const item of items) {
+		const action = driftRepairAction(item);
+		if (action) currentActionById.set(item.id, action);
+	}
+
+	const nextItems: Record<string, unknown> = { ...construct.data.items };
+	const removeIds: string[] = [];
+	const now = new Date().toISOString();
+	let updated = 0;
+	let skipped = 0;
+	for (const [id, selectedAction] of selectedActionById) {
+		const currentAction = currentActionById.get(id);
+		const value = nextItems[id];
+		if (currentAction !== selectedAction || !isObject(value)) {
+			skipped += 1;
+			continue;
+		}
+		if (selectedAction === "remove-metadata") {
+			removeIds.push(id);
+			continue;
+		}
+		if (selectedAction === "mark-enabled" || selectedAction === "mark-disabled") {
+			nextItems[id] = { ...value, enabled: selectedAction === "mark-enabled", updatedAt: now };
+			updated += 1;
+			continue;
+		}
+		skipped += 1;
+	}
+	const removal = removeConstructItemsById({ ...construct.data, items: nextItems }, removeIds);
+	if (removal.removed > 0 || updated > 0) await writeJson(projectPaths(projectDir).projectConstructPath, removal.construct);
+	if (removal.removed !== removeIds.length) skipped += removeIds.length - removal.removed;
+	if (skipped > 0) warnings.push(`Skipped drift repairs that changed before apply: ${skipped}`);
+	return { removed: removal.removed, updated, skipped, warnings };
 }
 
 async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResult): Promise<void> {
@@ -604,38 +744,58 @@ async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResul
 		await showSummary(ctx, formatScan(result.display, result.projects, result.skippedProjects, result.warnings));
 		return;
 	}
-	await pickCheckboxes(ctx, `Construct scan: ${items.length} unloaded finding${items.length === 1 ? "" : "s"}`, items, {
+	await pickCheckboxes(ctx, `Construct scan: ${items.length} finding${items.length === 1 ? "" : "s"}`, items, {
 		initialSelection: "empty",
 		filterLabel: "Filter findings",
-		filterHint: "Type to narrow by project/source/resource · Space selects",
-		confirmHint: "Enter loads selected",
-		footerHint: "  Type to search/filter · Space toggles · Enter loads selected into Construct · Esc closes\n  Scan loads package declarations plus project metadata; it never edits .pi/settings.json.",
+		filterHint: "Type to narrow by project/source/resource/drift · Space selects",
+		confirmHint: "Enter reconciles selected",
+		footerHint: "  Type to search/filter · Space toggles · Enter reconciles selected · Esc closes\n  Scan loads package declarations and repairs Construct metadata; it never edits .pi/settings.json.",
 		onSubmit: async (selectedIds, update, signal) => {
 			if (selectedIds.length === 0) {
 				return {
 					title: "No scan findings selected",
-					lines: ["Select findings with Space, then press Enter to load them into Construct.", "", "No files were changed."],
+					lines: ["Select findings with Space, then press Enter to reconcile them.", "", "No files were changed."],
 				};
 			}
 			const requests = selectedScanRequests(result, selectedIds);
-			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct scan load", update, signal);
-			if (!ready || signal.aborted) return { title: "Construct scan load cancelled", lines: ["No files were changed."] };
+			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct scan reconcile", update, signal);
+			if (!ready || signal.aborted) return { title: "Construct scan reconcile cancelled", lines: ["No files were changed."] };
 			const lines: string[] = [`Selected findings: ${selectedIds.length}`, `Projects: ${requests.length}`, ""];
 			let loadedPackages = 0;
 			let adoptedDirect = 0;
+			let removedMetadata = 0;
+			let repairedMetadata = 0;
 			let warningCount = 0;
 			for (let index = 0; index < requests.length; index += 1) {
-				if (signal.aborted) return { title: "Construct scan load cancelled", lines: [...lines, "", "Cancelled before finishing selected projects."] };
+				if (signal.aborted) return { title: "Construct scan reconcile cancelled", lines: [...lines, "", "Cancelled before finishing selected projects."] };
 				const request = requests[index]!;
 				const projectLabel = formatProjectPath(result.display, request.project);
-				update("Loading scan findings", [`Project ${index + 1}/${requests.length}: ${projectLabel}`, `Selected resources: ${request.queries.length}`]);
+				update("Reconciling scan findings", [`Project ${index + 1}/${requests.length}: ${projectLabel}`, `Selected findings: ${request.queries.length + request.drift.length}`]);
 				try {
-					const loadResult = await loadProjectResourcesIntoConstruct(request.project.path, request.queries);
-					loadedPackages += loadResult.metadataChanged;
-					adoptedDirect += loadResult.directMetadataChanged ?? 0;
-					warningCount += loadResult.warnings.length;
-					lines.push(projectLabel, `+ Packages armed: ${loadResult.metadataChanged}`, `+ Direct resources adopted: ${loadResult.directMetadataChanged ?? 0}`);
-					for (const warning of loadResult.warnings) lines.push(`! ${warning}`);
+					let projectLoadedPackages = 0;
+					let projectAdoptedDirect = 0;
+					let projectRemovedMetadata = 0;
+					let projectRepairedMetadata = 0;
+					const projectWarnings: string[] = [];
+					if (request.queries.length > 0) {
+						const loadResult = await loadProjectResourcesIntoConstruct(request.project.path, request.queries);
+						projectLoadedPackages += loadResult.metadataChanged;
+						projectAdoptedDirect += loadResult.directMetadataChanged ?? 0;
+						projectWarnings.push(...loadResult.warnings);
+					}
+					if (request.drift.length > 0) {
+						const repairResult = await repairDriftedMetadata(request.project.path, request.drift);
+						projectRemovedMetadata += repairResult.removed;
+						projectRepairedMetadata += repairResult.updated;
+						projectWarnings.push(...repairResult.warnings);
+					}
+					loadedPackages += projectLoadedPackages;
+					adoptedDirect += projectAdoptedDirect;
+					removedMetadata += projectRemovedMetadata;
+					repairedMetadata += projectRepairedMetadata;
+					warningCount += projectWarnings.length;
+					lines.push(projectLabel, `+ Packages armed: ${projectLoadedPackages}`, `+ Direct resources adopted: ${projectAdoptedDirect}`, `+ Stale metadata removed: ${projectRemovedMetadata}`, `+ Metadata state repaired: ${projectRepairedMetadata}`);
+					for (const warning of projectWarnings) lines.push(`! ${warning}`);
 				} catch (error) {
 					warningCount += 1;
 					lines.push(projectLabel, `! ${error instanceof Error ? error.message : String(error)}`);
@@ -644,12 +804,15 @@ async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResul
 			}
 			while (lines.at(-1) === "") lines.pop();
 			return {
-				title: "Construct scan load complete",
+				title: "Construct scan reconcile complete",
 				lines: [
 					`Packages armed: ${loadedPackages}`,
 					`Direct resources adopted: ${adoptedDirect}`,
+					`Stale metadata removed: ${removedMetadata}`,
+					`Metadata state repaired: ${repairedMetadata}`,
 					`Warnings: ${warningCount}`,
-					"No /reload needed; scan load only updates the Construct library and project metadata.",
+					"No /reload needed; scan reconcile updates the Construct library and project metadata only.",
+					".pi/settings.json was not edited.",
 					"",
 					...lines,
 				],

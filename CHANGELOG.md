@@ -6,12 +6,19 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+## 0.0.17 - 2026-06-23
+
 ### Fixed
 - Report disabled Construct metadata that is missing from `.pi/settings.json` as drift in `/construct status` and `/construct scan`.
 - Show drifted Construct metadata as a first-class `/construct scan` section instead of burying it in warnings.
+- Show drift-only scan results in the TUI checklist so selected stale metadata can be reconciled instead of ending at a read-only warning.
+- Group scan findings by type so package declarations are visually distinct from direct project extensions, skills, prompts, themes, and drift.
+- Add `FAQ.md` as the troubleshooting home for drift, reconcile, and edge-case recovery notes.
 - Warn on the dashboard when available rows are actually stale project metadata missing from `.pi/settings.json`.
 - Confirm before disabling selected active dashboard resources, so a restored loadout cannot be filtered off by one unguarded Enter press.
-- Clarify dashboard remove confirmation: `r` removes selected package declarations from the current project, while `/construct remove <name>` removes saved loadout recipes only.
+- Rename saved recipe deletion from `/construct remove <name>` to `/construct wipe <name>`, leaving “remove” to mean dashboard project package removal only.
+- Clarify dashboard remove confirmation: `r` removes selected package declarations from the current project, while `/construct wipe <name>` deletes saved loadout recipes only.
+- Remove matching project Construct metadata when dashboard project removal removes package declarations, so normal Construct removal does not leave stale drift behind.
 - Re-arm disabled project metadata from `/construct load` when the matching package declaration is active in `.pi/settings.json`.
 
 ## 0.0.16 - 2026-06-22

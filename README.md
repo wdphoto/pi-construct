@@ -2,9 +2,11 @@
 
 # The Construct
 
-The Construct is a small global [Pi](https://pi.dev) extension for managing project-level loadouts.
+The Construct is a global extension for [Pi](https://pi.dev) that manages loading project-level resources.
 
 It does **not** replace `pi install`, `pi remove`, or `pi config`. Normal Pi project files remain the source of truth. Construct remembers package sources you choose to load into its library, then gives you a fast `/construct` menu for installing, enabling, disabling, and removing those project package declarations. It also reports direct project-local Pi resources such as `.pi/skills/`, `.pi/prompts/`, `.pi/themes/`, and `.pi/extensions/`; `/construct load` can adopt them into advisory metadata so dashboard Enter can toggle them with Pi-native resource filters.
+
+For troubleshooting drift, reconcile, and edge-case recovery, see [`FAQ.md`](FAQ.md).
 
 ## Loadout menu
 
@@ -93,10 +95,10 @@ Save the active Construct package sources as a named loadout recipe:
 
 To update that recipe later, make the desired package sources active and save the same name again. Construct replaces the saved recipe; it does not append or merge.
 
-To delete only the saved recipe:
+To wipe only the saved recipe:
 
 ```text
-/construct remove web-stack
+/construct wipe web-stack
 ```
 
 In another project, run that saved loadout:
@@ -127,7 +129,7 @@ Or run `/construct`, focus a saved loadout and press Enter to activate it, or se
 /construct list                      # list saved loadouts
 /construct run <saved-name>          # run a saved loadout in this project
 /construct share <saved-name>        # print a shareable saved-loadout JSON snippet
-/construct remove <saved-name>       # remove a saved loadout recipe only
+/construct wipe <saved-name>         # wipe a saved loadout recipe only
 /construct import [json]             # paste/preview/import a saved-loadout JSON snippet
 ```
 
@@ -147,7 +149,7 @@ Notes:
 - `/construct list` lists saved loadouts.
 - `/construct run <saved-name>` applies the saved loadout once in activate-only mode; it installs/enables recipe package sources but does not disable, remove, or exact-match other packages. Projects are not live-linked to saved loadouts.
 - `/construct share <saved-name>` prints a small JSON snippet of package sources; local path sources are warned as not generally shareable.
-- `/construct remove <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
+- `/construct wipe <saved-name>` deletes only the saved recipe; it does not edit project files, uninstall packages, or remove package sources from the Construct library.
 - `/construct import <json>` previews a snippet and, in TUI, asks before writing it to your user-local Construct library.
 - In `/construct`, Enter on a focused saved loadout activates it additively. Space on a saved loadout selects its member package rows instead, so normal Enter/`r` package-row actions apply to those members.
 - Use `r` in `/construct` to remove an active or disabled Construct-managed package declaration from the current project.

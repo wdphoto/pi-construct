@@ -15,7 +15,7 @@ Construct is centered on one primary command: `/construct`.
 /construct list                    # list saved loadouts
 /construct run <saved-name>        # run a saved loadout in this project
 /construct share <saved-name>      # print a shareable saved-loadout JSON snippet
-/construct remove <saved-name>     # remove a saved loadout recipe only
+/construct wipe <saved-name>       # wipe a saved loadout recipe only
 /construct import [json]           # paste/preview/import a saved-loadout JSON snippet
 ```
 
@@ -105,7 +105,7 @@ Saved loadouts are named groups of active Construct package sources. `profile` r
 /construct list
 /construct run www
 /construct share www
-/construct remove www
+/construct wipe www
 /construct import '{"kind":"construct-loadout","version":1,"name":"www","sources":["npm:pkg"]}'
 ```
 
@@ -123,7 +123,7 @@ Run rules:
 - Running a saved loadout is not a live binding; replacing the saved loadout later does not change projects that already ran it.
 - `run` does not execute arbitrary scripts.
 
-Share/import/remove rules:
+Share/import/wipe rules:
 
 - `/construct share <saved-name>` prints a `kind: "construct-loadout"` JSON snippet for that saved loadout.
 - Share prints to screen/output only in this slice; it is not clipboard or file export.
@@ -131,7 +131,7 @@ Share/import/remove rules:
 - `/construct import <json>` validates and previews a pasted snippet; non-TUI import previews only and changes no files.
 - Share/import warns for local path sources because they are usually not portable across machines.
 - Share/import refuses generated Pi package cache paths and source strings that look like secrets.
-- `/construct remove <saved-name>` deletes only the saved loadout recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
+- `/construct wipe <saved-name>` deletes only the saved loadout recipe. It does not edit project files, uninstall/disable packages, remove package sources from the Construct library, or reload Pi.
 
 Saved loadouts also appear as compact first-class rows in `/construct`. They are recipe/spotlight rows: focusing one marks its member package rows with `[·]`, pressing Enter activates the saved loadout additively, and pressing Space quick-selects its member package rows for normal package actions. Disable/remove remains a package-row action, not a saved-loadout action.
 

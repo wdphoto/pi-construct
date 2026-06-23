@@ -10,7 +10,7 @@ Construct has shipped the core loadout loop:
 - manual `/construct load` and `/construct unload` boundaries;
 - known-project counts;
 - explicit `/construct autoload` with confirmation-only adoption prompts;
-- saved loadouts: `save`, `list`, `run`, `share`, `remove`, and `import`;
+- saved loadouts: `save`, `list`, `run`, `share`, `wipe`, and `import`;
 - direct project resource inventory/adoption/toggle support for project extensions, skills, prompt templates, and themes;
 - package-source-only saved loadouts/share snippets.
 
@@ -44,6 +44,7 @@ See `CHANGELOG.md` for version-by-version detail.
 - [x] Avoid expensive/noisy directories such as `node_modules`, `.git`, `.pi/npm`, `.pi/git`, `dist`, and `build`.
 - [x] Prefer conservative file parsing for scan over Pi runtime resolution unless a safe public resolver mode is confirmed.
 - [x] Keep print-mode output summary-oriented and end with `No files were changed.`
+- [x] Visually group scan findings by resource type so package declarations are distinct from direct project extensions, skills, prompts, themes, and drift.
 
 ## v0.0.x — dashboard/status polish
 

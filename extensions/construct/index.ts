@@ -14,7 +14,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 	pi.registerCommand("construct", {
 		description: "Open the Construct loadout menu",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["status", "scan", "load", "unload", "save", "list", "run", "share", "remove", "import", "autoload"];
+			const commands = ["status", "scan", "load", "unload", "save", "list", "run", "share", "wipe", "import", "autoload"];
 			const matches = commands.filter((command) => command.startsWith(prefix));
 			return matches.length > 0 ? matches.map((command) => ({ value: command, label: command })) : null;
 		},
@@ -71,8 +71,8 @@ export default function constructExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			if (command === "remove") {
-				await handleSavedLoadoutCommand(pi, `remove ${rest}`.trim(), ctx);
+			if (command === "wipe") {
+				await handleSavedLoadoutCommand(pi, `wipe ${rest}`.trim(), ctx);
 				return;
 			}
 
@@ -97,7 +97,7 @@ export default function constructExtension(pi: ExtensionAPI) {
 					"- /construct list",
 					"- /construct run <saved-name>",
 					"- /construct share <saved-name>",
-					"- /construct remove <saved-name>",
+					"- /construct wipe <saved-name>",
 					"- /construct import [json]",
 				].join("\n"),
 			);

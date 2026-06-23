@@ -380,8 +380,9 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 		lines: [
 			`This will run project-local \`pi remove\` for ${removable.length} selected package${removable.length === 1 ? "" : "s"}.`,
 			"It edits this project's .pi/settings.json after creating a backup.",
+			"It also removes matching project Construct metadata so this project does not keep stale drift.",
 			"It does not delete global Pi package caches or saved loadout recipes.",
-			"The slash command /construct remove <name> is different: it removes a saved loadout recipe only.",
+			"Saved recipes are deleted with /construct wipe <name>, not with a remove command.",
 			"",
 			...preview,
 			...extra,
