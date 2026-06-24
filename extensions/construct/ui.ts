@@ -172,7 +172,7 @@ export interface CheckboxPickerItem {
 	uncheckedStateText?: string;
 	checkedStateTone?: CheckboxPickerTone;
 	uncheckedStateTone?: CheckboxPickerTone;
-	selectionMarkerMode?: "checked" | "changed";
+	selectionGroup?: "active" | "inactive" | "available";
 	relatedIds?: string[];
 	quickSelectIds?: string[];
 	aggregateChildIds?: string[];
@@ -333,6 +333,10 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return `${"  ".repeat(Math.max(0, item.depth ?? 0))}${item.label}`;
 		}
 
+		function rowLabel(item: CheckboxPickerItem): string {
+			return hasTreeItems ? item.label : displayLabel(item);
+		}
+
 		function expansionMarker(item: CheckboxPickerItem): string {
 			if (item.expandable) return expanded.has(item.id) ? "▾" : "▸";
 			return item.parentId ? "└" : " ";
@@ -362,44 +366,57 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled).map((candidate) => candidate.id);
 		}
 
-		function aggregateChildTargets(item: CheckboxPickerItem): string[] {
+		function aggregateChildTargets(item: CheckboxPickerItem): CheckboxPickerItem[] {
 			if (!item.aggregateChildIds) return [];
 			const targetIds = new Set(item.aggregateChildIds);
-			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled).map((candidate) => candidate.id);
+			return items.filter((candidate) => targetIds.has(candidate.id) && !candidate.disabled);
 		}
 
-		type AggregateState = "none" | "partial" | "all";
+		function idsFor(candidates: readonly CheckboxPickerItem[]): string[] {
+			return candidates.map((candidate) => candidate.id);
+		}
+
+		function sameIds(a: readonly string[], b: readonly string[]): boolean {
+			if (a.length !== b.length) return false;
+			const set = new Set(a);
+			return b.every((id) => set.has(id));
+		}
+
+		function selectedChildIds(ids: readonly string[]): string[] {
+			return ids.filter((id) => checked.has(id));
+		}
 
 		interface AggregateChildState {
 			ids: string[];
-			target: AggregateState;
-			dirty: boolean;
-		}
-
-		function aggregateStateFor(ids: string[], source: Set<string>): AggregateState {
-			const selectedCount = ids.filter((id) => source.has(id)).length;
-			if (selectedCount === 0) return "none";
-			if (selectedCount === ids.length) return "all";
-			return "partial";
+			activeIds: string[];
+			inactiveIds: string[];
+			selectedIds: string[];
+			hasMixedState: boolean;
 		}
 
 		function aggregateChildState(item: CheckboxPickerItem): AggregateChildState | undefined {
-			const ids = aggregateChildTargets(item);
-			if (ids.length === 0) return undefined;
+			const children = aggregateChildTargets(item);
+			if (children.length === 0) return undefined;
+			const ids = idsFor(children);
+			const activeIds = idsFor(children.filter((child) => child.selectionGroup === "active"));
+			const inactiveIds = idsFor(children.filter((child) => child.selectionGroup === "inactive" || child.selectionGroup === "available"));
 			return {
 				ids,
-				target: aggregateStateFor(ids, checked),
-				dirty: ids.some((id) => changed.has(id)),
+				activeIds,
+				inactiveIds,
+				selectedIds: selectedChildIds(ids),
+				hasMixedState: activeIds.length > 0 && inactiveIds.length > 0,
 			};
 		}
 
 		function aggregateMarkerFor(item: CheckboxPickerItem): string | undefined {
 			const aggregate = aggregateChildState(item);
 			if (!aggregate) return undefined;
-			if (!aggregate.dirty && aggregate.target !== "partial") return undefined;
-			if (aggregate.target === "all") return "[x]";
-			if (aggregate.target === "partial") return "[~]";
-			return "[-]";
+			if (aggregate.selectedIds.length === 0) return aggregate.hasMixedState ? "[~]" : undefined;
+			if (sameIds(aggregate.selectedIds, aggregate.ids)) return "[x]";
+			if (aggregate.activeIds.length > 0 && sameIds(aggregate.selectedIds, aggregate.activeIds)) return "[-]";
+			if (aggregate.inactiveIds.length > 0 && sameIds(aggregate.selectedIds, aggregate.inactiveIds)) return "[+]";
+			return "[*]";
 		}
 
 		function stateTextFor(item: CheckboxPickerItem): string {
@@ -414,20 +431,16 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			return item.stateTone;
 		}
 
-		function markerChecked(item: CheckboxPickerItem): boolean {
-			return item.selectionMarkerMode === "changed" ? changed.has(item.id) : checked.has(item.id);
-		}
-
 		function selectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
 			const aggregateMarker = aggregateMarkerFor(item);
 			if (aggregateMarker) return aggregateMarker;
-			return markerChecked(item) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
+			return checked.has(item.id) ? "[x]" : isRelated ? "[·]" : (item.marker ?? (item.disabled ? "   " : "[ ]"));
 		}
 
 		function plainSelectionMarkerFor(item: CheckboxPickerItem, isRelated: boolean): string {
 			const aggregateMarker = aggregateMarkerFor(item);
 			if (aggregateMarker) return aggregateMarker;
-			return item.marker ?? (markerChecked(item) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
+			return item.marker ?? (checked.has(item.id) ? "[x]" : isRelated ? "[·]" : item.disabled ? "[!]" : "[ ]");
 		}
 
 		function syncChanged(id: string): void {
@@ -519,7 +532,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			const end = Math.min(start + maxVisible, visibleItems.length);
 			const focusedItem = visibleItems[selected];
 			const relatedIds = relatedIdsFor(focusedItem);
-			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(displayLabel(item)))));
+			const maxLabelWidth = Math.min(28, Math.max(...visibleItems.map((item) => visibleWidth(rowLabel(item)))));
 			const stateTexts = visibleItems.map((item) => stateTextFor(item));
 			const maxStateWidth = Math.min(16, Math.max(0, ...stateTexts.map((text) => visibleWidth(text))));
 			let previousSection: string | undefined;
@@ -532,7 +545,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 				const isSelected = index === selected;
 				const cursor = isSelected ? "> " : "  ";
-				const label = displayLabel(item);
+				const label = rowLabel(item);
 				const paddedLabel = label + " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(label)));
 
 				const stateText = stateTextFor(item);
@@ -541,14 +554,15 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				if (stateText) {
 					const paddedState = stateText + " ".repeat(Math.max(0, maxStateWidth - visibleWidth(stateText)));
 					const selectMarker = selectionMarkerFor(item, isRelated);
-					const prefix = `${cursor}${selectMarker} ${hasTreeItems ? `${expansionMarker(item)} ` : ""}`;
+					const treeMarker = hasTreeItems ? `${expansionMarker(item)} ` : "";
+					const prefix = `${cursor}${selectMarker} `;
 					if (options.colorRowsByState) {
-						let bodyText = truncateToWidth(`${paddedState}  ${paddedLabel}  ${item.value}`, Math.max(0, width - visibleWidth(prefix)));
+						let bodyText = truncateToWidth(`${paddedState} ${treeMarker}${paddedLabel}  ${item.value}`, Math.max(0, width - visibleWidth(prefix)));
 						if (!item.disabled && isSelected && options.highlightFocused !== false) bodyText = theme.bold(bodyText);
 						lines.push(`${prefix}${styleTone(stateTone, bodyText)}`);
 						continue;
 					}
-					let line = `${prefix}${styleTone(stateTone, paddedState)}  ${paddedLabel}  ${item.value}`;
+					let line = `${prefix}${styleTone(stateTone, paddedState)} ${treeMarker}${paddedLabel}  ${item.value}`;
 					if (!item.disabled && isSelected && options.highlightFocused !== false) line = theme.bold(line);
 					lines.push(truncateToWidth(line, width));
 					continue;
@@ -864,18 +878,31 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			if (data === " ") {
 				const item = selectedItem();
 				if (item && !item.disabled) {
-					const aggregate = aggregateMarkerFor(item) ? aggregateChildState(item) : undefined;
+					const aggregate = aggregateChildState(item);
 					const targetIds = aggregate?.ids ?? quickSelectTargets(item);
 					if (targetIds.length > 0) {
-						if (aggregate && checked.has(item.id)) {
-							checked.delete(item.id);
-							syncChanged(item.id);
-						}
-						if (aggregate?.dirty && aggregate.target === "none") {
-							for (const id of targetIds) {
-								if (initiallyChecked.has(id)) checked.add(id);
+						if (aggregate) {
+							const presetCandidates = [
+								aggregate.ids,
+								...(aggregate.activeIds.length > 0 ? [aggregate.activeIds] : []),
+								...(aggregate.inactiveIds.length > 0 ? [aggregate.inactiveIds] : []),
+								[],
+							];
+							const presets: string[][] = [];
+							for (const preset of presetCandidates) {
+								if (!presets.some((existing) => sameIds(existing, preset))) presets.push(preset);
+							}
+							const currentIndex = presets.findIndex((preset) => sameIds(aggregate.selectedIds, preset));
+							const nextPreset = presets[(currentIndex + 1) % presets.length] ?? aggregate.ids;
+							const nextIds = new Set(nextPreset);
+							for (const id of aggregate.ids) {
+								if (nextIds.has(id)) checked.add(id);
 								else checked.delete(id);
 								syncChanged(id);
+							}
+							if (checked.has(item.id)) {
+								checked.delete(item.id);
+								syncChanged(item.id);
 							}
 						} else {
 							const allTargetsChecked = targetIds.every((id) => checked.has(id));

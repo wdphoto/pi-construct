@@ -118,13 +118,14 @@ Direct resources are project-local. They can be toggled in the dashboard after a
 
 On package rows with multiple Pi-resolved resources, press Right Arrow to unfold package-contained extensions, skills, prompts, and themes.
 
-- Space on child rows changes the target `on`/`off` state.
-- `[x]` on a child means that child target changed.
-- `[~]` on a package means mixed resource targets.
-- `[-]` on a package means all visible child resources are targeted off.
+- Child state icons show current state: `✓` active, `–` inactive, `+` available.
+- `[x]` on a child means selected for the next action; unselected children are left alone.
+- `[~]` on a package means mixed child resource state with nothing selected.
+- Space on a package row cycles child selection presets: `[x]` all, `[-]` active, `[+]` inactive/available, then none.
+- `[*]` on a package means a custom subset of children is selected inside the fold.
 - Enter previews and writes native Pi package filters in `.pi/settings.json` after a backup.
 
-Resource-level selection writes an explicit allowlist, so future resources added by that package stay disabled until selected. Use whole-package Enter when you want Pi's default package behavior.
+Selected existing child resources are toggled; unselected existing child resources keep their current state. Available child selections install only those selected resources. Use whole-package Enter when you want Pi's default package behavior.
 
 Available package rows only unfold when Construct already has a cached multi-resource list. Unknown or single-resource packages stay as normal whole-package rows.
 

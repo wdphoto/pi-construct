@@ -8,6 +8,7 @@ import {
 	enablePackageResourcesInProject,
 	loadPackageIntoProject,
 	removePackageFromProject,
+	type PackageOperationOptions,
 } from "./package-ops.js";
 import { progressStatus, setConstructStatus } from "./ui.js";
 
@@ -61,7 +62,7 @@ export function operationProgressLines(steps: ConstructOperationStep[], complete
 	];
 }
 
-async function applyOperation(paths: ConstructPaths, step: ConstructOperationStep, options: { projectTrusted?: boolean } = {}) {
+async function applyOperation(paths: ConstructPaths, step: ConstructOperationStep, options: PackageOperationOptions = {}) {
 	if (step.item.direct) {
 		if (step.action === "Enable") return enableDirectResourceInProject(paths, step.item.direct, options);
 		if (step.action === "Disable") return disableDirectResourceInProject(paths, step.item.direct, options);
@@ -91,6 +92,7 @@ export async function runConstructOperationSteps(input: {
 }): Promise<ConstructOperationOutcome> {
 	const { ctx, paths, steps, update, signal, progressTitle, completeLabel, progressItemPrefix = "", statusKind } = input;
 	const projectTrusted = ctx?.isProjectTrusted();
+	const operationOptions: PackageOperationOptions = { projectTrusted, quietPackageInstallOutput: ctx?.mode === "tui" };
 	const completed: Array<{ action: ConstructOperationAction; item: ConstructOperationItem }> = [];
 	const partialRuntimeChanges: ConstructOperationPartialChange[] = [];
 	const failures: string[] = [];
@@ -103,7 +105,7 @@ export async function runConstructOperationSteps(input: {
 			step.state = "running";
 			update?.(progressTitle, operationProgressLines(steps, completeLabel, progressItemPrefix));
 			if (ctx && statusKind) setConstructStatus(ctx, progressStatus(statusKind, completed.length + partialRuntimeChanges.length + failures.length + 1, steps.length, step.item.label));
-			const result = await applyOperation(paths, step, { projectTrusted });
+			const result = await applyOperation(paths, step, operationOptions);
 			if (result.needsReload) needsReload = true;
 			if (result.ok) {
 				completed.push({ action: step.action, item: step.item });

@@ -340,8 +340,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	}
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
-		"Legend: [ ] selectable · [x] selected/all resources · [~] mixed package resources · [-] all package resources off · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – disabled · + available · ◇ unloaded.",
-		"Space cycles package resources: mixed → all on → all off → no pending change · Enter applies/runs · → unfolds known resources · ← folds · i details · r removes · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · + available · ◇ unloaded.",
+		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · i details · r removes · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -581,8 +581,8 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 			const available = item.section === "Available";
 			const actionDescription =
 				item.section === "Available"
-					? "Package-contained resource. Space changes the target installed state; Enter installs the package with native Pi filters. [x] means this target changed."
-					: "Package-contained resource. Space changes the target enabled state; Enter writes native Pi package filters. [x] means this target changed.";
+					? "Package-contained resource. The state icon shows availability; [x] selects it for install/filtering and Enter installs the package with native Pi filters."
+					: "Package-contained resource. The state icon shows the current enabled state; [x] selects it to toggle when Enter writes native Pi package filters.";
 			const entrypointNote = packageResourceEntrypointNote(resource);
 			children.push({
 				id: packageResourceChildRowId(item, resource),
@@ -591,15 +591,11 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 				label: resourceLabel(resource),
 				value: packageResourceDisplayPath(resource),
 				description: entrypointNote ? `${entrypointNote}\n${actionDescription}` : actionDescription,
-				checked: available ? false : resource.enabled,
+				checked: false,
 				disabled: !editable,
-				stateText: available ? "off" : undefined,
-				stateTone: available ? "muted" : undefined,
-				checkedStateText: "on",
-				uncheckedStateText: "off",
-				checkedStateTone: "success",
-				uncheckedStateTone: "muted",
-				selectionMarkerMode: available ? "checked" : "changed",
+				stateText: available ? "+" : resource.enabled ? "✓" : "–",
+				stateTone: available ? "warning" : resource.enabled ? "success" : "muted",
+				selectionGroup: available ? "available" : resource.enabled ? "active" : "inactive",
 				marker: editable ? undefined : "   ",
 			});
 		}
@@ -616,7 +612,7 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
 		if (resourceCount > 1) {
-			const mixedHint = item.filterState === "partially-filtered" ? " Space cycles [~] mixed → [x] all on → [-] all off → back to no pending change." : "";
+			const mixedHint = item.filterState === "partially-filtered" ? " Parent Space cycles child selections: all → active → inactive → none." : "";
 			return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.${mixedHint}`;
 		}
 		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use i for the exact path.`;
@@ -677,7 +673,7 @@ function packageResourceFilterPlanForResources(item: DashboardPackage, resources
 
 function packageResourceFilterPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, selectedIds: string[], changedIds: string[]): PackageResourceFilterPlan[] {
 	if (!packageResources || changedIds.length === 0) return [];
-	const selected = new Set(selectedIds);
+	const selectedActionIds = new Set(selectedIds);
 	const changed = new Set(changedIds);
 	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled" || item.section === "Available"));
 	const changedPackages = new Set<string>();
@@ -694,7 +690,9 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 		if (resources.length === 0) continue;
 		const selectedResourceKeys = new Set<string>();
 		for (const resource of resources) {
-			if (selected.has(packageResourceChildRowId(item, resource))) selectedResourceKeys.add(packageResourceSelectionKey(resource.kind, resource.packageRelativePath));
+			const actionSelected = selectedActionIds.has(packageResourceChildRowId(item, resource));
+			const targetEnabled = item.section === "Available" ? actionSelected : actionSelected ? !resource.enabled : resource.enabled;
+			if (targetEnabled) selectedResourceKeys.add(packageResourceSelectionKey(resource.kind, resource.packageRelativePath));
 		}
 		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys));
 	}
@@ -715,14 +713,15 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	];
 	if (installCount > 0) lines.push("Available packages are installed project-local, then immediately narrowed with native Pi package filters.");
 	lines.push(
-		"Resource-level selection writes an explicit package-resource allowlist; future package-added resources stay disabled until selected.",
+		"Selected existing child resources are toggled; unselected existing child resources keep their current state.",
+		"Available child selections install only those selected resources; future package-added resources stay disabled until selected.",
 		"Available package selections are re-checked after install before filters are written; if the cached list changed, Construct warns in the result panel.",
 		"No package files are copied into .pi/ and no saved loadout recipe is changed.",
 		"Package row selections are ignored while resource-level changes are pending.",
 		"",
 	);
 	for (const plan of plans.slice(0, 6)) {
-		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected${plan.item.section === "Available" ? " (install)" : ""}`);
+		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled after apply${plan.item.section === "Available" ? " (install)" : ""}`);
 		for (const kind of directResourceKinds) {
 			const kindResources = plan.resources.filter((resource) => resource.kind === kind);
 			if (kindResources.length === 0) continue;
@@ -738,7 +737,7 @@ function packageResourceProgressLines(plans: PackageResourceFilterPlan[], comple
 	return [
 		`${complete}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} complete`,
 		"",
-		...plans.map((plan, index) => `${index < complete ? "✓" : " "} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} resources`),
+		...plans.map((plan, index) => `${index < complete ? "✓" : " "} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} enabled after apply`),
 		...warnings.map((warning) => `! ${warning}`),
 		...failures.map((failure) => `! ${failure}`),
 	];
@@ -789,7 +788,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  child rows show target on/off; [x] on a child means changed · [~] mixed · [-] all off · [!] read-only · [·] recipe item",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
 		actions: { remove: true },
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
@@ -824,7 +823,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 						const load = await loadPackageIntoProject(paths, {
 							source: plan.item.source,
 							item: { id: plan.item.id, kind: "package", source: plan.item.source },
-						}, { projectTrusted });
+						}, { projectTrusted, quietPackageInstallOutput: ctx.mode === "tui" });
 						if (load.needsReload) needsReload = true;
 						if (!load.ok) {
 							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
@@ -855,9 +854,9 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					lines: [
 						signal.aborted ? "Cancelled before remaining changes." : undefined,
 						installedWithFilters.length > 0 ? `Installed with selected resources: ${installedWithFilters.length}` : undefined,
-						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled`),
 						updatedWithFilters.length > 0 ? `Updated package filters: ${updatedWithFilters.length}` : undefined,
-						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources selected`),
+						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled after apply`),
 						applyWarnings.length > 0 ? `Warnings: ${applyWarnings.length}` : undefined,
 						...applyWarnings.map((warning) => `! ${warning}`),
 						failures.length > 0 ? `Failures: ${failures.length}` : undefined,

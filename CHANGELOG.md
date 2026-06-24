@@ -4,17 +4,20 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
-## Unreleased
+## 0.0.25 - 2026-06-24
 
 ### Changed
 - Shorten the README into a digestible quick start and move detailed dashboard/workflow guidance into `docs/user-guide.md`.
-- Clarify package child-resource rows by showing explicit `on`/`off` target state and explaining that `[x]` on a child means the target changed.
+- Restore package child-resource checkboxes as action selectors, keep current state in the row state icon, and add parent selection presets for all/active/inactive child resources.
 - Make `/construct run <saved-name>` skip already-active package sources and enable disabled matching declarations instead of reinstalling every saved source.
 - Re-check Available package resource selections after install before writing filters, warning when the cached resource list changed.
 - Let `/construct unload <source>` match equivalent package source spellings and remove equivalent saved-loadout source references.
 
 ### Added
 - Extract package resource filter planning into a pure helper with smoke coverage for cross-kind path collisions and all-empty selections.
+
+### Fixed
+- Suppress native git/npm install output while Construct applies TUI package installs and install-with-filters actions, keeping progress panels clean.
 
 ## 0.0.24 - 2026-06-23
 

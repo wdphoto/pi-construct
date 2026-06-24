@@ -107,7 +107,7 @@ Flow:
 
 1. User focuses a package row.
 2. Presses Right Arrow on a multi-resource package row to unfold package resources.
-3. Uses Space on child rows to choose exact target resources to keep enabled.
+3. Uses Space on child rows to select resources for the next action; existing selected children toggle, while selected Available children install/enable.
 4. Construct previews changes:
    - package source;
    - enabled counts by type;
@@ -143,34 +143,25 @@ Status: implemented for aggregate parent markers and clearer child target labels
 
 Goal: make package-contained resource selection feel predictable without turning the dashboard into a custom package browser.
 
-Preferred behavior:
+Current behavior:
 
-- A package row remains the whole-package action when no child resources have been changed.
-- A package row with resolved mixed child resources shows aggregate state immediately, even before the user manually toggles a child.
-- Partial child selection shows the package row as `[~]`, so users can see from the root that this package has narrowed resource choices without relying on color.
-- All child resources targeted on shows `[x]`; all child resources targeted off shows `[-]`.
-- Collapsing a package must not discard child target state. Re-expanding should show the same child checks until the user applies or cancels the dashboard.
-- Pressing Space on a mixed package row selects all package-contained child resources. Pressing Space again from `[x]` turns all package-contained child resources off. Pressing Space from `[-]` returns to the original child-resource targets, clearing the pending aggregate resource change.
-- Enter with dirty child resource state writes package filters and ignores whole-package row toggles for that package, preserving the current safety model.
-- Enter on an Available package row with no dirty children still installs the whole package with Pi defaults.
-- Enter on an Active/Disabled package row with no dirty children still uses the existing whole-package enable/disable behavior.
+- A package row remains the whole-package action when no package-contained child resources are selected.
+- Child row state icons show current state: `✓` active, `–` inactive, `+` available. The checkbox column is action selection, not current state.
+- `[x]` on a child means the child is selected for the next action. Selected existing children are toggled on apply; unselected existing children keep their current state. Selected Available children are installed/enabled.
+- A package row with resolved mixed child resources and no child selection shows `[~]` immediately, even before the user manually selects a child.
+- Parent package markers summarize child selection presets: `[x]` all children selected, `[-]` active children selected, `[+]` inactive/available children selected, `[*]` custom child selection, `[~]` mixed current state with no child selection.
+- Pressing Space on a package row cycles child selection presets: all → active → inactive/available → none.
+- Collapsing a package must not discard child selection. Re-expanding should show the same child checks until the user applies or cancels the dashboard.
+- Enter with selected child resources writes package filters and ignores whole-package row toggles for that package, preserving the current safety model.
+- Enter on an Available package row with no selected children still installs the whole package with Pi defaults.
+- Enter on an Active/Disabled package row with no selected children still uses the existing whole-package enable/disable behavior.
 
 Implementation shape:
 
 1. Keep the dashboard's inline tree. Do not add a new slash command, modal resource browser, or saved-loadout filter recipe.
-2. Add a small aggregate-selection seam to the shared checkbox picker, e.g. parent rows can declare child ids that should drive their displayed marker and Space behavior.
-3. Compute aggregate marker state from current child checks:
-   - some selected: `[~]` mixed;
-   - all selected: `[x]` all on;
-   - none selected with dirty resource state: `[-]` all off;
-   - unmodified all-on/all-off rows can keep their normal parent markers unless the package is mixed.
-4. Keep changed/dirty tracking per child id, so resource filter plans remain based on actual child changes.
-5. Update package resource confirmation copy to call out partial package selections clearly.
-6. Add smoke or focused test coverage for: child partial marker, collapse/re-expand persistence, parent Space selects all children, parent Space clears all children when all selected, and Enter writes resource filters instead of whole-package toggles when child state is dirty.
-
-Open UX choice before implementation:
-
-- Decision: use `[~]` for partial package rows and `[-]` for all child resources targeted off. These markers are more accessible than relying on color alone and stay clear in plain terminals, low-contrast themes, screenshots, logs, and screen-reader-ish output.
+2. Parent rows declare child ids and child selection groups (`active`, `inactive`, `available`) so the shared picker can render aggregate markers and run the parent Space cycle.
+3. Keep changed tracking per child id, so resource filter plans are only created when child selections are pending.
+4. Package resource confirmation copy should describe enabled resources after apply, because selected existing children are toggles rather than direct target-on choices.
 
 ## Stage 4 — saved loadout decision, later
 
