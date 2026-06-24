@@ -20,6 +20,7 @@
   "homepage": "https://github.com/wdphoto/pi-construct#readme",
   "files": [
     "extensions/",
+    "docs/",
     "README.md",
     "FAQ.md",
     "CHANGELOG.md",
