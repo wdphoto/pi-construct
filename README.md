@@ -2,9 +2,9 @@
 
 # The Construct
 
-The Construct is a **global** extension for [Pi](https://pi.dev) that manages project-level loadouts.
+The Construct is a **global** extension for [Pi](https://pi.dev) that manages project-level resources packages, extensions, skills, prompts, and themes — from one menu.
 
-Run `/construct`, hit **Space** to select a resource, and then hit **Enter** to apply. Boom.
+Run `/construct`, hit **Space** to select a resource, and then hit **Enter** to apply. Boom. You've build a loadout. `/construct save loadout-name` to save your loadout recipe for future projects.
 
 ## Install pi-construct
 
