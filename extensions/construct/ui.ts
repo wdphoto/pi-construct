@@ -1,5 +1,6 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { checkboxPickerRemoveTargetIds } from "./picker-actions.js";
 
 export function splitArgs(args: string): { command: string; rest: string } {
 	const trimmed = args.trim();
@@ -203,6 +204,7 @@ export interface CheckboxPickerConfirmation {
 	title: string;
 	lines: string[];
 	confirmHint?: string;
+	canSubmit?: boolean;
 }
 
 export interface CheckboxPickerLegendItem {
@@ -280,6 +282,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		let confirmationTitle = "Remove from this project?";
 		let confirmationLines: string[] = [];
 		let confirmationHint = "Press Enter to remove · Esc cancels";
+		let confirmationCanSubmit = true;
 		let confirmationTone: CheckboxPickerTone = "warning";
 		let confirmationScroll = 0;
 		let applyTitle = "Applying changes…";
@@ -606,6 +609,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			confirmationTitle = confirmation.title;
 			confirmationLines = confirmation.lines;
 			confirmationHint = confirmation.confirmHint ?? (action === "remove" ? "Press Enter to remove · Esc cancels" : "Press Enter to apply · Esc cancels");
+			confirmationCanSubmit = confirmation.canSubmit !== false;
 			confirmationTone = "warning";
 			confirmationScroll = 0;
 			phase = "confirmSubmit";
@@ -617,6 +621,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			confirmationTitle = inspection.title;
 			confirmationLines = inspection.lines;
 			confirmationHint = inspection.confirmHint ?? "Press Enter/Esc to return";
+			confirmationCanSubmit = false;
 			confirmationTone = "accent";
 			confirmationScroll = 0;
 			phase = "inspect";
@@ -625,7 +630,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function startRemove(): void {
-			const ids = selectedIds();
+			const ids = checkboxPickerRemoveTargetIds(checked, selectedItem()?.id);
 			const confirmation = options.removeConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "remove", [...changed]);
 			if (!confirmation) {
 				startSubmit("remove", ids);
@@ -776,7 +781,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 						return;
 					}
 					if (keybindings.matches(data, "tui.select.confirm")) {
-						if (phase === "inspect") {
+						if (phase === "inspect" || !confirmationCanSubmit) {
 							phase = "pick";
 							invalidate();
 							tui.requestRender();
@@ -930,7 +935,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				else startSubmit("confirm", ids);
 				return;
 			}
-			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~") && checked.size > 0) {
+			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~")) {
 				startRemove();
 				return;
 			}

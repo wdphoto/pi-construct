@@ -389,23 +389,66 @@ function removablePackages(packages: DashboardItem[], ids: string[]): DashboardP
 	return packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
 }
 
-function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation | undefined {
+function removeSkipSummary(packages: DashboardItem[], ids: string[]): string[] {
+	const selected = new Set(ids);
+	let saved = 0;
+	let direct = 0;
+	let available = 0;
+	let unloaded = 0;
+	let child = 0;
+	let other = 0;
+	for (const id of selected) {
+		const item = packages.find((candidate) => candidate.rowId === id);
+		if (!item) {
+			if (id.startsWith("package-resource:")) child += 1;
+			else other += 1;
+			continue;
+		}
+		if (item.type === "saved") saved += 1;
+		else if (item.type === "direct") direct += 1;
+		else if (item.section === "Available") available += 1;
+		else if (item.section === "Unloaded") unloaded += 1;
+		else if (item.section !== "Active" && item.section !== "Disabled") other += 1;
+	}
+
+	const lines: string[] = [];
+	if (saved > 0) lines.push(`${saved} loadout row${saved === 1 ? "" : "s"}: loadouts run recipes; delete recipes with /construct wipe <name>.`);
+	if (direct > 0) lines.push(`${direct} direct resource row${direct === 1 ? "" : "s"}: toggle with Enter; Construct does not delete project files here.`);
+	if (child > 0) lines.push(`${child} package child row${child === 1 ? "" : "s"}: package-contained resources are filtered with Space+Enter, not removed.`);
+	if (available > 0) lines.push(`${available} Available package row${available === 1 ? "" : "s"}: not installed in this project; use /construct unload to forget from the library.`);
+	if (unloaded > 0) lines.push(`${unloaded} Unloaded row${unloaded === 1 ? "" : "s"}: read-only here; run /construct load first or remove with Pi directly.`);
+	if (other > 0) lines.push(`${other} row${other === 1 ? "" : "s"}: not removable from this dashboard action.`);
+	return lines;
+}
+
+function removeConfirmationFor(packages: DashboardItem[], ids: string[]): CheckboxPickerConfirmation {
 	const removable = removablePackages(packages, ids);
-	if (removable.length === 0) return undefined;
+	const skipped = removeSkipSummary(packages, ids);
 	const preview = removable.slice(0, 8).map((item) => `- ${item.label}: ${item.source}`);
 	const extra = removable.length > preview.length ? [`…and ${removable.length - preview.length} more`] : [];
+	if (removable.length === 0) {
+		return {
+			title: "No removable package selected",
+			confirmHint: "Press Enter/Esc to return",
+			canSubmit: false,
+			lines: [
+				"Nothing will be removed.",
+				"Focus or select Active/Disabled package rows, then press r.",
+				...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
+			],
+		};
+	}
 	return {
 		title: `Remove ${removable.length} package${removable.length === 1 ? "" : "s"} from this project?`,
 		confirmHint: "Press Enter to remove from project · Esc cancels",
 		lines: [
-			`This will run project-local \`pi remove\` for ${removable.length} selected package${removable.length === 1 ? "" : "s"}.`,
-			"It edits this project's .pi/settings.json after creating a backup.",
-			"It also removes matching project Construct metadata so this project does not keep stale drift.",
-			"It does not delete global Pi package caches or saved loadout recipes.",
-			"Saved recipes are deleted with /construct wipe <name>, not with a remove command.",
+			`Will remove ${removable.length} package declaration${removable.length === 1 ? "" : "s"} from this project's .pi/settings.json after creating a backup.`,
+			"Does not delete global Pi package caches or saved loadout recipes.",
 			"",
+			"Remove:",
 			...preview,
 			...extra,
+			...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
 		],
 	};
 }
@@ -703,33 +746,22 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	if (plans.length === 0) return undefined;
 	const installCount = plans.filter((plan) => plan.item.section === "Available").length;
 	const updateCount = plans.length - installCount;
+	const summary = installCount > 0 && updateCount > 0
+		? `Install ${installCount} available package${installCount === 1 ? "" : "s"} and update ${updateCount} existing package${updateCount === 1 ? "" : "s"}.`
+		: installCount > 0
+			? `Install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources.`
+			: `Update Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`;
 	const lines = [
-		installCount > 0 && updateCount > 0
-			? `This will install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources and update filters for ${updateCount} existing package${updateCount === 1 ? "" : "s"}.`
-			: installCount > 0
-				? `This will install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources.`
-				: `This will update native Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`,
-		"It edits this project's .pi/settings.json after creating a backup.",
-	];
-	if (installCount > 0) lines.push("Available packages are installed project-local, then immediately narrowed with native Pi package filters.");
-	lines.push(
-		"Selected existing child resources are toggled; unselected existing child resources keep their current state.",
-		"Available child selections install only those selected resources; future package-added resources stay disabled until selected.",
-		"Available package selections are re-checked after install before filters are written; if the cached list changed, Construct warns in the result panel.",
-		"No package files are copied into .pi/ and no saved loadout recipe is changed.",
-		"Package row selections are ignored while resource-level changes are pending.",
+		summary,
+		"Creates a .pi/settings.json backup. Package files and saved loadouts are unchanged.",
+		"Existing selections toggle; unselected existing children keep their state. Available/future unselected resources stay off.",
 		"",
-	);
-	for (const plan of plans.slice(0, 6)) {
-		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled after apply${plan.item.section === "Available" ? " (install)" : ""}`);
-		for (const kind of directResourceKinds) {
-			const kindResources = plan.resources.filter((resource) => resource.kind === kind);
-			if (kindResources.length === 0) continue;
-			const selectedCount = kindResources.filter((resource) => plan.selectedResourceKeys.has(packageResourceSelectionKey(resource.kind, resource.packageRelativePath))).length;
-			lines.push(`  ${resourcePlural(kind)}: ${selectedCount}/${kindResources.length}`);
-		}
+		"Packages:",
+	];
+	for (const plan of plans.slice(0, 8)) {
+		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources${plan.item.section === "Available" ? " (install)" : ""}`);
 	}
-	if (plans.length > 6) lines.push(`…and ${plans.length - 6} more`);
+	if (plans.length > 8) lines.push(`…and ${plans.length - 8} more`);
 	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
 }
 
