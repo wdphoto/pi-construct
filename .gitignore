@@ -32,6 +32,7 @@ Thumbs.db
 .pi/settings.json
 .pi/construct.json
 .pi/construct.lock.json
+/apricity/
 construct-*.sh
 construct-*/
 

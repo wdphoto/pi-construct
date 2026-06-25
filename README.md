@@ -4,6 +4,8 @@
 
 The Construct is a **global** extension for [Pi](https://pi.dev) that manages project-level resource packages like extensions, skills, prompts, themes, and loadouts from one menu.
 
+This README is the main human guide for Construct.
+
 Run `/construct`, hit **Spacebar** to select what belongs in the project, press **Enter** to apply. Easy stuff.
 
 ## Install
@@ -83,13 +85,6 @@ Construct is a loadout manager, not a new package manager. `.pi/settings.json` s
 - `.pi/construct.json` — project-local Construct metadata.
 - `~/.pi/agent/construct/catalog.json` — user-local Construct library and saved loadouts.
 - `~/.pi/agent/construct/projects.json` — user-local index of touched projects.
-
-## More docs
-
-- [User guide](docs/user-guide.md)
-- [Commands and UX notes](docs/commands-and-ux.md)
-- [Product model](docs/product-model.md)
-- [Safety and maintenance](docs/safety-and-maintenance.md)
 
 ## Remove Construct
 

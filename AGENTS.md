@@ -2,7 +2,7 @@
 
 This repo is for **pi-construct** / **The Construct**, a global Pi extension / Pi package centered on `/construct`.
 
-This is a Pi-native project. Before reaching for external web docs, use Pi's installed local documentation, local examples, and this repo's docs as the source of truth. Work smarter: verify against the APIs and behavior already on this machine.
+This is a Pi-native project. Before reaching for external web docs, use Pi's installed local documentation, local examples, this repo's README/AGENTS guidance, and any local `apricity/` notes as the source of truth. Work smarter: verify against the APIs and behavior already on this machine.
 
 Above all: keep Construct as close to native Pi as possible. Prefer Pi's existing APIs, commands, settings semantics, TUI components, and package/resource behavior over custom duplicate systems.
 
@@ -26,12 +26,10 @@ Above all: keep Construct as close to native Pi as possible. Prefer Pi's existin
 
 ## Docs roles
 
-- `AGENTS.md` — agent operating rules and compact build context.
-- `MAP.md` — decided roadmap/action list, grouped by target version; this is the actual plan of record for upcoming work.
-- `TODO.md` — scratchpad for research notes and undecided ideas; do not treat it as the committed roadmap.
-- `README.md` — short human user guide.
-- `HANDOFF.md` — current session/release handoff notes.
-- `docs/` — architecture, product model, safety notes, command UX, and preflight checks.
+- `AGENTS.md` — agent operating rules and compact build context; read this first.
+- `README.md` — main human user guide and public instruction source.
+- `CHANGELOG.md` — shipped history.
+- `apricity/` — ignored local stash for agent notes and detailed project documentation after `AGENTS.md`; this is where local MAP/TODO/HANDOFF/FAQ-style notes belong, and it is not shipped or tracked.
 
 ## Current implementation
 
@@ -142,7 +140,7 @@ Update all relevant release surfaces before tagging/publishing:
 
 - package version in `package.json` and `package-lock.json`
 - `CHANGELOG.md` release entry/date
-- README and docs for any user-facing behavior changes
+- README for user-facing behavior changes, plus AGENTS/CHANGELOG as needed for tracked project context
 - git commit on `main`
 - git tag, pushed to origin
 - GitHub Release for the shipped tag, marked latest when appropriate
@@ -193,7 +191,7 @@ HOME="$TMP/home" pi install "$PWD" --approve
 
 ## Pi docs and local resources first
 
-Use installed Pi docs before web search. Only go outside when local docs/examples and repo files do not answer the question, or when the user explicitly asks for outside research.
+Use installed Pi docs before web search. Only go outside when local Pi docs/examples, repo files, and local `apricity/` notes do not answer the question, or when the user explicitly asks for outside research.
 
 Start with:
 
@@ -223,4 +221,4 @@ Relevant examples/implementations to review when coding:
 
 - Do not add generated package caches to this repo.
 - Do not commit secrets.
-- Keep plans/docs readable and low-tech.
+- Keep plans/notes readable and low-tech.
