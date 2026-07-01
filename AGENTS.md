@@ -55,7 +55,7 @@ Core loop:
    ```bash
    pi install <source> -l --approve
    ```
-2. Run `/construct load` to add package declarations to the Construct library and adopt direct resources into project metadata.
+2. Run `/construct load` to add already-installed package declarations to the Construct library and adopt direct resources into project metadata.
 3. Optionally run `/construct save <name>` to save the active Construct package-source grouping.
 4. In another project, run `/construct` or `/construct run <name>` to enable remembered package sources.
 5. After dashboard changes, press Enter on the final panel to reload Pi, or Esc to cancel reload and run `/reload` later.
@@ -98,7 +98,8 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
 - `/construct` opens the Construct Loadout dashboard.
 - Dashboard TUI title stays quiet and includes the package/version string plus counts.
 - Dashboard row content is color-coded by state while cursor/checkbox markers stay plain: Loadouts/Saved and Active use the heading accent, Disabled is muted, Available is yellow, Unloaded/read-only is gray; focused row content may be bold; headings use the normal accent/heading color.
-- `/construct load` adds current project package declarations to the Construct library and advisory current-project metadata; direct project resources are adopted into advisory current-project metadata only.
+- `/construct load` adds already-installed current project package declarations to the Construct library and advisory current-project metadata; direct project resources are adopted into advisory current-project metadata only.
+- `/construct load` never installs packages, activates remembered package sources, reloads Pi, or enables disabled package filters. To activate a remembered package, use the dashboard/run flow or `pi install -l <source>`.
 - `/construct unload` removes resources from the Construct library/saved-loadout refs/current-project metadata only.
 - Unload never uninstalls packages, disables packages, reloads Pi, or edits `.pi/settings.json`.
 - `.pi/settings.json` wins when it disagrees with `.pi/construct.json`.

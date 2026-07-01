@@ -4,6 +4,12 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## 0.0.28 - 2026-07-01
+
+### Changed
+- Clarify README, agent guidance, and in-app copy so `/construct load` is described as adopting already-active project declarations into Construct metadata, not installing or activating packages.
+- Point users toward the dashboard/run flow or `pi install -l <source>` when they want to activate remembered package sources.
+
 ## 0.0.27 - 2026-07-01
 
 ### Changed

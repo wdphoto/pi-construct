@@ -1,6 +1,6 @@
 {
   "name": "pi-construct",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "description": "A minimal Pi loadout menu for project-local packages.",
   "license": "MIT",
   "type": "module",

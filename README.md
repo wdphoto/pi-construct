@@ -28,7 +28,7 @@ Install a Pi package in a project:
 pi install npm:package-name -l --approve
 ```
 
-Load the project into Construct:
+Adopt the already-installed project package/resource declarations into Construct metadata:
 
 ```text
 /construct load
@@ -57,7 +57,7 @@ Run that saved loadout in another project:
 - Shows active, disabled, available, and unloaded project resources.
 - Remembers package sources so you can reuse them across projects.
 - Saves named loadouts as package-source recipes.
-- Lets you enable, disable, install, or remove project package declarations from one TUI.
+- Lets the dashboard enable, disable, install, or remove project package declarations from one TUI.
 - Can unfold package-contained resources and write Pi-native package filters.
 - Can adopt direct project-local `.pi/` resources into project metadata.
 - Uses Pi-native settings, package filters, trust checks, and reload behavior.
@@ -70,7 +70,7 @@ Construct is a loadout manager, not a new package manager. `.pi/settings.json` s
 /construct                    # open the loadout menu
 /construct status [full]      # read-only diagnostics
 /construct scan [path]        # find unloaded trusted local project resources
-/construct load [...]         # adopt project resources into Construct
+/construct load [...]         # adopt already-installed project resources into Construct metadata
 /construct unload [...]       # make Construct forget resources
 /construct save <name>        # save active package sources as a loadout
 /construct list               # list saved loadouts

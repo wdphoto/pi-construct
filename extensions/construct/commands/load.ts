@@ -131,7 +131,11 @@ function candidateValue(candidate: AnyLoadCandidate): string {
 }
 
 function candidateDescription(candidate: AnyLoadCandidate): string | undefined {
-	if (candidate.kind === "package") return candidate.alreadyKnown ? "Already in the Construct library; load will arm project metadata." : undefined;
+	if (candidate.kind === "package") {
+		return candidate.alreadyKnown
+			? "Already in the Construct library; load only arms project metadata."
+			: "Already declared in this project; load adopts it into Construct metadata and will not install or enable it.";
+	}
 	return candidate.resource.enabled
 		? `Project ${candidate.kind} discovered by Pi; load will adopt it into project Construct metadata only.`
 		: `Project ${candidate.kind} is disabled by Pi filters; load will preserve that disabled state in Construct metadata.`;
@@ -436,7 +440,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 			value: candidateValue(candidate),
 			description: candidateDescription(candidate),
 			checked: false,
-			section: candidate.kind === "package" ? "UNLOADED PACKAGES — available to load" : "UNLOADED DIRECT RESOURCES — adopt metadata only",
+			section: candidate.kind === "package" ? "UNLOADED PACKAGES — adopt already-declared packages" : "UNLOADED DIRECT RESOURCES — adopt metadata only",
 		}));
 		const selected = await pickCheckboxes(ctx, "Construct load — add project resources", pickerItems);
 		if (!selected) {
@@ -499,4 +503,3 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 
 	await showSummary(ctx, formatLoadResult(result));
 }
-

@@ -200,7 +200,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			disabledByFilters: pkg.disabledByFilters,
 			filterState: pkg.filterState,
 			matchSources: uniqueSorted(pkg.matchSources),
-			description: pkg.filterState === "partially-filtered" ? "Read-only filtered package. Run /construct load to adopt it." : "Read-only package. Run /construct load to adopt it.",
+			description: pkg.filterState === "partially-filtered" ? "Read-only filtered package. Run /construct load to adopt its existing declaration." : "Read-only package. Run /construct load to adopt its existing declaration.",
 		});
 	}
 
@@ -221,7 +221,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 				? resource.enabled
 					? `Active ${resource.kind}. Enter disables.`
 					: `Disabled ${resource.kind}. Enter enables.`
-				: `Read-only ${resource.kind}. Run /construct load to adopt it.`,
+				: `Read-only ${resource.kind}. Run /construct load to adopt existing metadata.`,
 		});
 	}
 
@@ -337,10 +337,10 @@ function dashboardLine(item: DashboardItem, labelWidth: number, projectTrusted =
 function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: boolean, projectTrusted = true): string {
 	if (!projectTrusted) return "Project is not trusted by Pi. Construct is read-only here; trust the project to load, run, or edit package settings.";
 	const counts = dashboardCounts(packages);
-	if (projectMetadataMissing && counts.unloaded > 0) return "No Construct metadata yet. Run /construct load to adopt unloaded project resources.";
+	if (projectMetadataMissing && counts.unloaded > 0) return "No Construct metadata yet. Run /construct load to adopt already-installed project resources.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
 	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
-	if (counts.unloaded > 0) return "Run /construct load to add unloaded resources to the Construct.";
+	if (counts.unloaded > 0) return "Run /construct load to adopt already-installed resources into the Construct.";
 	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
 	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
 	return "Install a Pi package normally, then run /construct load to remember it.";
@@ -392,7 +392,7 @@ function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackage
 			"Use r if you want to remove the package declaration from this project.",
 		];
 	}
-	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to load/adopt them into Construct."];
+	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to adopt already-installed resources into Construct metadata."];
 	return [
 		"No active or disabled project packages were selected to remove.",
 		"Select Active or Disabled package rows, then press r.",
