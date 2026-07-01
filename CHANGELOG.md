@@ -4,6 +4,12 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## 0.0.27 - 2026-07-01
+
+### Changed
+- Move Pi-facing package manager, settings manager, path, and package-source identity handling behind an internal adapter boundary so Construct stays closer to native Pi APIs as Pi evolves.
+- Preserve existing dashboard/status/package-resource behavior while centralizing the quiet package install shim and cache-only package-resource inspection path.
+
 ## 0.0.26 - 2026-07-01
 
 ### Changed

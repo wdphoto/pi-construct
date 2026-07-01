@@ -1,9 +1,7 @@
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, ConstructPaths, DirectResourceSummary } from "./types.js";
 import { deriveId } from "./catalog.js";
 import { readJson, writeJson } from "./json.js";
+import { installAndPersistProjectPackage, removeAndPersistProjectPackage, type ProjectPackageManagerOptions } from "./pi-adapter/package-manager.js";
 import {
 	backupProjectSettingsIfPresent,
 	chooseDeclaredSource,
@@ -41,118 +39,10 @@ function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof rea
 	};
 }
 
-export interface PackageOperationOptions {
-	projectTrusted?: boolean;
-	quietPackageInstallOutput?: boolean;
-}
+export type PackageOperationOptions = ProjectPackageManagerOptions;
 
 function projectWriteOptions(options: PackageOperationOptions = {}): PackageOperationOptions {
 	return { projectTrusted: options.projectTrusted };
-}
-
-function formatSettingsErrors(errors: ReturnType<SettingsManager["drainErrors"]>): string {
-	return errors.map((error) => `${error.scope}: ${error.error.message}`).join("\n");
-}
-
-const maxQuietCommandOutput = 12_000;
-
-type QuietCommandOptions = { cwd?: string } | undefined;
-type QuietCommandHost = { runCommand?: (command: string, args: string[], options?: QuietCommandOptions) => Promise<void> };
-
-function appendBoundedOutput(current: string, chunk: Buffer | string): string {
-	const next = current + chunk.toString();
-	return next.length > maxQuietCommandOutput ? next.slice(-maxQuietCommandOutput) : next;
-}
-
-function redactCommandOutput(text: string): string {
-	return text.replace(/(https?:\/\/)([^\s/@]+(?::[^\s/@]*)?@)/gi, "$1[redacted]@").trim();
-}
-
-function quietCommandFailureMessage(command: string, args: string[], code: number | null, signal: NodeJS.Signals | null, stdout: string, stderr: string): string {
-	const exitStatus = code === null ? `signal ${signal ?? "unknown"}` : `code ${code}`;
-	const output = redactCommandOutput([stderr, stdout].filter((part) => part.trim().length > 0).join("\n"));
-	const outputNote = output ? `\n${output}` : "";
-	const packageManagerName = command.split(/[\\/]/).pop() || command;
-	const subcommand = args[0] ? ` ${args[0]}` : "";
-	return `${packageManagerName}${subcommand} failed with ${exitStatus}.${outputNote}`;
-}
-
-function packageCommandEnv(): NodeJS.ProcessEnv {
-	if (process.platform !== "linux" || Object.keys(process.env).length > 0) return process.env;
-	try {
-		const env: NodeJS.ProcessEnv = {};
-		for (const entry of readFileSync("/proc/self/environ", "utf-8").split("\0")) {
-			const separator = entry.indexOf("=");
-			if (separator > 0) env[entry.slice(0, separator)] = entry.slice(separator + 1);
-		}
-		return env;
-	} catch {
-		return process.env;
-	}
-}
-
-function runQuietCommand(command: string, args: string[], options?: QuietCommandOptions): Promise<void> {
-	return new Promise((resolvePromise, reject) => {
-		let stdout = "";
-		let stderr = "";
-		const child = spawn(command, args, {
-			cwd: options?.cwd,
-			stdio: ["ignore", "pipe", "pipe"],
-			env: packageCommandEnv(),
-		});
-		child.stdout?.on("data", (chunk) => {
-			stdout = appendBoundedOutput(stdout, chunk);
-		});
-		child.stderr?.on("data", (chunk) => {
-			stderr = appendBoundedOutput(stderr, chunk);
-		});
-		child.once("error", reject);
-		child.once("close", (code, signal) => {
-			if (code === 0) {
-				resolvePromise();
-				return;
-			}
-			reject(new Error(quietCommandFailureMessage(command, args, code, signal, stdout, stderr)));
-		});
-	});
-}
-
-function capturePackageManagerCommandOutput(manager: DefaultPackageManager): void {
-	// Pi's package manager intentionally inherits git/npm stdio for native CLI installs.
-	// Construct TUI progress panels need those child streams captured/drained instead.
-	// Keep this shim narrow and remove it if Pi exposes a public quiet install option.
-	const host = manager as unknown as QuietCommandHost;
-	if (typeof host.runCommand !== "function") return;
-	host.runCommand = runQuietCommand;
-}
-
-function createProjectPackageManager(paths: ConstructPaths, options: PackageOperationOptions = {}): { manager: DefaultPackageManager; settings: SettingsManager } {
-	const agentDir = getAgentDir();
-	const settings = SettingsManager.create(paths.cwd, agentDir, { projectTrusted: options.projectTrusted ?? true });
-	const loadErrors = settings.drainErrors();
-	if (loadErrors.length > 0) throw new Error(`Pi SettingsManager could not read settings.\n${formatSettingsErrors(loadErrors)}`);
-	const manager = new DefaultPackageManager({ cwd: paths.cwd, agentDir, settingsManager: settings });
-	if (options.quietPackageInstallOutput) capturePackageManagerCommandOutput(manager);
-	return { manager, settings };
-}
-
-async function flushNativePackageSettings(settings: SettingsManager, action: string): Promise<void> {
-	await settings.flush();
-	const errors = settings.drainErrors();
-	if (errors.length > 0) throw new Error(`Pi SettingsManager could not ${action}.\n${formatSettingsErrors(errors)}`);
-}
-
-async function installAndPersistProjectPackage(paths: ConstructPaths, source: string, options: PackageOperationOptions = {}): Promise<void> {
-	const { manager, settings } = createProjectPackageManager(paths, options);
-	await manager.installAndPersist(source, { local: true });
-	await flushNativePackageSettings(settings, "write project package settings");
-}
-
-async function removeAndPersistProjectPackage(paths: ConstructPaths, source: string, options: PackageOperationOptions = {}): Promise<boolean> {
-	const { manager, settings } = createProjectPackageManager(paths, options);
-	const removed = await manager.removeAndPersist(source, { local: true });
-	await flushNativePackageSettings(settings, "write project package settings");
-	return removed;
 }
 
 function updateConstructDirectResourceEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, resource: DirectResourceSummary, enabled: boolean) {

@@ -1,8 +1,9 @@
 import { basename, dirname, extname, isAbsolute, relative, sep } from "node:path";
-import { DefaultPackageManager, getAgentDir, SettingsManager, type PathMetadata, type ResolvedResource } from "@earendil-works/pi-coding-agent";
+import type { PathMetadata, ResolvedResource } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceKind, DirectResourceSummary, JsonReadResult } from "./types.js";
 import { isObject } from "./json.js";
+import { resolveProjectPackageResources, type ResolvedPackageResources } from "./pi-adapter/package-manager.js";
 
 const resolvedResourceKeys = {
 	extension: "extensions",
@@ -97,14 +98,11 @@ export async function collectDirectProjectResources(
 ): Promise<{ resources: DirectResourceSummary[]; warnings: string[] }> {
 	const warnings: string[] = [];
 	const managedKeys = managedDirectResourceKeys(construct, paths);
-	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	let resolved: ResolvedPackageResources;
 	try {
-		const agentDir = getAgentDir();
-		const settingsManager = SettingsManager.create(paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
-		const packageManager = new DefaultPackageManager({ cwd: paths.cwd, agentDir, settingsManager });
-		resolved = await packageManager.resolve(async () => "skip");
-		const errors = settingsManager.drainErrors();
-		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for resource inventory: ${error.error.message}`));
+		const result = await resolveProjectPackageResources(paths, ctx.isProjectTrusted());
+		resolved = result.resolved;
+		warnings.push(...result.settingsErrors.map((error) => `Pi settings were not fully loaded for resource inventory: ${error}`));
 	} catch (error) {
 		return { resources: [], warnings: [`Could not inspect direct project resources: ${error instanceof Error ? error.message : String(error)}`] };
 	}

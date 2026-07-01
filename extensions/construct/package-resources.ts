@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
-import { DefaultPackageManager, getAgentDir, SettingsManager, type ResolvedResource } from "@earendil-works/pi-coding-agent";
+import type { ResolvedResource } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DirectResourceKind } from "./types.js";
 import type { ProjectInventory } from "./project-inventory.js";
+import { resolveProjectPackageResources, resolveTemporaryPackageResourcesForSources, type ResolvedPackageResources } from "./pi-adapter/package-manager.js";
 import { directResourceKinds, directResourceName, resourcePlural } from "./resources.js";
 import { normalizeSourceForLibrary, packageSourceIdentityKey, packageSourceMatchValues } from "./sources.js";
 
@@ -60,7 +61,7 @@ function packageRelativePath(resource: ResolvedResource): string {
 
 async function resolvedResourcesForInventory(input: {
 	inventory: ProjectInventory;
-	resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	resolved: ResolvedPackageResources;
 	scope: "project" | "temporary";
 }): Promise<PackageResourceSummary[]> {
 	const managedIds = await managedPackageIdsBySource(input.inventory);
@@ -170,14 +171,11 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 	if (!ctx.isProjectTrusted() && inventory.packageDeclarations.length > 0) {
 		return { resources: [], warnings: ["Project package resources were not inspected because the project is not trusted by Pi."] };
 	}
-	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	let resolved: ResolvedPackageResources;
 	try {
-		const agentDir = getAgentDir();
-		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
-		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
-		resolved = await packageManager.resolve(async () => "skip");
-		const errors = settingsManager.drainErrors();
-		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for package resource inventory: ${error.error.message}`));
+		const result = await resolveProjectPackageResources(inventory.paths, ctx.isProjectTrusted());
+		resolved = result.resolved;
+		warnings.push(...result.settingsErrors.map((error) => `Pi settings were not fully loaded for package resource inventory: ${error}`));
 	} catch (error) {
 		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`] };
 	}
@@ -185,18 +183,6 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 	const resources = await resolvedResourcesForInventory({ inventory, resolved, scope: "project" });
 	warnings.push(...declaredManagedPackageResourceWarnings(inventory, resources));
 	return { resources, warnings };
-}
-
-async function withPiOffline<T>(enabled: boolean, operation: () => Promise<T>): Promise<T> {
-	if (!enabled) return operation();
-	const previous = process.env.PI_OFFLINE;
-	process.env.PI_OFFLINE = "1";
-	try {
-		return await operation();
-	} finally {
-		if (previous === undefined) delete process.env.PI_OFFLINE;
-		else process.env.PI_OFFLINE = previous;
-	}
 }
 
 export async function collectTemporaryPackageResourcesForSources(
@@ -212,14 +198,11 @@ export async function collectTemporaryPackageResourcesForSources(
 	}
 
 	const warnings: string[] = [];
-	let resolved: Awaited<ReturnType<DefaultPackageManager["resolve"]>>;
+	let resolved: ResolvedPackageResources;
 	try {
-		const agentDir = getAgentDir();
-		const settingsManager = SettingsManager.create(inventory.paths.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
-		const packageManager = new DefaultPackageManager({ cwd: inventory.paths.cwd, agentDir, settingsManager });
-		resolved = await withPiOffline(options.cacheOnly === true, () => packageManager.resolveExtensionSources(uniqueSources, { temporary: true }));
-		const errors = settingsManager.drainErrors();
-		warnings.push(...errors.map((error) => `Pi ${error.scope} settings were not fully loaded for available package resource inventory: ${error.error.message}`));
+		const result = await resolveTemporaryPackageResourcesForSources(inventory.paths, ctx.isProjectTrusted(), uniqueSources, options);
+		resolved = result.resolved;
+		warnings.push(...result.settingsErrors.map((error) => `Pi settings were not fully loaded for available package resource inventory: ${error}`));
 	} catch (error) {
 		return { resources: [], warnings: [`Could not inspect available package resources: ${error instanceof Error ? error.message : String(error)}`] };
 	}

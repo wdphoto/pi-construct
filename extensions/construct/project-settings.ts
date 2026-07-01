@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { getAgentDir, SettingsManager, type PackageSource } from "@earendil-works/pi-coding-agent";
+import type { PackageSource } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceKind, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { describeJsonReadIssue, isObject, readJson } from "./json.js";
 import { analyzePackageFilters, packageFiltersArePartial, packageFiltersDisableWholePackage, packageResourceFilterKeys } from "./package-filters.js";
+import { createProjectSettingsManager, flushProjectSettings } from "./pi-adapter/settings.js";
 import { managedPackageSourceIdentity, packageSourceIdentity, packageSourceMatchValues } from "./sources.js";
 
 export function looksLikePackageSource(value: string): boolean {
@@ -157,20 +158,10 @@ function assertTrustedProjectWrite(options: ProjectSettingsWriteOptions): void {
 	if (options.projectTrusted === false) throw new Error("Project is not trusted by Pi; refusing to edit project settings.");
 }
 
-function throwSettingsErrors(errors: ReturnType<SettingsManager["drainErrors"]>, action: string): void {
-	if (errors.length === 0) return;
-	throw new Error([`Pi SettingsManager could not ${action}.`, ...errors.map((error) => `${error.scope}: ${error.error.message}`)].join("\n"));
-}
-
-async function flushProjectSettings(settings: SettingsManager, action: string): Promise<void> {
-	await settings.flush();
-	throwSettingsErrors(settings.drainErrors(), action);
-}
-
 async function persistProjectPackages(paths: ConstructPaths, packages: unknown[], options: ProjectSettingsWriteOptions): Promise<string | undefined> {
 	assertTrustedProjectWrite(options);
 	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	const settings = SettingsManager.create(paths.cwd, getAgentDir(), { projectTrusted: options.projectTrusted ?? true });
+	const settings = createProjectSettingsManager(paths.cwd, options);
 	settings.setProjectPackages(packages as PackageSource[]);
 	await flushProjectSettings(settings, "write project package settings");
 	return backupPath;
@@ -179,7 +170,7 @@ async function persistProjectPackages(paths: ConstructPaths, packages: unknown[]
 async function persistProjectDirectResourcePaths(paths: ConstructPaths, kind: DirectResourceKind, entries: unknown[], options: ProjectSettingsWriteOptions): Promise<string | undefined> {
 	assertTrustedProjectWrite(options);
 	const backupPath = options.backupPath ?? await backupProjectSettingsIfPresent(paths);
-	const settings = SettingsManager.create(paths.cwd, getAgentDir(), { projectTrusted: options.projectTrusted ?? true });
+	const settings = createProjectSettingsManager(paths.cwd, options);
 	const pathsValue = entries as string[];
 	if (kind === "extension") settings.setProjectExtensionPaths(pathsValue);
 	else if (kind === "skill") settings.setProjectSkillPaths(pathsValue);
