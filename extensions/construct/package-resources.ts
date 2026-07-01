@@ -1,4 +1,5 @@
-import { dirname, isAbsolute, relative, sep } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { DefaultPackageManager, getAgentDir, SettingsManager, type ResolvedResource } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DirectResourceKind } from "./types.js";
@@ -96,6 +97,74 @@ async function resolvedResourcesForInventory(input: {
 	return resources;
 }
 
+function resourceMatchesManagedPackage(resource: PackageResourceSummary, item: ProjectInventory["managedPackages"][number]): boolean {
+	return (
+		resource.packageManagedId === item.metadata.id ||
+		item.matchSources.includes(resource.packageSource) ||
+		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource)) ||
+		(resource.packageIdentityKey !== undefined && item.matchSources.includes(resource.packageIdentityKey))
+	);
+}
+
+function projectGitPackageRoot(cwd: string, source: string): string | undefined {
+	const identity = packageSourceIdentityKey(source);
+	if (!identity?.startsWith("git:")) return undefined;
+	const path = identity.slice("git:".length);
+	if (!path.includes("/")) return undefined;
+	return join(cwd, ".pi", "git", ...path.split("/"));
+}
+
+function findNonPiSkillFiles(root: string): string[] {
+	const found: string[] = [];
+	const visit = (dir: string, depth: number) => {
+		if (depth > 4 || found.length >= 6) return;
+		let entries: string[];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (entry === ".git" || entry === "node_modules" || entry === "skills") continue;
+			const path = join(dir, entry);
+			let stat;
+			try {
+				stat = statSync(path);
+			} catch {
+				continue;
+			}
+			if (stat.isDirectory()) visit(path, depth + 1);
+			else if (entry === "SKILL.md") {
+				const rel = relativeIfInside(root, path);
+				if (rel) found.push(rel);
+			}
+		}
+	};
+	if (existsSync(root)) visit(root, 0);
+	return found;
+}
+
+function zeroResourcePackageWarning(inventory: ProjectInventory, item: ProjectInventory["managedPackages"][number]): string {
+	const root = projectGitPackageRoot(inventory.paths.cwd, item.source);
+	const skillFiles = root ? findNonPiSkillFiles(root) : [];
+	const candidates = skillFiles.length > 0 ? ` Found non-Pi skill files: ${skillFiles.slice(0, 3).join(", ")}${skillFiles.length > 3 ? ", …" : ""}.` : "";
+	return (
+		`${item.metadata.id}: package is declared in this project, but Pi resolved no package resources from ${item.source}.` +
+		candidates +
+		" Do not patch .pi/git; pi update --extensions can reset it. Keep the upstream package declared for updates and add project-local direct skill entries or a wrapper manifest; re-check paths after updates."
+	);
+}
+
+function declaredManagedPackageResourceWarnings(inventory: ProjectInventory, resources: PackageResourceSummary[]): string[] {
+	const warnings: string[] = [];
+	for (const item of inventory.managedPackages) {
+		if (!item.declared) continue;
+		if (resources.some((resource) => resourceMatchesManagedPackage(resource, item))) continue;
+		warnings.push(zeroResourcePackageWarning(inventory, item));
+	}
+	return warnings;
+}
+
 export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, inventory: ProjectInventory): Promise<PackageResourceInventory> {
 	const warnings: string[] = [];
 	if (!ctx.isProjectTrusted() && inventory.packageDeclarations.length > 0) {
@@ -113,7 +182,9 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`] };
 	}
 
-	return { resources: await resolvedResourcesForInventory({ inventory, resolved, scope: "project" }), warnings };
+	const resources = await resolvedResourcesForInventory({ inventory, resolved, scope: "project" });
+	warnings.push(...declaredManagedPackageResourceWarnings(inventory, resources));
+	return { resources, warnings };
 }
 
 async function withPiOffline<T>(enabled: boolean, operation: () => Promise<T>): Promise<T> {

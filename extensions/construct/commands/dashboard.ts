@@ -235,19 +235,37 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		}
 	}
 
-	let packageResources: PackageResourceInventory | undefined;
+	const projectResources = await collectProjectPackageResources(ctx, inventory);
+	warnings.push(...projectResources.warnings);
+	reclassifyManagedPackagesByEffectiveState(projectResources, packages);
+	let packageResources: PackageResourceInventory = projectResources;
 	if (ctx.mode === "tui") {
-		const projectResources = await collectProjectPackageResources(ctx, inventory);
 		const availableSources = packages.filter((item): item is DashboardPackage => item.type === "package" && item.section === "Available" && !item.disabled).map((item) => item.source);
 		const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, availableSources, { cacheOnly: true });
+		warnings.push(...availableResources.warnings);
 		packageResources = {
 			resources: [...projectResources.resources, ...availableResources.resources],
 			warnings: [...projectResources.warnings, ...availableResources.warnings],
 		};
 	}
-	warnings.push(...(packageResources?.warnings ?? []));
 	sortDashboardPackages(packages);
 	return { paths, packages, warnings, projectMetadataMissing, packageResources };
+}
+
+function reclassifyManagedPackagesByEffectiveState(projectResources: PackageResourceInventory, packages: DashboardItem[]): void {
+	// A partially-filtered package may be effectively fully disabled by Pi resource filters
+	// (e.g. every resource force-excluded via `pi config` `-path` entries). Construct's array-shape
+	// classifier reads those as "partially-filtered/active", but Pi's resolved view is the truth.
+	// Surface such packages in the Disabled section so the dashboard agrees with `pi config`, while
+	// keeping the whole-package Enter guard (partial Pi filters are never clobbered here; use Right Arrow).
+	for (const item of packages) {
+		if (item.type !== "package" || !item.managed || item.filterState !== "partially-filtered") continue;
+		if (item.section !== "Active" && item.section !== "Disabled") continue;
+		const resources = resourcesForPackage(item, projectResources);
+		if (resources.length === 0 || resources.some((resource) => resource.enabled)) continue;
+		item.section = "Disabled";
+		item.description = "Disabled via Pi resource filters (all resources off). Right Arrow re-enables individual resources; r removes the package.";
+	}
 }
 
 function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
@@ -378,7 +396,8 @@ function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackage
 	return [
 		"No active or disabled project packages were selected to remove.",
 		"Select Active or Disabled package rows, then press r.",
-		"Package-contained child resources are filtered, not removed: use Space then Enter to write package filters.",
+		"r always targets the whole package: child resource rows fold into their parent package for removal.",
+		"To filter package-contained resources instead of removing the package, use Space then Enter.",
 		"Available packages are not installed in this project; use /construct unload to forget them from the Construct library.",
 		"Unloaded resources are read-only here; remove them with Pi directly if needed.",
 	];
@@ -509,6 +528,8 @@ function findPackageForSavedSource(packages: DashboardPackage[], source: string)
 function actionForSavedSource(item: DashboardPackage | undefined): DashboardAction | undefined {
 	// Saved loadout rows are activate-only: install missing sources, enable disabled sources, and never disable/remove anything.
 	if (!item) return "Install";
+	// Never clobber partial Pi package filters from a saved-loadout run; use the dashboard Right-Arrow resource picker instead.
+	if (packageWholeToggleBlocked(item)) return undefined;
 	if (item.section === "Active") return undefined;
 	if (item.section === "Disabled") return "Enable";
 	if (item.section === "Available") return "Install";
@@ -812,6 +833,19 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 	}
 
 	const pickerItems = dashboardPickerItems(packages, sessionPackageResources);
+	const childToParentRowId = new Map<string, string>();
+	for (const pickerItem of pickerItems) if (pickerItem.parentId) childToParentRowId.set(pickerItem.id, pickerItem.parentId);
+	function resolveRemoveIds(ids: string[]): string[] {
+		const resolved: string[] = [];
+		const seen = new Set<string>();
+		for (const id of ids) {
+			const target = childToParentRowId.get(id) ?? id;
+			if (seen.has(target)) continue;
+			seen.add(target);
+			resolved.push(target);
+		}
+		return resolved;
+	}
 	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
 		titleBold: false,
 		subtitle: dashboardPickerSubtitle(packages, projectMetadataMissing),
@@ -820,8 +854,9 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r remove · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r removes whole package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
 		actions: { remove: true },
+		resolveRemoveIds: resolveRemoveIds,
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, sessionPackageResources) : undefined;

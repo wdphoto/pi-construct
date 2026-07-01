@@ -235,6 +235,7 @@ export interface CheckboxPickerOptions {
 	actions?: {
 		remove?: boolean;
 	};
+	resolveRemoveIds?: (selectedIds: string[]) => string[];
 	removeConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction, changedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
@@ -630,7 +631,8 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 		}
 
 		function startRemove(): void {
-			const ids = checkboxPickerRemoveTargetIds(checked, selectedItem()?.id);
+			const baseIds = checkboxPickerRemoveTargetIds(checked, selectedItem()?.id);
+			const ids = options.resolveRemoveIds ? options.resolveRemoveIds(baseIds) : baseIds;
 			const confirmation = options.removeConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "remove", [...changed]);
 			if (!confirmation) {
 				startSubmit("remove", ids);

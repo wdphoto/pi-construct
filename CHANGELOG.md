@@ -4,6 +4,16 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## 0.0.26 - 2026-07-01
+
+### Changed
+- Classify partially-filtered packages as disabled when Pi resolves every package-contained resource as off, keeping the dashboard aligned with Pi's effective state.
+- Make dashboard remove actions from child-resource rows target the whole parent package, matching the documented `r` behavior.
+- Keep saved-loadout runs from clobbering packages with partial Pi resource filters; use the dashboard resource picker to re-enable those resources intentionally.
+
+### Added
+- Warn when a declared Construct-managed package resolves no Pi package resources, including hints for non-Pi skill layouts found in cached git packages.
+
 ## 0.0.25 - 2026-06-24
 
 ### Changed

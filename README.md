@@ -58,6 +58,7 @@ Run that saved loadout in another project:
 - Remembers package sources so you can reuse them across projects.
 - Saves named loadouts as package-source recipes.
 - Lets you enable, disable, install, or remove project package declarations from one TUI.
+- Can unfold package-contained resources and write Pi-native package filters.
 - Can adopt direct project-local `.pi/` resources into project metadata.
 - Uses Pi-native settings, package filters, trust checks, and reload behavior.
 
