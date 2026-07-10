@@ -30,6 +30,9 @@ try {
 	assert.equal(theme.enabled, true);
 	assert.equal(theme.managed, true);
 	assert.equal(theme.settingsPath, "themes/tokyo.json");
+	writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({
+		themes: ["themes/tokyo.json", "!themes/tokyo.json", "+themes/tokyo.json", "-themes/tokyo.json"],
+	}, null, 2));
 
 	const disabled = await disableDirectResourceInProject(paths, theme, { projectTrusted: true });
 	assert.equal(disabled.ok, true, disabled.error);

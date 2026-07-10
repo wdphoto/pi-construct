@@ -71,6 +71,8 @@ async function resolvedResourcesForInventory(input: {
 		for (const entry of input.resolved[resolvedResourceKeys[kind]]) {
 			if (entry.metadata.origin !== "package" || entry.metadata.scope !== input.scope) continue;
 			const normalizedSource = await normalizeSourceForLibrary(entry.metadata.source, settingsDir);
+			const sourceMatches = await packageSourceMatchValues(entry.metadata.source, settingsDir);
+			if (sourceMatches.some((source) => input.inventory.packageSources.projectOverrideSources.has(source))) continue;
 			const identityKey = packageSourceIdentityKey(entry.metadata.source, normalizedSource);
 			const managedId = managedIds.get(entry.metadata.source) ?? managedIds.get(normalizedSource) ?? (identityKey ? managedIds.get(identityKey) : undefined);
 			const relativePath = packageRelativePath(entry);

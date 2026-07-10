@@ -41,19 +41,24 @@ export function getPackages(settings: JsonReadResult): PackageDeclarationSummary
 	return packages.map((entry): PackageDeclarationSummary => {
 		const filters = analyzePackageFilters(entry);
 		if (typeof entry === "string") {
-			return { source: entry, form: "string", enabled: true, disabledByFilters: false, filterState: filters.state, filterDescription: filters.description };
+			return { source: entry, form: "string", autoload: true, projectOverride: false, enabled: true, disabledByFilters: false, filterState: filters.state, filterDescription: filters.description };
 		}
 		if (isObject(entry) && typeof entry.source === "string") {
+			const projectOverride = entry.autoload === false;
 			return {
 				source: entry.source,
 				form: "object",
+				autoload: !projectOverride,
+				projectOverride,
 				enabled: filters.state !== "invalid",
-				disabledByFilters: filters.state === "whole-package-disabled",
+				disabledByFilters: !projectOverride && filters.state === "whole-package-disabled",
 				filterState: filters.state,
-				filterDescription: filters.description,
+				filterDescription: projectOverride
+					? `Pi project override (${filters.presentKeys.length > 0 ? `${filters.presentKeys.length} resource filter group${filters.presentKeys.length === 1 ? "" : "s"}` : "no explicit resource filters"})`
+					: filters.description,
 			};
 		}
-		return { source: "<invalid package declaration>", form: "invalid", enabled: false, disabledByFilters: false, filterState: "invalid", filterDescription: filters.description };
+		return { source: "<invalid package declaration>", form: "invalid", autoload: true, projectOverride: false, enabled: false, disabledByFilters: false, filterState: "invalid", filterDescription: filters.description };
 	});
 }
 
@@ -61,25 +66,32 @@ export interface PackageSourceSets {
 	declaredSources: Set<string>;
 	activeSources: Set<string>;
 	disabledSources: Set<string>;
+	projectOverrideSources: Set<string>;
 }
 
 export async function collectPackageSourceSets(packages: PackageDeclarationSummary[], settingsDir: string): Promise<PackageSourceSets> {
 	const declaredSources = new Set<string>();
 	const activeSources = new Set<string>();
 	const disabledSources = new Set<string>();
+	const projectOverrideSources = new Set<string>();
 	for (const pkg of packages) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
 		const matches = await packageSourceMatchValues(pkg.source, settingsDir);
 		for (const source of matches) {
+			if (pkg.projectOverride) {
+				projectOverrideSources.add(source);
+				continue;
+			}
 			declaredSources.add(source);
 			if (pkg.disabledByFilters) disabledSources.add(source);
 			else activeSources.add(source);
 		}
 	}
-	return { declaredSources, activeSources, disabledSources };
+	return { declaredSources, activeSources, disabledSources, projectOverrideSources };
 }
 
-export function packageMetadataDrift(enabled: boolean | undefined, declared: boolean, disabledByFilters: boolean): string | undefined {
+export function packageMetadataDrift(enabled: boolean | undefined, declared: boolean, disabledByFilters: boolean, projectOverride = false): string | undefined {
+	if (projectOverride) return "Construct package metadata points to a Pi project override; manage with pi config -l";
 	if (enabled === true && !declared) return "enabled in Construct metadata, missing from .pi/settings.json";
 	if (enabled === true && disabledByFilters) return "enabled in Construct metadata, disabled by package filters";
 	if (enabled === false && !declared) return "disabled in Construct metadata, missing from .pi/settings.json";
@@ -92,11 +104,23 @@ export function formatManagedItemDrift(item: ManagedItemSummary): string {
 	return `${item.kind} ${item.id}${source} — ${item.drift ?? "drift"}`;
 }
 
+export function applyDirectResourceDrift(
+	items: ManagedItemSummary[],
+	directResources: DirectResourceSummary[],
+): ManagedItemSummary[] {
+	const resolvedIds = new Set(directResources.map((resource) => resource.managedId).filter((id): id is string => id !== undefined));
+	return items.map((item) => {
+		if (item.kind === "package" || item.kind === "unknown" || resolvedIds.has(item.id)) return item;
+		return { ...item, drift: item.drift ?? "direct resource missing from Pi's resolved project resources" };
+	});
+}
+
 export async function getManagedItems(
 	construct: JsonReadResult,
 	packageSources: Set<string>,
 	paths: ConstructPaths,
 	disabledPackageSources = new Set<string>(),
+	projectOverrideSources = new Set<string>(),
 ): Promise<ManagedItemSummary[]> {
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return [];
 	const summaries: ManagedItemSummary[] = [];
@@ -124,7 +148,8 @@ export async function getManagedItems(
 			if (source) {
 				const declared = [...identity.matchSources].some((candidate) => packageSources.has(candidate));
 				const disabledByFilters = [...identity.matchSources].some((candidate) => disabledPackageSources.has(candidate));
-				drift = packageMetadataDrift(enabled, declared, disabledByFilters);
+				const projectOverride = [...identity.matchSources].some((candidate) => projectOverrideSources.has(candidate));
+				drift = packageMetadataDrift(enabled, declared, disabledByFilters, projectOverride);
 			}
 		} else if (typeof value.path === "string") {
 			source = value.path;
@@ -349,6 +374,16 @@ async function targetSourceMatches(paths: ConstructPaths, source: string, rawSou
 	return rawMatches.some((candidate) => targetMatches.has(candidate));
 }
 
+export async function matchingPiProjectOverride(paths: ConstructPaths, source: string): Promise<string | undefined> {
+	const settings = readSettingsObject(await readJson(paths.projectSettingsPath));
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	for (const entry of packages) {
+		if (!isObject(entry) || entry.autoload !== false || typeof entry.source !== "string") continue;
+		if (await targetSourceMatches(paths, source, entry.source)) return entry.source;
+	}
+	return undefined;
+}
+
 function packageEntryWithDisabledResources(entry: unknown, source: string): JsonObject {
 	const base: JsonObject = isObject(entry) ? { ...entry, source } : { source };
 	for (const key of packageResourceFilterKeys) base[key] = [];
@@ -445,7 +480,11 @@ function directResourceSettingsPath(resource: DirectResourceSummary): string | u
 }
 
 function withoutExactResourceOverrides(entries: unknown[], relativePath: string): unknown[] {
-	return entries.filter((entry) => entry !== `+${relativePath}` && entry !== `-${relativePath}`);
+	return entries.filter((entry) => {
+		if (typeof entry !== "string") return true;
+		const target = entry.startsWith("!") || entry.startsWith("+") || entry.startsWith("-") ? entry.slice(1) : entry;
+		return target !== relativePath;
+	});
 }
 
 export async function setDirectResourceEnabled(

@@ -1,20 +1,19 @@
 import { existsSync } from "node:fs";
 import { readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { deriveId, parseCatalog } from "../catalog.js";
 import { loadProjectResourcesIntoConstruct } from "./load.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
-import { collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages, removeConstructItemsById } from "../project-settings.js";
-import { directResourceKey, directResourceKinds, directResourceName } from "../resources.js";
+import { applyDirectResourceDrift, collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages, removeConstructItemsById } from "../project-settings.js";
+import { collectDirectProjectResources } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
 import type { ConstructPaths, DirectResourceKind, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "../types.js";
 import { pickCheckboxes, setConstructStatus, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 const ignoredDirectoryNames = new Set(["node_modules", ".git", "dist", "build"]);
 const ignoredPiDirectoryNames = new Set(["npm", "git"]);
-const extensionExtensions = new Set([".ts", ".js", ".mjs", ".cjs"]);
 
 interface ScanPackageFinding {
 	source: string;
@@ -97,6 +96,7 @@ function isResourceDirectoryName(name: string): boolean {
 
 async function hasProjectMarker(dir: string): Promise<boolean> {
 	const piDir = join(dir, CONFIG_DIR_NAME);
+	if (existsSync(join(dir, ".agents", "skills"))) return true;
 	if (!existsSync(piDir)) return false;
 	if (existsSync(join(piDir, "settings.json")) || existsSync(join(piDir, "construct.json"))) return true;
 	try {
@@ -138,34 +138,6 @@ async function findProjects(root: string, warnings: string[], progress?: ScanPro
 	return projects.sort((a, b) => a.localeCompare(b));
 }
 
-function resourceCandidateKeys(kind: DirectResourceKind, projectDir: string, path: string): Set<string> {
-	const keys = new Set<string>();
-	const add = (candidate: string) => keys.add(directResourceKey(kind, candidate));
-	const relativePath = toPosixPath(relative(projectDir, path));
-	add(path);
-	add(resolve(path));
-	add(relativePath);
-	add(join(projectDir, relativePath));
-	if (relativePath.startsWith(`${CONFIG_DIR_NAME}/`)) {
-		const withoutConfig = relativePath.slice(CONFIG_DIR_NAME.length + 1);
-		add(withoutConfig);
-		add(join(projectDir, withoutConfig));
-		add(join(projectDir, CONFIG_DIR_NAME, withoutConfig));
-	}
-	return keys;
-}
-
-function addIfFile(resources: ScanResourceFinding[], projectDir: string, path: string, kind: DirectResourceKind, managedKeys: Set<string>, seenKeys: Set<string>): void {
-	const candidateKeys = resourceCandidateKeys(kind, projectDir, path);
-	for (const key of candidateKeys) {
-		if (managedKeys.has(key)) return;
-		if (seenKeys.has(key)) return;
-	}
-	for (const key of candidateKeys) seenKeys.add(key);
-	const name = directResourceName(kind, path);
-	resources.push({ kind, name, path, relativePath: toPosixPath(relative(projectDir, path)) });
-}
-
 function formatPackageFinding(pkg: ScanPackageFinding): string {
 	return `${pkg.source}${pkg.disabledByFilters ? " (disabled)" : ""} — ${pkg.missing.join(", ")}`;
 }
@@ -187,68 +159,6 @@ function scanSectionLabel(display: ScanDisplayContext, project: ScanProject, lab
 	return `${formatProjectPath(display, project)} · ${label}`;
 }
 
-async function directChildren(dir: string): Promise<import("node:fs").Dirent[]> {
-	try {
-		return await readdir(dir, { withFileTypes: true });
-	} catch {
-		return [];
-	}
-}
-
-async function walkFiles(dir: string, shouldInclude: (path: string) => boolean, skipDir: (name: string) => boolean = () => false): Promise<string[]> {
-	const files: string[] = [];
-	async function visit(current: string): Promise<void> {
-		for (const entry of await directChildren(current)) {
-			const path = join(current, entry.name);
-			if (entry.isDirectory()) {
-				if (!skipDir(entry.name)) await visit(path);
-				continue;
-			}
-			if (entry.isFile() && shouldInclude(path)) files.push(path);
-		}
-	}
-	await visit(dir);
-	return files.sort((a, b) => a.localeCompare(b));
-}
-
-async function collectProjectResourceFiles(projectDir: string): Promise<Array<{ kind: DirectResourceKind; path: string }>> {
-	const piDir = join(projectDir, CONFIG_DIR_NAME);
-	const resources: Array<{ kind: DirectResourceKind; path: string }> = [];
-
-	const extensionsDir = join(piDir, "extensions");
-	for (const entry of await directChildren(extensionsDir)) {
-		const path = join(extensionsDir, entry.name);
-		if (entry.isFile() && extensionExtensions.has(extname(entry.name))) resources.push({ kind: "extension", path });
-		if (entry.isDirectory()) {
-			for (const indexName of ["index.ts", "index.js", "index.mjs", "index.cjs"]) {
-				const indexPath = join(path, indexName);
-				if (existsSync(indexPath)) resources.push({ kind: "extension", path: indexPath });
-			}
-		}
-	}
-
-	const skillsDir = join(piDir, "skills");
-	for (const entry of await directChildren(skillsDir)) {
-		const path = join(skillsDir, entry.name);
-		if (entry.isFile() && extname(entry.name) === ".md") resources.push({ kind: "skill", path });
-	}
-	for (const path of await walkFiles(skillsDir, (path) => basename(path) === "SKILL.md", (name) => ignoredDirectoryNames.has(name))) resources.push({ kind: "skill", path });
-
-	const promptsDir = join(piDir, "prompts");
-	for (const entry of await directChildren(promptsDir)) {
-		const path = join(promptsDir, entry.name);
-		if (entry.isFile() && extname(entry.name) === ".md") resources.push({ kind: "prompt", path });
-	}
-
-	const themesDir = join(piDir, "themes");
-	for (const entry of await directChildren(themesDir)) {
-		const path = join(themesDir, entry.name);
-		if (entry.isFile() && extname(entry.name) === ".json") resources.push({ kind: "theme", path });
-	}
-
-	return resources.sort((a, b) => a.kind.localeCompare(b.kind) || a.path.localeCompare(b.path));
-}
-
 async function managedPackageSources(construct: JsonReadResult, paths: ConstructPaths): Promise<Set<string>> {
 	const sources = new Set<string>();
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return sources;
@@ -259,34 +169,6 @@ async function managedPackageSources(construct: JsonReadResult, paths: Construct
 		if (identity.normalizedInstallSource) sources.add(identity.normalizedInstallSource);
 	}
 	return sources;
-}
-
-function managedDirectResourceKeys(construct: JsonReadResult, projectDir: string): Set<string> {
-	const keys = new Set<string>();
-	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return keys;
-	const add = (kind: DirectResourceKind, path: string) => keys.add(directResourceKey(kind, path));
-	for (const value of Object.values(construct.data.items)) {
-		if (!isObject(value)) continue;
-		if (!directResourceKinds.includes(value.kind as DirectResourceKind)) continue;
-		if (typeof value.path !== "string" || !value.path.trim()) continue;
-		const kind = value.kind as DirectResourceKind;
-		const rawPath = value.path.trim();
-		add(kind, rawPath);
-		if (isAbsolute(rawPath)) {
-			add(kind, resolve(rawPath));
-			continue;
-		}
-		add(kind, join(projectDir, rawPath));
-		if (rawPath.startsWith(`${CONFIG_DIR_NAME}/`)) {
-			const withoutConfig = rawPath.slice(CONFIG_DIR_NAME.length + 1);
-			add(kind, withoutConfig);
-			add(kind, join(projectDir, withoutConfig));
-			add(kind, join(projectDir, CONFIG_DIR_NAME, withoutConfig));
-		} else {
-			add(kind, join(projectDir, CONFIG_DIR_NAME, rawPath));
-		}
-	}
-	return keys;
 }
 
 function overlaps(a: Set<string>, b: Set<string>): boolean {
@@ -310,9 +192,13 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const managedSources = await managedPackageSources(construct, paths);
 	const packageSourceSets = await collectPackageSourceSets(packages, settingsDir);
-	const managedSummaries = await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources);
-	const managedDirectKeys = managedDirectResourceKeys(construct, projectDir);
+	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => true }, paths, construct);
+	const managedSummaries = applyDirectResourceDrift(
+		await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources, packageSourceSets.projectOverrideSources),
+		directInventory.resources,
+	);
 	const warnings: string[] = [];
+	warnings.push(...directInventory.warnings);
 	if (settings.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectSettingsPath))}`, settings));
 	if (construct.state === "invalid") warnings.push(describeJsonReadIssue(`${toPosixPath(relative(projectDir, paths.projectConstructPath))}`, construct));
 	const driftedMetadata = managedSummaries.filter((item) => item.drift);
@@ -324,6 +210,7 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 			if (pkg.form === "invalid") warnings.push("Invalid package declaration ignored.");
 			continue;
 		}
+		if (pkg.projectOverride) continue;
 		const identitySources = await packageIdentitySources(pkg, settingsDir);
 		const identityKey = [...identitySources].sort()[0] ?? pkg.source;
 		if (seenPackageKeys.has(identityKey)) continue;
@@ -335,11 +222,15 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 		unloadedPackages.push({ source: pkg.source, disabledByFilters: pkg.disabledByFilters, missing });
 	}
 
-	const unloadedResources: ScanResourceFinding[] = [];
-	const seenResourceKeys = new Set<string>();
-	const resourceFiles = await collectProjectResourceFiles(projectDir);
-	progress?.(`${scanLabel ?? `Construct: scanning ${basename(projectDir)}`} · ${resourceFiles.length} local resource file${resourceFiles.length === 1 ? "" : "s"} found`);
-	for (const resource of resourceFiles) addIfFile(unloadedResources, projectDir, resource.path, resource.kind, managedDirectKeys, seenResourceKeys);
+	const unloadedResources: ScanResourceFinding[] = directInventory.resources
+		.filter((resource) => !resource.managed)
+		.map((resource) => ({
+			kind: resource.kind,
+			name: resource.name,
+			path: resource.path,
+			relativePath: resource.displayPath,
+		}));
+	progress?.(`${scanLabel ?? `Construct: scanning ${basename(projectDir)}`} · ${directInventory.resources.length} Pi-resolved direct resource${directInventory.resources.length === 1 ? "" : "s"} found`);
 
 	return {
 		path: projectDir,
@@ -384,7 +275,7 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 		`Unloaded package declarations: ${unloadedPackageCount}`,
 		`Unloaded direct resources: ${unloadedResourceCount}`,
 		`Drifted Construct metadata: ${driftedMetadataCount}`,
-		"Scope: trusted project-local .pi resources only; user/global skill and package caches are not scanned.",
+		"Scope: Pi-resolved trusted project resources (.pi, project .agents/skills, and project settings paths); user/global resources and package caches are not scanned as direct files.",
 	];
 
 	if (projectsWithUnloaded.length === 0) lines.push("", "No unloaded resources found.");
@@ -583,7 +474,12 @@ interface ScanSelectionRequest {
 }
 
 function driftRepairAction(item: ManagedItemSummary): DriftRepairAction | undefined {
-	if (item.kind !== "package" || !item.source || !item.drift) return undefined;
+	if (!item.drift) return undefined;
+	if (item.kind !== "package") {
+		return item.drift === "direct resource missing from Pi's resolved project resources" ? "remove-metadata" : undefined;
+	}
+	if (!item.source) return undefined;
+	if (item.drift === "Construct package metadata points to a Pi project override; manage with pi config -l") return "remove-metadata";
 	if (item.drift === "disabled in Construct metadata, still active in .pi/settings.json") return "load";
 	if (item.drift === "enabled in Construct metadata, disabled by package filters") return "mark-disabled";
 	if (item.drift.endsWith("missing from .pi/settings.json")) return "remove-metadata";
@@ -686,10 +582,14 @@ async function currentDriftedMetadata(projectDir: string): Promise<{ paths: Cons
 	if (construct.state === "ok" && !isObject(construct.data)) throw new Error("Cannot repair drift because .pi/construct.json is not a JSON object.");
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const packageSourceSets = await collectPackageSourceSets(getPackages(settings), settingsDir);
+	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => true }, paths, construct);
 	return {
 		paths,
 		construct,
-		items: (await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources)).filter((item) => item.drift),
+		items: applyDirectResourceDrift(
+			await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources, packageSourceSets.projectOverrideSources),
+			directInventory.resources,
+		).filter((item) => item.drift),
 	};
 }
 

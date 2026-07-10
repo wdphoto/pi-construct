@@ -64,6 +64,8 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 	const drift = inventory.managedItems.filter((item) => item.drift);
 	const invalidPackages = inventory.packageDeclarations.filter((pkg) => pkg.form === "invalid").length;
 	const directProjectResources = inventory.directResources.resources.length;
+	const projectPackageCount = inventory.packageDeclarations.filter((pkg) => !pkg.projectOverride).length;
+	const projectOverrideCount = inventory.projectOverrides.length;
 	const warnings = [
 		...argumentWarnings,
 		...(data.trusted ? [] : ["Project is not trusted by Pi; shown project declarations are read-only and are not runtime-active until trusted."]),
@@ -85,7 +87,8 @@ function buildCompactStatus(data: StatusData, argumentWarnings: string[]): strin
 		"-------",
 		`Library: ${compactCount(inventory.catalog.data.items.length, "package")} · ${compactCount(inventory.catalog.data.profiles.length, "saved loadout")}`,
 		`Known projects: ${inventory.knownProjects.data.projects.length}`,
-		`Project packages: ${inventory.packageDeclarations.length}`,
+		`Project packages: ${projectPackageCount}`,
+		projectOverrideCount > 0 ? `Pi project overrides: ${projectOverrideCount} (manage with pi config -l)` : undefined,
 		directProjectResources > 0 ? `Direct project resources: ${directProjectResources}` : undefined,
 		`Construct-managed: ${enabled} enabled · ${disabled} disabled${unknown > 0 ? ` · ${unknown} unknown` : ""}${drift.length > 0 ? ` · ${drift.length} drift` : ""}`,
 		"Load: manual only (/construct load)",
@@ -156,6 +159,7 @@ function packageResourceGroupLines(packageResources: PackageResourceInventory | 
 
 async function packageDeclarationLine(pkg: ProjectInventory["packageDeclarations"][number], settingsDir: string): Promise<string> {
 	const details: string[] = [pkg.form];
+	if (pkg.projectOverride) details.push("Pi project override, autoload false");
 	if (pkg.disabledByFilters) details.push("disabled by filters");
 	else if (pkg.filterState === "partially-filtered") details.push(pkg.filterDescription);
 	else if (pkg.filterState === "invalid") details.push(pkg.filterDescription);
@@ -257,7 +261,8 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		"----------------",
 		data.trusted ? undefined : "! Project is not trusted by Pi; raw project settings are shown for inspection only, not as runtime-active Pi state.",
 		`Project settings: ${describeRead(inventory.reads.projectSettings)}`,
-		`Package declarations: ${inventory.packageDeclarations.length}`,
+		`Package declarations: ${inventory.packageDeclarations.filter((pkg) => !pkg.projectOverride).length}`,
+		`Pi project overrides: ${inventory.projectOverrides.length}`,
 		...formatList(packageLines, "no project packages declared"),
 		...packageResourceLines,
 		...(data.packageResources?.warnings ?? []).map((warning) => `! ${warning}`),

@@ -49,9 +49,9 @@ interface SavePackageSnapshot {
 function savePackageSnapshotFromInventory(inventory: ProjectInventory): SavePackageSnapshot {
 	if (inventory.reads.projectConstruct.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", inventory.reads.projectConstruct)}`);
 	return {
-		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active").map((item) => item.source)),
+		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active" && !item.projectOverride).map((item) => item.source)),
 		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
-		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
+		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && !pkg.projectOverride && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
 	};
 }
 
@@ -106,12 +106,16 @@ async function promptForUnloadedSources(
 
 function directResourceSaveNotice(inventory: ProjectInventory): string[] {
 	const active = inventory.directResources.resources.filter((resource) => resource.enabled);
-	if (active.length === 0 && inventory.directResources.warnings.length === 0) return [];
+	const filteredPackages = inventory.packageDeclarations.filter((pkg) => !pkg.projectOverride && pkg.filterState === "partially-filtered");
+	if (active.length === 0 && filteredPackages.length === 0 && inventory.directResources.warnings.length === 0) return [];
 	const unloaded = active.filter((resource) => !resource.managed).length;
 	return [
 		...inventory.directResources.warnings.map((warning) => `! ${warning}`),
+		filteredPackages.length > 0 ? `! Package child-resource filters not included: ${filteredPackages.length}` : undefined,
+		...filteredPackages.slice(0, 6).map((pkg) => `! package ${pkg.source}: ${pkg.filterDescription}`),
+		filteredPackages.length > 6 ? `! ... ${filteredPackages.length - 6} more filtered packages not included` : undefined,
 		active.length > 0 ? `! Direct project-local resources not included: ${active.length}${unloaded > 0 ? ` (${unloaded} not loaded into Construct)` : ""}` : undefined,
-		active.length > 0 ? "! Saved loadouts are package-source-only for now; direct .pi resources stay project-local." : undefined,
+		active.length > 0 ? "! Saved loadouts are package-source-only for now; Pi-resolved direct project resources stay project-local." : undefined,
 		...active.slice(0, 6).map((resource) => `! ${resource.kind} ${resource.name}: ${resource.displayPath}`),
 		active.length > 6 ? `! ... ${active.length - 6} more direct project-local resources not included` : undefined,
 	].filter((line): line is string => line !== undefined);
@@ -214,9 +218,14 @@ function overlaps(a: Iterable<string>, b: Set<string>): boolean {
 	return false;
 }
 
-async function stepsForSavedLoadoutSources(inventory: ProjectInventory, sources: string[], catalogItems: CatalogItem[]): Promise<{ steps: ConstructOperationStep[]; alreadyActive: string[] }> {
+async function stepsForSavedLoadoutSources(
+	inventory: ProjectInventory,
+	sources: string[],
+	catalogItems: CatalogItem[],
+): Promise<{ steps: ConstructOperationStep[]; alreadyActive: string[]; projectOverrides: string[] }> {
 	const steps: ConstructOperationStep[] = [];
 	const alreadyActive: string[] = [];
+	const projectOverrides: string[] = [];
 	const scheduled = new Set<string>();
 
 	function addStep(action: "Install" | "Enable", source: string, label: string, catalogItem = findCatalogItem(catalogItems, source)): void {
@@ -232,6 +241,16 @@ async function stepsForSavedLoadoutSources(inventory: ProjectInventory, sources:
 
 	for (const source of sources) {
 		const matches = await sourceMatchesForRun(source, inventory.paths);
+		let hasProjectOverride = false;
+		for (const candidate of inventory.projectOverrides) {
+			if (!overlaps(await sourceMatchesForRun(candidate.source, inventory.paths), matches)) continue;
+			hasProjectOverride = true;
+			break;
+		}
+		if (hasProjectOverride) {
+			projectOverrides.push(source);
+			continue;
+		}
 		const managed = inventory.managedPackages.filter((item) => overlaps(item.matchSources, matches)).sort((a, b) => packageStateRank(a.state) - packageStateRank(b.state))[0];
 		if (managed) {
 			if (managed.state === "active") alreadyActive.push(source);
@@ -251,7 +270,7 @@ async function stepsForSavedLoadoutSources(inventory: ProjectInventory, sources:
 		addStep("Install", source, item?.id ?? deriveId(source), item);
 	}
 
-	return { steps, alreadyActive };
+	return { steps, alreadyActive, projectOverrides };
 }
 
 async function runSavedLoadoutOperations(
@@ -285,15 +304,16 @@ async function runSavedLoadoutOperations(
 	} catch (error) {
 		return { title: "Saved loadout run failed", lines: [`Could not inspect current project package state: ${error instanceof Error ? error.message : String(error)}`] };
 	}
-	const { steps, alreadyActive } = operationPlan;
+	const { steps, alreadyActive, projectOverrides } = operationPlan;
 	if (steps.length === 0) {
 		return {
-			title: `Saved loadout already active: ${currentProfile.id}`,
+			title: projectOverrides.length > 0 ? `Saved loadout made no changes: ${currentProfile.id}` : `Saved loadout already active: ${currentProfile.id}`,
 			confirmHint: "Press Enter/Esc to return to session",
 			lines: [
 				"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
 				`Already active: ${alreadyActive.length}/${sources.length}`,
 				...alreadyActive.map((source) => `✓ ${source}`),
+				...(projectOverrides.length > 0 ? [`Pi project overrides skipped: ${projectOverrides.length}`, ...projectOverrides.map((source) => `↔ ${source} — manage with pi config -l`)] : []),
 				"No package settings changed.",
 			],
 		};
@@ -331,6 +351,7 @@ async function runSavedLoadoutOperations(
 			...loaded.map((step) => `+ ${step.item.label}: ${step.item.source}`),
 			enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 			...enabled.map((step) => `+ ${step.item.label}: ${step.item.source}`),
+			...(projectOverrides.length > 0 ? [`Pi project overrides skipped: ${projectOverrides.length}`, ...projectOverrides.map((source) => `↔ ${source} — manage with pi config -l`)] : []),
 			outcome.partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${outcome.partialRuntimeChanges.length}` : undefined,
 			...outcome.partialRuntimeChanges.map((change) => `! ${change.item.label}: ${change.error}`),
 			outcome.partialRuntimeChanges.length > 0 ? "Run /construct status to inspect drift." : undefined,
@@ -395,6 +416,17 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 			),
 		);
 		return;
+	}
+
+	if (ctx.mode === "tui" && directNotice.length > 0) {
+		const confirmed = await ctx.ui.confirm(
+			"Save package-source-only loadout?",
+			[...directNotice, "", "Direct resources and package child-resource filters will not be included. Continue?"].join("\n"),
+		);
+		if (!confirmed) {
+			showText(ctx, "Saved loadout cancelled. No files were changed.");
+			return;
+		}
 	}
 
 	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct save");

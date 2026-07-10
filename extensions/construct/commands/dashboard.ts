@@ -13,7 +13,7 @@ import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../p
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 
-type DashboardSection = "Saved" | "Active" | "Disabled" | "Available" | "Unloaded";
+type DashboardSection = "Saved" | "Active" | "Disabled" | "Overrides" | "Available" | "Unloaded";
 type PackageDashboardSection = Exclude<DashboardSection, "Saved">;
 type DashboardAction = ConstructOperationAction;
 type DashboardOperationItem = ConstructOperationItem;
@@ -60,7 +60,7 @@ interface DashboardDirectResource {
 
 type DashboardItem = DashboardPackage | DashboardSavedLoadout | DashboardDirectResource;
 
-const dashboardSections: DashboardSection[] = ["Saved", "Active", "Disabled", "Available", "Unloaded"];
+const dashboardSections: DashboardSection[] = ["Saved", "Active", "Disabled", "Overrides", "Available", "Unloaded"];
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
@@ -86,7 +86,7 @@ function countLabel(count: number, label: string): string {
 
 function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPackage[]): { value: string; relatedIds: string[] } {
 	if (sources.length === 0) return { value: "0 package sources", relatedIds: [] };
-	const counts: Record<PackageDashboardSection, number> = { Active: 0, Disabled: 0, Available: 0, Unloaded: 0 };
+	const counts: Record<PackageDashboardSection, number> = { Active: 0, Disabled: 0, Overrides: 0, Available: 0, Unloaded: 0 };
 	const relatedIds: string[] = [];
 	const seenRows = new Set<string>();
 	for (const source of sources) {
@@ -102,6 +102,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 		value: [
 			counts.Active > 0 ? countLabel(counts.Active, "active") : undefined,
 			counts.Disabled > 0 ? countLabel(counts.Disabled, "disabled") : undefined,
+			counts.Overrides > 0 ? countLabel(counts.Overrides, "override") : undefined,
 			counts.Available > 0 ? countLabel(counts.Available, "available") : undefined,
 			counts.Unloaded > 0 ? countLabel(counts.Unloaded, "unloaded") : undefined,
 		]
@@ -139,7 +140,26 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
+	for (const override of inventory.projectOverrides) {
+		packages.push({
+			type: "package",
+			rowId: rowId("project-override", override.source),
+			id: `project-override:${override.source}`,
+			label: `${deriveId(override.source)}:override`,
+			source: override.source,
+			displaySource: formatPackageSourceLabel(override.source),
+			section: "Overrides",
+			checked: false,
+			disabled: true,
+			disabledByFilters: false,
+			filterState: override.filterState,
+			matchSources: [override.source],
+			description: "Pi project resource override (autoload: false). Construct leaves this read-only; manage inherit/load/unload with `pi config -l`.",
+		});
+	}
+
 	for (const managed of inventory.managedPackages) {
+		if (managed.projectOverride) continue;
 		const item = managed.metadata;
 		const source = managed.source;
 		const drift = managed.drift;
@@ -147,7 +167,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		if (drift) warnings.push(`${item.id} drift: ${drift}`);
 		const packageDescription = managed.declared
 			? managed.filterState === "partially-filtered"
-				? "Filtered package. Construct will not replace partial Pi filters with whole-package toggles; r removes."
+				? "Filtered package. Construct will not replace partial Pi filters with whole-package toggles; use pi config -l for exact overrides."
 				: managed.disabledByFilters
 					? "Disabled package. Enter enables the whole package; r removes."
 					: "Active package. Enter disables the whole package; r removes."
@@ -264,15 +284,16 @@ function reclassifyManagedPackagesByEffectiveState(projectResources: PackageReso
 		const resources = resourcesForPackage(item, projectResources);
 		if (resources.length === 0 || resources.some((resource) => resource.enabled)) continue;
 		item.section = "Disabled";
-		item.description = "Disabled via Pi resource filters (all resources off). Right Arrow re-enables individual resources; r removes the package.";
+		item.description = "Disabled via Pi resource filters (all resources off). Use pi config -l for native project override editing; Right Arrow remains available for ordinary project declarations.";
 	}
 }
 
-function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; available: number; unloaded: number } {
+function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; overrides: number; available: number; unloaded: number } {
 	const resources = packages.filter((item) => item.section !== "Saved");
 	return {
 		active: resources.filter((item) => item.section === "Active").length,
 		disabled: resources.filter((item) => item.section === "Disabled").length,
+		overrides: resources.filter((item) => item.section === "Overrides").length,
 		available: resources.filter((item) => item.section === "Available").length,
 		unloaded: resources.filter((item) => item.section === "Unloaded").length,
 	};
@@ -282,7 +303,7 @@ function dashboardSummary(packages: DashboardItem[], projectTrusted = true): str
 	const counts = dashboardCounts(packages);
 	const activeLabel = projectTrusted ? "active" : "declared active";
 	const disabledLabel = projectTrusted ? "disabled" : "declared disabled";
-	return `${counts.active} ${activeLabel} · ${counts.disabled} ${disabledLabel} · ${counts.available} available · ${counts.unloaded} unloaded`;
+	return `${counts.active} ${activeLabel} · ${counts.disabled} ${disabledLabel}${counts.overrides > 0 ? ` · ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} · ${counts.available} available · ${counts.unloaded} unloaded`;
 }
 
 function dashboardPickerTitle(_packages: DashboardItem[]): string {
@@ -291,7 +312,7 @@ function dashboardPickerTitle(_packages: DashboardItem[]): string {
 
 function dashboardPickerSubtitle(packages: DashboardItem[], projectMetadataMissing: boolean): string {
 	const counts = dashboardCounts(packages);
-	return `${counts.active} active | ${counts.disabled} disabled | ${counts.available} available | ${counts.unloaded} unloaded${projectMetadataMissing ? " | no Construct metadata yet" : ""}`;
+	return `${counts.active} active | ${counts.disabled} disabled${counts.overrides > 0 ? ` | ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} | ${counts.available} available | ${counts.unloaded} unloaded${projectMetadataMissing ? " | no Construct metadata yet" : ""}`;
 }
 
 function sectionLabel(section: DashboardSection): string {
@@ -314,6 +335,7 @@ function stateIcon(section: DashboardSection): string {
 	if (section === "Saved") return "◆";
 	if (section === "Active") return "✓";
 	if (section === "Disabled") return "–";
+	if (section === "Overrides") return "↔";
 	if (section === "Unloaded") return "◇";
 	return "+";
 }
@@ -325,7 +347,7 @@ function stateLabel(section: DashboardSection): string {
 
 function selectionMarker(item: DashboardItem, projectTrusted = true): string {
 	if (!projectTrusted) return "[!]";
-	return item.section === "Unloaded" ? "[!]" : item.disabled ? "   " : "[ ]";
+	return item.section === "Unloaded" || item.section === "Overrides" ? "[!]" : item.disabled ? "   " : "[ ]";
 }
 
 function dashboardLine(item: DashboardItem, labelWidth: number, projectTrusted = true): string {
@@ -338,6 +360,7 @@ function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: 
 	if (!projectTrusted) return "Project is not trusted by Pi. Construct is read-only here; trust the project to load, run, or edit package settings.";
 	const counts = dashboardCounts(packages);
 	if (projectMetadataMissing && counts.unloaded > 0) return "No Construct metadata yet. Run /construct load to adopt already-installed project resources.";
+	if (counts.overrides > 0 && counts.active + counts.disabled + counts.available + counts.unloaded === 0) return "Pi project overrides are read-only here; manage inherit/load/unload with pi config -l.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
 	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
 	if (counts.unloaded > 0) return "Run /construct load to adopt already-installed resources into the Construct.";
@@ -351,14 +374,14 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	const labelWidth = Math.min(28, Math.max(...packages.map((item) => item.label.length), 0));
 	for (const section of dashboardSections) {
 		const sectionItems = packages.filter((item) => item.section === section);
-		if (section === "Saved" && sectionItems.length === 0) continue;
+		if ((section === "Saved" || section === "Overrides") && sectionItems.length === 0) continue;
 		const label = sectionLabel(section);
 		lines.push(label, "-".repeat(label.length));
 		lines.push(...(sectionItems.length > 0 ? sectionItems.map((item) => dashboardLine(item, labelWidth, projectTrusted)) : ["- none"]), "");
 	}
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
-		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · + available · ◇ unloaded.",
+		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · ↔ Pi override · + available · ◇ unloaded.",
 		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · i details · r removes · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
@@ -517,8 +540,9 @@ function packageMatchesSource(item: DashboardPackage, source: string): boolean {
 function packageStateRank(section: PackageDashboardSection): number {
 	if (section === "Active") return 0;
 	if (section === "Disabled") return 1;
-	if (section === "Unloaded") return 2;
-	return 3;
+	if (section === "Overrides") return 2;
+	if (section === "Unloaded") return 3;
+	return 4;
 }
 
 function findPackageForSavedSource(packages: DashboardPackage[], source: string): DashboardPackage | undefined {
@@ -704,7 +728,7 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			stateLabel: stateLabel(item.section),
 			stateText: stateIcon(item.section),
 			stateTone: stateTone(item.section),
-			marker: item.section === "Unloaded" ? "[!]" : undefined,
+			marker: item.section === "Unloaded" || item.section === "Overrides" ? "[!]" : undefined,
 			relatedIds: item.type === "saved" ? item.relatedIds : undefined,
 			quickSelectIds: item.type === "saved" ? item.relatedIds : undefined,
 			aggregateChildIds: item.type === "package" && visibleChildren.length > 0 ? visibleChildren.map((child) => child.id) : undefined,

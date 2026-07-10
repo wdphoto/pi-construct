@@ -5,7 +5,7 @@ import { deriveId, findCatalogItem, findCatalogItemForSource, loadCatalog, norma
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
-import { parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
+import { matchingPiProjectOverride, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
 import { packageSourceMatchValues } from "../sources.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
@@ -54,6 +54,7 @@ async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ ado
 	const alreadyManaged: LoadCandidate[] = [];
 	for (const pkg of inventory.packageDeclarations) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
+		if (pkg.projectOverride) continue;
 		const source = await normalizeSourceForLibrary(pkg.source, settingsDir);
 		const matches = await packageSourceMatchValues(pkg.source, settingsDir);
 		const seenKey = matches.at(-1) ?? source;
@@ -429,7 +430,13 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	let selectedCandidates: AnyLoadCandidate[] = [];
 	const selectionWarnings: string[] = [...candidates.directWarnings];
 	if (loadArgs.queries.length > 0) {
-		const direct = await findLoadCandidates(paths, candidates, loadArgs.queries);
+		const loadQueries: string[] = [];
+		for (const query of loadArgs.queries) {
+			const projectOverride = await matchingPiProjectOverride(paths, query);
+			if (projectOverride) selectionWarnings.push(`${projectOverride} is a Pi project override (autoload: false); manage it with pi config -l.`);
+			else loadQueries.push(query);
+		}
+		const direct = await findLoadCandidates(paths, candidates, loadQueries);
 		selectedCandidates = direct.selected;
 		selectionWarnings.push(...direct.alreadyManaged.map((query) => `Already Construct-managed here: ${query}`));
 		selectionWarnings.push(...direct.missing.map((query) => `Not an unloaded project resource: ${query}`));

@@ -83,6 +83,8 @@ export interface LoadResult {
 export interface PackageDeclarationSummary {
 	source: string;
 	form: "string" | "object" | "invalid";
+	autoload: boolean;
+	projectOverride: boolean;
 	enabled: boolean;
 	disabledByFilters?: boolean;
 	filterState: "unfiltered" | "whole-package-disabled" | "partially-filtered" | "invalid";

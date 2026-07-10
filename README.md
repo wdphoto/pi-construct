@@ -59,8 +59,16 @@ Run that saved loadout in another project:
 - Saves named loadouts as package-source recipes.
 - Lets the dashboard enable, disable, install, or remove project package declarations from one TUI.
 - Can unfold package-contained resources and write Pi-native package filters.
-- Can adopt direct project-local `.pi/` resources into project metadata.
+- Can adopt Pi-resolved project resources from `.pi/`, project `.agents/skills`, and project settings paths into project metadata.
 - Uses Pi-native settings, package filters, trust checks, and reload behavior.
+
+For exact extension/skill/prompt/theme inheritance and overrides, use Pi's native project resource editor:
+
+```bash
+pi config -l
+```
+
+Construct treats Pi `autoload: false` project override entries as read-only and leaves their inherit/load/unload state to `pi config -l`. Saved Construct loadouts remain package-source recipes: they do not copy direct skill files or serialize package child-resource filters.
 
 Construct is a loadout manager, not a new package manager. `.pi/settings.json` stays the source of truth.
 
@@ -69,7 +77,7 @@ Construct is a loadout manager, not a new package manager. `.pi/settings.json` s
 ```text
 /construct                    # open the loadout menu
 /construct status [full]      # read-only diagnostics
-/construct scan [path]        # find unloaded trusted local project resources
+/construct scan [path]        # find unloaded trusted Pi-resolved project resources
 /construct load [...]         # adopt already-installed project resources into Construct metadata
 /construct unload [...]       # make Construct forget resources
 /construct save <name>        # save active package sources as a loadout

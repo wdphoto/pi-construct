@@ -4,6 +4,20 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## 0.0.29 - 2026-07-09
+
+### Added
+- Recognize Pi 0.80.4+ `autoload: false` project package entries as read-only project resource override deltas and route their inherit/load/unload management to `pi config -l`.
+- Detect stale Construct metadata for direct project resources that Pi no longer resolves.
+- Cover Pi project override safety and direct filter normalization with focused smoke tests.
+
+### Changed
+- Use Pi's resolver for trusted direct-resource scan inventory, including project `.agents/skills` and project settings paths in addition to conventional `.pi` resources.
+- Exclude Pi project override deltas from Construct library adoption, saved loadouts, known-project package counts, package removal, and package/filter mutations.
+- Make TUI save confirm before omitting direct project resources or package child-resource filters from a package-source-only recipe.
+- Require Pi 0.80.4 or newer and align development dependencies with the current Pi resource override model.
+- Normalize direct-resource filter entries the same way as native `pi config`, removing equivalent plain, `!`, `+`, and `-` entries before writing an override.
+
 ## 0.0.28 - 2026-07-01
 
 ### Changed

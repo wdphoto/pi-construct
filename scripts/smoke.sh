@@ -10,7 +10,7 @@ PROJECT_DIR="$TMP/project"
 PKG_DIR="$TMP/pkg"
 PKG2_DIR="$TMP/pkg-two"
 SCAN_PROJECT_DIR="$TMP/scan-project"
-mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG_DIR/skills/helper" "$PKG_DIR/prompts" "$PKG_DIR/themes" "$PKG2_DIR/extensions" "$SCAN_PROJECT_DIR/.pi/skills/helper" "$SCAN_PROJECT_DIR/.pi/prompts" "$SCAN_PROJECT_DIR/.pi/themes" "$SCAN_PROJECT_DIR/.pi/extensions/tool"
+mkdir -p "$HOME_DIR" "$PROJECT_DIR" "$PKG_DIR/extensions" "$PKG_DIR/skills/helper" "$PKG_DIR/prompts" "$PKG_DIR/themes" "$PKG2_DIR/extensions" "$SCAN_PROJECT_DIR/.pi/skills/helper" "$SCAN_PROJECT_DIR/.pi/prompts" "$SCAN_PROJECT_DIR/.pi/themes" "$SCAN_PROJECT_DIR/.pi/extensions/tool" "$SCAN_PROJECT_DIR/.agents/skills/agent-helper"
 
 cat > "$PKG_DIR/package.json" <<'JSON'
 {
@@ -71,6 +71,13 @@ name: helper
 description: Helps scan smoke tests.
 ---
 # Helper
+MD
+cat > "$SCAN_PROJECT_DIR/.agents/skills/agent-helper/SKILL.md" <<'MD'
+---
+name: agent-helper
+description: Exercises Pi-resolved project .agents skill discovery.
+---
+# Agent Helper
 MD
 cat > "$SCAN_PROJECT_DIR/.pi/prompts/review.md" <<'MD'
 Review this.
@@ -330,6 +337,7 @@ SCAN_OUTPUT="$(run_pi "/construct scan $TMP")"
 [[ "$SCAN_OUTPUT" == *"Unloaded package declarations:"* ]]
 [[ "$SCAN_OUTPUT" == *"package $PKG2_DIR"* ]]
 [[ "$SCAN_OUTPUT" == *"skill helper"* ]]
+[[ "$SCAN_OUTPUT" == *"skill agent-helper"* ]]
 [[ "$SCAN_OUTPUT" == *"prompt review"* ]]
 [[ "$SCAN_OUTPUT" == *"theme simple"* ]]
 [[ "$SCAN_OUTPUT" == *"extension tool"* ]]
@@ -343,9 +351,51 @@ SCAN_AFTER_LOAD_OUTPUT="$(run_pi "/construct scan $TMP")"
 [[ "$SCAN_AFTER_LOAD_OUTPUT" == *"No unloaded resources found."* ]]
 [[ "$SCAN_AFTER_LOAD_OUTPUT" != *"package $PKG2_DIR"* ]]
 [[ "$SCAN_AFTER_LOAD_OUTPUT" != *"skill helper"* ]]
+[[ "$SCAN_AFTER_LOAD_OUTPUT" != *"skill agent-helper"* ]]
 [[ "$SCAN_AFTER_LOAD_OUTPUT" != *"prompt review"* ]]
 [[ "$SCAN_AFTER_LOAD_OUTPUT" != *"theme simple"* ]]
 [[ "$SCAN_AFTER_LOAD_OUTPUT" != *"extension tool"* ]]
+rm -rf "$SCAN_PROJECT_DIR/.agents/skills/agent-helper"
+SCAN_DRIFT_OUTPUT="$(run_pi "/construct scan $TMP")"
+[[ "$SCAN_DRIFT_OUTPUT" == *"direct resource missing from Pi's resolved project resources"* ]]
+[[ "$SCAN_DRIFT_OUTPUT" == *"agent-helper"* ]]
+
+printf '== Pi project overrides stay read-only ==\n'
+python3 - "$PROJECT_DIR" "$HOME_DIR" "$PKG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+home = pathlib.Path(sys.argv[2])
+source = str(pathlib.Path(sys.argv[3]).resolve())
+(project / ".pi/settings.json").write_text(json.dumps({"packages": [{
+    "source": source,
+    "autoload": False,
+    "skills": ["-skills/helper/SKILL.md"],
+}]}, indent=2) + "\n")
+catalog_path = home / ".pi/agent/construct/catalog.json"
+catalog = json.loads(catalog_path.read_text())
+catalog.setdefault("profiles", []).append({
+    "id": "override-recipe",
+    "kind": "profile",
+    "items": [],
+    "sources": [source],
+})
+catalog_path.write_text(json.dumps(catalog, indent=2) + "\n")
+PY
+OVERRIDE_DASHBOARD_OUTPUT="$(run_pi '/construct')"
+[[ "$OVERRIDE_DASHBOARD_OUTPUT" == *"Overrides"* ]]
+[[ "$OVERRIDE_DASHBOARD_OUTPUT" == *"↔"* ]]
+[[ "$OVERRIDE_DASHBOARD_OUTPUT" == *"pi config -l"* ]]
+OVERRIDE_STATUS_OUTPUT="$(run_pi_approved '/construct status full')"
+[[ "$OVERRIDE_STATUS_OUTPUT" == *"Pi project overrides: 1"* ]]
+OVERRIDE_LOAD_OUTPUT="$(run_pi_approved "/construct load $PKG_DIR")"
+[[ "$OVERRIDE_LOAD_OUTPUT" == *"autoload: false"* ]]
+[[ "$OVERRIDE_LOAD_OUTPUT" == *"pi config -l"* ]]
+OVERRIDE_RUN_OUTPUT="$(run_pi_approved '/construct run override-recipe')"
+[[ "$OVERRIDE_RUN_OUTPUT" == *"Pi project overrides skipped: 1"* ]]
+[[ "$OVERRIDE_RUN_OUTPUT" == *"No package settings changed."* ]]
 
 printf '== removed command surface ==\n'
 UNKNOWN_OUTPUT="$(run_pi '/construct sync')"

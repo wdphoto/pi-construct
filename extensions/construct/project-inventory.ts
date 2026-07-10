@@ -4,7 +4,7 @@ import type { CatalogItem, ConstructPaths, JsonReadResult, ManagedItemSummary, P
 import { parseCatalog } from "./catalog.js";
 import { readJson } from "./json.js";
 import { getPaths } from "./paths.js";
-import { collectPackageSourceSets, getManagedItems, getPackages, type PackageSourceSets } from "./project-settings.js";
+import { applyDirectResourceDrift, collectPackageSourceSets, getManagedItems, getPackages, type PackageSourceSets } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources } from "./resources.js";
 import { normalizeSourceForLibrary, packageSourceMatchValues } from "./sources.js";
@@ -16,6 +16,7 @@ export interface ManagedPackageInventoryItem {
 	source: string;
 	matchSources: string[];
 	declared: boolean;
+	projectOverride: boolean;
 	disabledByFilters: boolean;
 	filterState?: PackageDeclarationSummary["filterState"];
 	filterDescription?: string;
@@ -28,6 +29,7 @@ export interface UnloadedPackageInventoryItem {
 	rawSource: string;
 	source: string;
 	matchSources: string[];
+	projectOverride: boolean;
 	disabledByFilters?: boolean;
 	filterState?: PackageDeclarationSummary["filterState"];
 	filterDescription?: string;
@@ -44,6 +46,7 @@ export interface ProjectInventory {
 	catalog: ReturnType<typeof parseCatalog>;
 	knownProjects: ReturnType<typeof parseKnownProjects>;
 	packageDeclarations: PackageDeclarationSummary[];
+	projectOverrides: PackageDeclarationSummary[];
 	packageSources: PackageSourceSets;
 	managedItems: ManagedItemSummary[];
 	managedPackages: ManagedPackageInventoryItem[];
@@ -80,12 +83,15 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 		if (declaration.form === "invalid" || !declaration.source.trim()) continue;
 		for (const match of await packageSourceMatchValues(declaration.source, settingsDir)) packageDeclarationsByMatch.set(match, declaration);
 	}
-	const managedItems = await getManagedItems(projectConstruct, packageSources.declaredSources, paths, packageSources.disabledSources);
+	const directResources = options.directResources === false ? { resources: [], warnings: [] } : await collectDirectProjectResources(ctx, paths, projectConstruct);
+	const rawManagedItems = await getManagedItems(projectConstruct, packageSources.declaredSources, paths, packageSources.disabledSources, packageSources.projectOverrideSources);
+	const managedItems = options.directResources === false ? rawManagedItems : applyDirectResourceDrift(rawManagedItems, directResources.resources);
 	const managedPackages = managedItems
 		.filter((item): item is ManagedItemSummary & { source: string } => item.kind === "package" && typeof item.source === "string" && item.source.length > 0)
 		.map((metadata) => {
 			const matchSources = managedPackageSources(metadata);
 			const declared = matchSources.some((candidate) => packageSources.declaredSources.has(candidate));
+			const projectOverride = matchSources.some((candidate) => packageSources.projectOverrideSources.has(candidate));
 			const disabledByFilters = matchSources.some((candidate) => packageSources.disabledSources.has(candidate));
 			const declaration = matchSources.map((match) => packageDeclarationsByMatch.get(match)).find((pkg): pkg is PackageDeclarationSummary => pkg !== undefined);
 			return {
@@ -93,6 +99,7 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 				source: metadata.source,
 				matchSources,
 				declared,
+				projectOverride,
 				disabledByFilters,
 				filterState: declaration?.filterState,
 				filterDescription: declaration?.filterDescription,
@@ -104,11 +111,12 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 	const availableCatalogPackages: CatalogItem[] = [];
 	for (const item of catalog.data.items) {
 		const matches = await packageSourceMatchValues(item.source, settingsDir);
-		if (!matches.some((match) => managedSources.has(match) || packageSources.declaredSources.has(match))) availableCatalogPackages.push(item);
+		if (!matches.some((match) => managedSources.has(match) || packageSources.declaredSources.has(match) || packageSources.projectOverrideSources.has(match))) availableCatalogPackages.push(item);
 	}
 	const unloadedPackageDeclarations: UnloadedPackageInventoryItem[] = [];
 	for (const declaration of packageDeclarations) {
 		if (declaration.form === "invalid" || !declaration.enabled || !declaration.source.trim()) continue;
+		if (declaration.projectOverride) continue;
 		const source = await normalizeSourceForLibrary(declaration.source, settingsDir);
 		const matchSources = await packageSourceMatchValues(declaration.source, settingsDir);
 		if (matchSources.some((match) => managedSources.has(match))) continue;
@@ -117,18 +125,19 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			rawSource: declaration.source,
 			source,
 			matchSources,
+			projectOverride: false,
 			disabledByFilters: declaration.disabledByFilters,
 			filterState: declaration.filterState,
 			filterDescription: declaration.filterDescription,
 		});
 	}
-	const directResources = options.directResources === false ? { resources: [], warnings: [] } : await collectDirectProjectResources(ctx, paths, projectConstruct);
 	return {
 		paths,
 		reads: { userCatalog, userProjects, projectSettings, projectConstruct },
 		catalog,
 		knownProjects,
 		packageDeclarations,
+		projectOverrides: packageDeclarations.filter((declaration) => declaration.projectOverride),
 		packageSources,
 		managedItems,
 		managedPackages,

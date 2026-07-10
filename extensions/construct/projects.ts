@@ -61,6 +61,7 @@ async function projectPackageSources(paths: ConstructPaths): Promise<string[]> {
 	const sources: string[] = [];
 	for (const pkg of getPackages(settings)) {
 		if (pkg.form === "invalid" || !pkg.enabled || !pkg.source.trim()) continue;
+		if (pkg.projectOverride) continue;
 		sources.push(await normalizeSourceForLibrary(pkg.source, settingsDir));
 	}
 	return [...new Set(sources)].sort((a, b) => a.localeCompare(b));

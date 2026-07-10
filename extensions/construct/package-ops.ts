@@ -4,6 +4,7 @@ import { readJson, writeJson } from "./json.js";
 import { installAndPersistProjectPackage, removeAndPersistProjectPackage, type ProjectPackageManagerOptions } from "./pi-adapter/package-manager.js";
 import {
 	backupProjectSettingsIfPresent,
+	matchingPiProjectOverride,
 	chooseDeclaredSource,
 	getPackages,
 	parseProjectConstruct,
@@ -80,6 +81,8 @@ export async function loadPackageIntoProject(
 	options: PackageOperationOptions = {},
 ): Promise<LoadPackageResult> {
 	if (options.projectTrusted === false) return { ok: false, error: "Project is not trusted by Pi; refusing to install packages into project settings." };
+	const projectOverride = await matchingPiProjectOverride(paths, input.source);
+	if (projectOverride) return { ok: false, error: `${projectOverride} is a Pi project override (autoload: false). Manage it with pi config -l.` };
 	const constructRead = await readJson(paths.projectConstructPath);
 	try {
 		parseProjectConstruct(constructRead);
@@ -142,6 +145,8 @@ export interface DisablePackageResult {
 }
 
 export async function disablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
+	const projectOverride = await matchingPiProjectOverride(paths, input.source);
+	if (projectOverride) return { ok: false, error: `${projectOverride} is a Pi project override (autoload: false). Manage inherit/load/unload with pi config -l.` };
 	let backupPath: string | undefined;
 	try {
 		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, true, projectWriteOptions(options));
@@ -151,7 +156,7 @@ export async function disablePackageResourcesInProject(paths: ConstructPaths, in
 				ok: false,
 				backupPath,
 				error: updated.blockedByPartialFilters
-					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not replace them with whole-package disable filters; use package resource picking instead.`
+					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not replace them with whole-package disable filters; use pi config -l for exact project overrides.`
 					: updated.settingsMissing
 						? ".pi/settings.json is missing."
 						: `No matching package declaration found for ${input.source}.`,
@@ -175,6 +180,8 @@ export async function disablePackageResourcesInProject(paths: ConstructPaths, in
 }
 
 export async function enablePackageResourcesInProject(paths: ConstructPaths, input: { source: string; id?: string }, options: PackageOperationOptions = {}): Promise<DisablePackageResult> {
+	const projectOverride = await matchingPiProjectOverride(paths, input.source);
+	if (projectOverride) return { ok: false, error: `${projectOverride} is a Pi project override (autoload: false). Manage inherit/load/unload with pi config -l.` };
 	let backupPath: string | undefined;
 	try {
 		const updated = await setMatchingPackageResourcesDisabled(paths, input.source, false, projectWriteOptions(options));
@@ -184,7 +191,7 @@ export async function enablePackageResourcesInProject(paths: ConstructPaths, inp
 				ok: false,
 				backupPath,
 				error: updated.blockedByPartialFilters
-					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not clear them with whole-package enable; use package resource picking instead.`
+					? `Package ${updated.blockedSource ?? input.source} already has partial Pi package filters. Construct will not clear them with whole-package enable; use pi config -l for exact project overrides.`
 					: updated.settingsMissing
 						? ".pi/settings.json is missing."
 						: `No matching package declaration found for ${input.source}.`,
@@ -212,6 +219,8 @@ export async function setPackageResourceFiltersInProject(
 	input: { source: string; id?: string; filters: PackageResourceFilterUpdate; selectedCount: number },
 	options: PackageOperationOptions = {},
 ): Promise<DisablePackageResult> {
+	const projectOverride = await matchingPiProjectOverride(paths, input.source);
+	if (projectOverride) return { ok: false, error: `${projectOverride} is a Pi project override (autoload: false). Manage resource filters with pi config -l.` };
 	let backupPath: string | undefined;
 	try {
 		const updated = await setMatchingPackageResourceFilters(paths, input.source, input.filters, projectWriteOptions(options));
@@ -288,6 +297,8 @@ export async function removePackageFromProject(
 	options: PackageOperationOptions = {},
 ): Promise<UnloadPackageResult> {
 	if (options.projectTrusted === false) return { ok: false, error: "Project is not trusted by Pi; refusing to remove packages from project settings." };
+	const projectOverride = await matchingPiProjectOverride(paths, input.source);
+	if (projectOverride) return { ok: false, error: `${projectOverride} is a Pi project override (autoload: false). Reset or remove it with pi config -l.` };
 	let backupPath: string | undefined;
 	try {
 		backupPath = await backupProjectSettingsIfPresent(paths);
