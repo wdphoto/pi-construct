@@ -322,14 +322,47 @@ function formatScan(display: ScanDisplayContext, projects: ScanProject[], skippe
 	return lines.join("\n");
 }
 
-function isBroadOrPrivateRoot(root: string): string | undefined {
-	const resolved = resolve(root);
-	const home = resolve(homedir());
-	const privateRoots = [join(home, ".pi"), join(home, ".agents"), join(home, ".claude"), join(home, ".codex")].map((path) => resolve(path));
-	if (resolved === dirname(resolved)) return "filesystem root is too broad";
-	if (resolved === home) return "home directory is too broad";
-	for (const privateRoot of privateRoots) {
-		if (resolved === privateRoot || resolved.startsWith(`${privateRoot}${sep}`)) return `${privateRoot} is a private/global agent directory`;
+async function canonicalizeOrLexical(path: string): Promise<string> {
+	try {
+		return await realpath(path);
+	} catch {
+		return resolve(path);
+	}
+}
+
+async function isBroadOrPrivateRoot(root: string): Promise<string | undefined> {
+	const lexicRoot = resolve(root);
+	// Callers verify the requested root exists before calling; any realpath failure here is a
+	// resolution problem (permissions / broken symlink) and must REFUSE, not fall through to traversal.
+	let canonicalRoot: string;
+	try {
+		canonicalRoot = await realpath(root);
+	} catch {
+		return "root could not be resolved (unreadable or broken)";
+	}
+	const lexicHome = resolve(homedir());
+	const canonicalHome = await canonicalizeOrLexical(homedir());
+	const homeVariants = new Set([lexicHome, canonicalHome]);
+	const rootVariants = new Set([lexicRoot, canonicalRoot]);
+	for (const candidate of rootVariants) {
+		if (candidate === dirname(candidate)) return "filesystem root is too broad";
+		for (const homeVariant of homeVariants) if (candidate === homeVariant) return "home directory is too broad";
+	}
+	// Build BOTH lexical and canonical private roots from BOTH home variants. The lexical root
+	// variant catches a request that stays on the symlinked $HOME path (e.g. HOME/.pi/escape), while
+	// the canonical private-root set catches realpath'd escapes to external dirs.
+	const privateRootVariants = new Set<string>();
+	for (const homeVariant of homeVariants) {
+		for (const name of [".pi", ".agents", ".claude", ".codex"]) {
+			const joined = join(homeVariant, name);
+			privateRootVariants.add(resolve(joined));
+			privateRootVariants.add(await canonicalizeOrLexical(joined));
+		}
+	}
+	for (const candidate of rootVariants) {
+		for (const privateRoot of privateRootVariants) {
+			if (candidate === privateRoot || candidate.startsWith(`${privateRoot}${sep}`)) return `${privateRoot} is a private/global agent directory`;
+		}
 	}
 	return undefined;
 }
@@ -365,13 +398,13 @@ async function trustedRootsFromTrustStore(warnings: string[]): Promise<{ roots: 
 	for (const [path, decision] of Object.entries(read.data)) {
 		if (decision !== true) continue;
 		const root = resolve(expandUserPath(path));
-		const broadReason = isBroadOrPrivateRoot(root);
-		if (broadReason) {
-			skipped.push({ path: root, reason: `trusted root skipped: ${broadReason}` });
-			continue;
-		}
 		if (!existsSync(root)) {
 			skipped.push({ path: root, reason: "trusted root no longer exists" });
+			continue;
+		}
+		const broadReason = await isBroadOrPrivateRoot(root);
+		if (broadReason) {
+			skipped.push({ path: root, reason: `trusted root skipped: ${broadReason}` });
 			continue;
 		}
 		roots.push(root);
@@ -424,9 +457,9 @@ async function buildScanResult(ctx: Pick<ExtensionCommandContext, "cwd" | "isPro
 	progress?.("Construct: preparing scan roots");
 	if (root) {
 		display = { heading: `Root: ${root}`, basePath: root };
-		const broadReason = isBroadOrPrivateRoot(root);
-		if (broadReason) return { display, projects: [], skippedProjects: [], warnings: [`Scan root refused: ${broadReason}`] };
 		if (!existsSync(root)) return { display, projects: [], skippedProjects: [], warnings: [`Scan root does not exist: ${root}`] };
+		const broadReason = await isBroadOrPrivateRoot(root);
+		if (broadReason) return { display, projects: [], skippedProjects: [], warnings: [`Scan root refused: ${broadReason}`] };
 		progress?.(`Construct: searching ${root}`);
 		projectDirs = await findProjects(root, warnings, progress);
 	} else {

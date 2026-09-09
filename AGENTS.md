@@ -129,7 +129,7 @@ Do not re-add public `sync`, `toggle`, `library`, `remember`, `forget`, `catalog
   - `~/.pi/agent/npm/`
   - `~/.pi/agent/git/`
 - Do not install the extension into live global Pi config unless explicitly requested.
-- Prefer disposable fixture projects for testing project-local writes.
+- Prefer disposable fixture projects for testing project-local writes. A disposable `HOME` alone is not enough: clear inherited `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR`, and use `PI_OFFLINE=1`. Every smoke entrypoint must isolate itself, including when run outside `npm run smoke:all`.
 - Before editing any `.pi/settings.json`, create a backup.
 - Use the shared JSON write helper for Construct JSON writes; it writes via temp file and rename. Mutating flows should re-read relevant JSON state after idle waits or long-running package operations before merging/writing.
 - Never write secrets, tokens, API keys, auth material, or generated package cache paths.
@@ -177,19 +177,21 @@ npm run smoke:all
 npm run release:verify
 ```
 
-Test extension loading explicitly:
+Test extension loading and install/discovery only in an isolated environment, for example:
 
 ```bash
-pi --no-extensions -e .
-```
-
-Test install/discovery only with a disposable `HOME`, for example:
-
-```bash
-TMP="$(mktemp -d)"
-mkdir -p "$TMP/home" "$TMP/project"
-HOME="$TMP/home" pi install "$PWD" --approve
-(cd "$TMP/project" && HOME="$TMP/home" pi -p '/construct status')
+(
+  ROOT="$PWD"
+  TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP"' EXIT
+  unset PI_CODING_AGENT_DIR PI_CODING_AGENT_SESSION_DIR
+  export HOME="$TMP/home" PI_OFFLINE=1
+  mkdir -p "$HOME" "$TMP/project"
+  cd "$TMP/project"
+  pi --no-extensions -e "$ROOT" -p '/construct status'
+  pi install "$ROOT" --approve
+  pi -p '/construct status'
+)
 ```
 
 ## Pi docs and local resources first

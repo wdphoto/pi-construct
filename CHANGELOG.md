@@ -4,6 +4,21 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## 0.0.30 - 2026-09-09
+
+### Fixed
+- Omit rejected source strings from share's credential-refusal message instead of echoing their values.
+- Match package ownership by source identity during unload, preserving unrelated package/direct metadata when catalog and project IDs collide.
+- Check lexical and canonical scan-root paths, including symlinked home/private directories, without changing Pi's trust decisions.
+
+### Tests
+- Clear inherited Pi config/session directory overrides in every smoke entrypoint and isolate native module loading in disposable homes.
+- Add share-output, unload-identity, and scan-root regression coverage to `smoke:all`.
+
+### Documentation
+- Clarify package-only unload ownership, scan-root boundaries, and source review before sharing.
+- Document the isolated development checks in README and agent guidance.
+
 ## 0.0.29 - 2026-07-09
 
 ### Added

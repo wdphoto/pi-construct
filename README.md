@@ -72,6 +72,8 @@ Construct treats Pi `autoload: false` project override entries as read-only and 
 
 Construct is a loadout manager, not a new package manager. `.pi/settings.json` stays the source of truth.
 
+Unload forgets matching package ownership without deleting resources or changing Pi settings. Scan refuses the filesystem root, home directory, and home-level `.pi`, `.agents`, `.claude`, and `.codex` directories as scan roots, including symlink aliases. Share's credential-warning output omits rejected source values; always review source URLs before sharing.
+
 ## Common commands
 
 ```text
@@ -79,7 +81,7 @@ Construct is a loadout manager, not a new package manager. `.pi/settings.json` s
 /construct status [full]      # read-only diagnostics
 /construct scan [path]        # find unloaded trusted Pi-resolved project resources
 /construct load [...]         # adopt already-installed project resources into Construct metadata
-/construct unload [...]       # make Construct forget resources
+/construct unload [...]       # forget package ownership, not uninstall
 /construct save <name>        # save active package sources as a loadout
 /construct list               # list saved loadouts
 /construct run <name>         # apply a saved loadout to this project
@@ -106,6 +108,19 @@ pi remove /path/to/pi-construct
 ```
 
 `pi uninstall <source>` is also supported as an alias for `pi remove <source>`.
+
+## Development checks
+
+With dependencies installed and `pi`, Bash, and Python 3 on your PATH:
+
+```bash
+npm run check
+npm run check:hygiene
+npm run smoke:all
+npm run release:verify
+```
+
+Smoke scripts use disposable homes, clear inherited Pi config/session directory overrides, and run Pi offline. They do not use your live global Pi configuration.
 
 ## License
 

@@ -77,8 +77,12 @@ async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: Cata
 	if (!isObject(constructRead.data)) return { removed: 0, warning: "Could not update project Construct metadata because .pi/construct.json is not an object." };
 	if (!isObject(constructRead.data.items)) return { removed: 0 };
 
-	const removedIds = new Set(removed.map((item) => item.id));
-	const removedSources = new Set(removed.map((item) => item.source));
+	// Removed-side identity union: reuse sourceMatchSet so an equivalent catalog spelling
+	// (e.g. git...@main vs plain https git URL) matches the same construct metadata source.
+	const removedSources = new Set<string>();
+	for (const item of removed) {
+		for (const match of await sourceMatchSet(item.source, paths)) removedSources.add(match);
+	}
 	const nextItems: JsonObject = {};
 	let removedCount = 0;
 	for (const [id, value] of Object.entries(constructRead.data.items)) {
@@ -87,7 +91,6 @@ async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: Cata
 			const identity = await managedPackageSourceIdentity(value, paths);
 			shouldRemove = [...identity.matchSources].some((source) => removedSources.has(source));
 		}
-		if (!shouldRemove && removedIds.has(id)) shouldRemove = true;
 		if (shouldRemove) removedCount += 1;
 		else nextItems[id] = value;
 	}

@@ -688,7 +688,7 @@ async function shareLoadout(ctx: ExtensionCommandContext, query: string): Promis
 
 	const secretLike = secretLikeSources(sources);
 	if (secretLike.length > 0) {
-		showText(ctx, ["Construct loadout share snippet not created.", "Refusing to print source strings that look like they contain secrets.", ...secretLike.map((source) => `! ${source}`)].join("\n"));
+		showText(ctx, ["Construct loadout share snippet not created.", "Refusing to print source strings that look like they contain secrets.", `Excluded ${secretLike.length} source string${secretLike.length === 1 ? "" : "s"}.`].join("\n"));
 		return;
 	}
 
