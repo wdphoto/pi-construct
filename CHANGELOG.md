@@ -4,7 +4,7 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
-## Unreleased
+## 0.0.31 - 2026-09-16
 
 ### Added
 - Let dashboard users Space-select eligible package rows and press `Ctrl+U` to confirm removal from the global Construct library, saved-loadout references, and current-project metadata without uninstalling, disabling, filtering, editing Pi settings, or reloading. Plain `u`, `r`, and `i` remain filter text; `Ctrl+R` retains project removal and `Alt+I` opens details.
