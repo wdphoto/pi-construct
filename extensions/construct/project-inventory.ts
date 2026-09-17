@@ -7,6 +7,8 @@ import { getPaths } from "./paths.js";
 import { applyDirectResourceDrift, collectPackageSourceSets, getManagedItems, getPackages, type PackageSourceSets } from "./project-settings.js";
 import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources } from "./resources.js";
+import { effectivePackageState, type EffectivePackageState } from "./effective-state.js";
+import type { PackageResourceInventory } from "./package-resources.js";
 import { normalizeSourceForLibrary, packageSourceMatchValues } from "./sources.js";
 
 export type InventoryPackageState = "active" | "disabled" | "available" | "unloaded";
@@ -21,6 +23,7 @@ export interface ManagedPackageInventoryItem {
 	filterState?: PackageDeclarationSummary["filterState"];
 	filterDescription?: string;
 	state: Exclude<InventoryPackageState, "unloaded">;
+	effectiveState: EffectivePackageState;
 	drift?: string;
 }
 
@@ -33,6 +36,7 @@ export interface UnloadedPackageInventoryItem {
 	disabledByFilters?: boolean;
 	filterState?: PackageDeclarationSummary["filterState"];
 	filterDescription?: string;
+	effectiveState: EffectivePackageState;
 }
 
 export interface ProjectInventory {
@@ -88,7 +92,7 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 	const managedItems = options.directResources === false ? rawManagedItems : applyDirectResourceDrift(rawManagedItems, directResources.resources);
 	const managedPackages = managedItems
 		.filter((item): item is ManagedItemSummary & { source: string } => item.kind === "package" && typeof item.source === "string" && item.source.length > 0)
-		.map((metadata) => {
+		.map((metadata): ManagedPackageInventoryItem => {
 			const matchSources = managedPackageSources(metadata);
 			const declared = matchSources.some((candidate) => packageSources.declaredSources.has(candidate));
 			const projectOverride = matchSources.some((candidate) => packageSources.projectOverrideSources.has(candidate));
@@ -104,6 +108,7 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 				filterState: declaration?.filterState,
 				filterDescription: declaration?.filterDescription,
 				state: packageState(declared, disabledByFilters),
+				effectiveState: "unknown",
 				drift: metadata.drift,
 			};
 		});
@@ -129,6 +134,7 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 			disabledByFilters: declaration.disabledByFilters,
 			filterState: declaration.filterState,
 			filterDescription: declaration.filterDescription,
+			effectiveState: "unknown",
 		});
 	}
 	return {
@@ -144,5 +150,24 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 		availableCatalogPackages,
 		unloadedPackageDeclarations,
 		directResources,
+	};
+}
+
+/**
+ * Return a copy of the inventory whose package rows carry effective state decoded
+ * from Pi's resolved project package resources. Keeps declaration policy (`state`,
+ * `disabledByFilters`, `filterState`) untouched; callers combine the two explicitly.
+ */
+export function withEffectivePackageStates(inventory: ProjectInventory, packageResources: PackageResourceInventory): ProjectInventory {
+	return {
+		...inventory,
+		managedPackages: inventory.managedPackages.map((item) => ({
+			...item,
+			effectiveState: effectivePackageState(packageResources.resources, { id: item.metadata.id, matchSources: item.matchSources }),
+		})),
+		unloadedPackageDeclarations: inventory.unloadedPackageDeclarations.map((item) => ({
+			...item,
+			effectiveState: effectivePackageState(packageResources.resources, { matchSources: item.matchSources }),
+		})),
 	};
 }

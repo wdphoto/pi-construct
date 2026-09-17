@@ -2,15 +2,16 @@ import { existsSync } from "node:fs";
 import { readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { CONFIG_DIR_NAME, getAgentDir, ProjectTrustStore, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { deriveId, parseCatalog } from "../catalog.js";
 import { loadProjectResourcesIntoConstruct } from "./load.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { applyDirectResourceDrift, collectPackageSourceSets, formatManagedItemDrift, getManagedItems, getPackages, removeConstructItemsById } from "../project-settings.js";
 import { collectDirectProjectResources } from "../resources.js";
 import { managedPackageSourceIdentity, normalizeSourceForLibrary } from "../sources.js";
+import { type TargetTrust, targetTrustDecision } from "../target-trust.js";
 import type { ConstructPaths, DirectResourceKind, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "../types.js";
-import { pickCheckboxes, setConstructStatus, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
+import { pickCheckboxes, setConstructStatus, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerApplyResult, type CheckboxPickerItem, type CheckboxPickerOptions, type CheckboxPickerResult } from "../ui.js";
 
 const ignoredDirectoryNames = new Set(["node_modules", ".git", "dist", "build"]);
 const ignoredPiDirectoryNames = new Set(["npm", "git"]);
@@ -184,7 +185,7 @@ async function packageIdentitySources(pkg: PackageDeclarationSummary, settingsDi
 	return sources;
 }
 
-async function scanProject(projectDir: string, catalogSources: Set<string>, progress?: ScanProgress, scanLabel?: string): Promise<ScanProject> {
+async function scanProject(projectDir: string, catalogSources: Set<string>, projectTrusted: boolean, progress?: ScanProgress, scanLabel?: string): Promise<ScanProject> {
 	const paths = projectPaths(projectDir);
 	paths.realCwd = await realpath(projectDir).catch(() => projectDir);
 	const [settings, construct] = await Promise.all([readJson(paths.projectSettingsPath), readJson(paths.projectConstructPath)]);
@@ -192,7 +193,8 @@ async function scanProject(projectDir: string, catalogSources: Set<string>, prog
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const managedSources = await managedPackageSources(construct, paths);
 	const packageSourceSets = await collectPackageSourceSets(packages, settingsDir);
-	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => true }, paths, construct);
+	// Forwards the trust decision established for this scan target; not an unconditional assumption.
+	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => projectTrusted }, paths, construct);
 	const managedSummaries = applyDirectResourceDrift(
 		await getManagedItems(construct, packageSourceSets.declaredSources, paths, packageSourceSets.disabledSources, packageSourceSets.projectOverrideSources),
 		directInventory.resources,
@@ -412,27 +414,20 @@ async function trustedRootsFromTrustStore(warnings: string[]): Promise<{ roots: 
 	return { roots: uniquePaths(roots), skipped };
 }
 
-async function isCurrentTrustedProject(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, projectDir: string): Promise<boolean> {
-	if (!ctx.isProjectTrusted()) return false;
-	const [ctxReal, projectReal] = await Promise.all([realpath(ctx.cwd).catch(() => ctx.cwd), realpath(projectDir).catch(() => projectDir)]);
-	return ctxReal === projectReal;
-}
-
 async function trustedProjectDirs(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, projectDirs: string[], warnings: string[]): Promise<{ trusted: string[]; skipped: SkippedProject[] }> {
-	const trustStore = new ProjectTrustStore(getAgentDir());
 	const trusted: string[] = [];
 	const skipped: SkippedProject[] = [];
 	for (const projectDir of projectDirs) {
-		if (await isCurrentTrustedProject(ctx, projectDir)) {
+		// Same native decision used before writes: the current project uses ctx exclusively (no saved
+		// fallback), arbitrary targets use the saved store, and unreadable state is refused.
+		const decision = await targetTrustDecision(ctx, projectDir);
+		if (decision === "trusted") {
 			trusted.push(projectDir);
-			continue;
-		}
-		try {
-			if (trustStore.get(projectDir) === true) trusted.push(projectDir);
-			else skipped.push({ path: projectDir, reason: "not trusted by Pi" });
-		} catch (error) {
-			warnings.push(`Could not read Pi trust state for ${projectDir}: ${error instanceof Error ? error.message : String(error)}`);
+		} else if (decision === "unknown") {
+			warnings.push(`Could not read Pi trust state for ${projectDir}; skipped.`);
 			skipped.push({ path: projectDir, reason: "trust state could not be read" });
+		} else {
+			skipped.push({ path: projectDir, reason: "not trusted by Pi" });
 		}
 	}
 	return { trusted, skipped };
@@ -448,7 +443,7 @@ async function candidateProjectsFromRoots(roots: string[], warnings: string[], p
 	return uniqueRealPaths(projectDirs);
 }
 
-async function buildScanResult(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, args = "", progress?: ScanProgress): Promise<ScanResult> {
+export async function buildScanResult(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, args = "", progress?: ScanProgress): Promise<ScanResult> {
 	const root = resolveScanRoot(args, ctx.cwd);
 	const warnings: string[] = [];
 	const trustedRootSkips: SkippedProject[] = [];
@@ -482,7 +477,7 @@ async function buildScanResult(ctx: Pick<ExtensionCommandContext, "cwd" | "isPro
 		const projectDir = trusted[index]!;
 		const scanLabel = `Construct: scanning project ${index + 1}/${trusted.length} ${basename(projectDir)}`;
 		progress?.(scanLabel);
-		projects.push(await scanProject(projectDir, catalogSources, progress, scanLabel));
+		projects.push(await scanProject(projectDir, catalogSources, true, progress, scanLabel));
 	}
 	progress?.("Construct: scan complete");
 	return { display, projects, skippedProjects: [...trustedRootSkips, ...skipped], warnings };
@@ -605,7 +600,7 @@ function selectedScanRequests(result: ScanResult, selectedIds: string[]): ScanSe
 	return requests;
 }
 
-async function currentDriftedMetadata(projectDir: string): Promise<{ paths: ConstructPaths; construct: JsonReadResult; items: ManagedItemSummary[] }> {
+async function currentDriftedMetadata(projectDir: string, projectTrusted: boolean): Promise<{ paths: ConstructPaths; construct: JsonReadResult; items: ManagedItemSummary[] }> {
 	const paths = projectPaths(projectDir);
 	paths.realCwd = await realpath(projectDir).catch(() => projectDir);
 	const [settings, construct] = await Promise.all([readJson(paths.projectSettingsPath), readJson(paths.projectConstructPath)]);
@@ -615,7 +610,8 @@ async function currentDriftedMetadata(projectDir: string): Promise<{ paths: Cons
 	if (construct.state === "ok" && !isObject(construct.data)) throw new Error("Cannot repair drift because .pi/construct.json is not a JSON object.");
 	const settingsDir = dirname(paths.projectSettingsPath);
 	const packageSourceSets = await collectPackageSourceSets(getPackages(settings), settingsDir);
-	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => true }, paths, construct);
+	// Forwards the trust decision established for this repair target; not an unconditional assumption.
+	const directInventory = await collectDirectProjectResources({ cwd: projectDir, isProjectTrusted: () => projectTrusted }, paths, construct);
 	return {
 		paths,
 		construct,
@@ -626,11 +622,31 @@ async function currentDriftedMetadata(projectDir: string): Promise<{ paths: Cons
 	};
 }
 
-async function repairDriftedMetadata(projectDir: string, selections: DriftRepairSelection[]): Promise<{ removed: number; updated: number; skipped: number; warnings: string[] }> {
+interface ScanWriteTrust {
+	ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">;
+	signal: AbortSignal;
+}
+
+function trustRefusalMessage(projectDir: string, decision: Exclude<TargetTrust, "trusted">): string {
+	return decision === "unknown"
+		? `Skipped because Pi trust state for ${projectDir} could not be read.`
+		: `Skipped because ${projectDir} is not trusted by Pi.`;
+}
+
+async function repairDriftedMetadata(
+	projectDir: string,
+	selections: DriftRepairSelection[],
+	trust: ScanWriteTrust,
+	progress?: ScanProgress,
+): Promise<{ removed: number; updated: number; skipped: number; warnings: string[]; refused?: TargetTrust; cancelled?: boolean }> {
 	if (selections.length === 0) return { removed: 0, updated: 0, skipped: 0, warnings: [] };
 	const warnings: string[] = [];
+	const targetTrust = await targetTrustDecision(trust.ctx, projectDir);
+	if (targetTrust !== "trusted") {
+		return { removed: 0, updated: 0, skipped: selections.length, refused: targetTrust, warnings: [trustRefusalMessage(projectDir, targetTrust)] };
+	}
 	const selectedActionById = new Map(selections.map((selection) => [selection.id, selection.action]));
-	const { construct, items } = await currentDriftedMetadata(projectDir);
+	const { construct, items } = await currentDriftedMetadata(projectDir, true);
 	if (construct.state === "missing") return { removed: 0, updated: 0, skipped: selections.length, warnings: ["Project Construct metadata disappeared before repair."] };
 	if (construct.state !== "ok" || !isObject(construct.data) || !isObject(construct.data.items)) return { removed: 0, updated: 0, skipped: selections.length, warnings: ["Project Construct metadata has no items to repair."] };
 
@@ -664,19 +680,38 @@ async function repairDriftedMetadata(projectDir: string, selections: DriftRepair
 		skipped += 1;
 	}
 	const removal = removeConstructItemsById({ ...construct.data, items: nextItems }, removeIds);
-	if (removal.removed > 0 || updated > 0) await writeJson(projectPaths(projectDir).projectConstructPath, removal.construct);
+	if (removal.removed > 0 || updated > 0) {
+		if (trust.signal.aborted) return { removed: 0, updated: 0, skipped: selections.length, cancelled: true, warnings: ["Cancelled before writing drift repairs."] };
+		// Real progress point immediately before the final trust lookup, so callers/tests can
+		// observe the exact moment the post-await cancellation guard protects.
+		progress?.("Construct: checking trust before writing drift metadata");
+		const prewriteTrust = await targetTrustDecision(trust.ctx, projectDir);
+		// Re-check cancellation after the native trust await, immediately before the write.
+		if (trust.signal.aborted) return { removed: 0, updated: 0, skipped: selections.length, cancelled: true, warnings: ["Cancelled before writing drift repairs."] };
+		if (prewriteTrust !== "trusted") {
+			return { removed: 0, updated: 0, skipped: selections.length, refused: prewriteTrust, warnings: [trustRefusalMessage(projectDir, prewriteTrust)] };
+		}
+		await writeJson(projectPaths(projectDir).projectConstructPath, removal.construct);
+	}
 	if (removal.removed !== removeIds.length) skipped += removeIds.length - removal.removed;
 	if (skipped > 0) warnings.push(`Skipped drift repairs that changed before apply: ${skipped}`);
 	return { removed: removal.removed, updated, skipped, warnings };
 }
 
-async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResult): Promise<void> {
+export type ScanPicker = (
+	ctx: ExtensionCommandContext,
+	title: string,
+	items: CheckboxPickerItem[],
+	options: CheckboxPickerOptions,
+) => Promise<CheckboxPickerResult | undefined>;
+
+export async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResult, pick: ScanPicker = pickCheckboxes): Promise<void> {
 	const items = scanFindingItems(result);
 	if (items.length === 0) {
 		await showSummary(ctx, formatScan(result.display, result.projects, result.skippedProjects, result.warnings));
 		return;
 	}
-	await pickCheckboxes(ctx, `Construct scan: ${items.length} finding${items.length === 1 ? "" : "s"}`, items, {
+	await pick(ctx, `Construct scan: ${items.length} finding${items.length === 1 ? "" : "s"}`, items, {
 		initialSelection: "empty",
 		filterLabel: "Filter findings",
 		filterHint: "Type to narrow by project/source/resource/drift · Space selects",
@@ -695,54 +730,105 @@ async function showScanChecklist(ctx: ExtensionCommandContext, result: ScanResul
 			const lines: string[] = [`Selected findings: ${selectedIds.length}`, `Projects: ${requests.length}`, ""];
 			let loadedPackages = 0;
 			let adoptedDirect = 0;
+			let librarySourcesAdded = 0;
 			let removedMetadata = 0;
 			let repairedMetadata = 0;
 			let warningCount = 0;
+			let refusedProjects = 0;
+			const totalsLines = (): string[] => [
+				`Library sources added: ${librarySourcesAdded}`,
+				`Packages armed: ${loadedPackages}`,
+				`Direct resources adopted: ${adoptedDirect}`,
+				`Stale metadata removed: ${removedMetadata}`,
+				`Metadata state repaired: ${repairedMetadata}`,
+				`Refused projects: ${refusedProjects}`,
+				`Warnings: ${warningCount}`,
+			];
+			const cancelled = (detail: string): CheckboxPickerApplyResult => ({ title: "Construct scan reconcile cancelled", lines: [...totalsLines(), "", ...lines, "", detail] });
 			for (let index = 0; index < requests.length; index += 1) {
-				if (signal.aborted) return { title: "Construct scan reconcile cancelled", lines: [...lines, "", "Cancelled before finishing selected projects."] };
 				const request = requests[index]!;
 				const projectLabel = formatProjectPath(result.display, request.project);
-				update("Reconciling scan findings", [`Project ${index + 1}/${requests.length}: ${projectLabel}`, `Selected findings: ${request.queries.length + request.drift.length}`]);
-				try {
-					let projectLoadedPackages = 0;
-					let projectAdoptedDirect = 0;
-					let projectRemovedMetadata = 0;
-					let projectRepairedMetadata = 0;
-					const projectWarnings: string[] = [];
-					if (request.queries.length > 0) {
-						const loadResult = await loadProjectResourcesIntoConstruct(request.project.path, request.queries);
-						projectLoadedPackages += loadResult.metadataChanged;
-						projectAdoptedDirect += loadResult.directMetadataChanged ?? 0;
-						projectWarnings.push(...loadResult.warnings);
-					}
-					if (request.drift.length > 0) {
-						const repairResult = await repairDriftedMetadata(request.project.path, request.drift);
-						projectRemovedMetadata += repairResult.removed;
-						projectRepairedMetadata += repairResult.updated;
-						projectWarnings.push(...repairResult.warnings);
-					}
-					loadedPackages += projectLoadedPackages;
-					adoptedDirect += projectAdoptedDirect;
-					removedMetadata += projectRemovedMetadata;
-					repairedMetadata += projectRepairedMetadata;
-					warningCount += projectWarnings.length;
-					lines.push(projectLabel, `+ Packages armed: ${projectLoadedPackages}`, `+ Direct resources adopted: ${projectAdoptedDirect}`, `+ Stale metadata removed: ${projectRemovedMetadata}`, `+ Metadata state repaired: ${projectRepairedMetadata}`);
-					for (const warning of projectWarnings) lines.push(`! ${warning}`);
-				} catch (error) {
-					warningCount += 1;
-					lines.push(projectLabel, `! ${error instanceof Error ? error.message : String(error)}`);
+				// Fresh native trust check after the idle wait and after any earlier target. Pi remains the
+				// trust authority; Construct never grants trust or falls back to a saved grant for its cwd.
+				const targetTrust = await targetTrustDecision(ctx, request.project.path);
+				// Cancellation is rechecked after that await, before any actual write.
+				if (signal.aborted) return cancelled("Cancelled before finishing selected projects.");
+				if (targetTrust !== "trusted") {
+					refusedProjects += 1;
+					lines.push(projectLabel, `- Refused: ${trustRefusalMessage(request.project.path, targetTrust)}`, "");
+					continue;
 				}
+				update("Reconciling scan findings", [`Project ${index + 1}/${requests.length}: ${projectLabel}`, `Selected findings: ${request.queries.length + request.drift.length}`]);
+				const trust: ScanWriteTrust = { ctx, signal };
+				lines.push(projectLabel);
+				let projectRefused = false;
+				const projectWarnings: string[] = [];
+				const flushWarnings = () => {
+					warningCount += projectWarnings.length;
+					for (const warning of projectWarnings) lines.push(`! ${warning}`);
+					projectWarnings.length = 0;
+				};
+
+				// Phase 1: load. Emit the real result immediately so a later repair failure or cancellation
+				// cannot discard counts for writes Pi already completed.
+				if (request.queries.length > 0) {
+					try {
+						const loadResult = await loadProjectResourcesIntoConstruct(request.project.path, request.queries, trust);
+						loadedPackages += loadResult.metadataChanged;
+						adoptedDirect += loadResult.directMetadataChanged ?? 0;
+						librarySourcesAdded += loadResult.added.length;
+						projectWarnings.push(...loadResult.warnings);
+						if (loadResult.refused) {
+							projectRefused = true;
+							projectWarnings.push(`Load refused (${loadResult.refused === "unknown" ? "Pi trust state unreadable" : "not trusted"}); later writes were skipped.`);
+						}
+						lines.push(`+ Library sources added: ${loadResult.added.length}`, `+ Packages armed: ${loadResult.metadataChanged}`, `+ Direct resources adopted: ${loadResult.directMetadataChanged ?? 0}`);
+					} catch (error) {
+						if (signal.aborted) {
+							flushWarnings();
+							return cancelled(`Cancelled before finishing ${projectLabel}; completed writes are listed above.`);
+						}
+						warningCount += 1;
+						lines.push(`! Load failed: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+				flushWarnings();
+				if (signal.aborted) return cancelled(`Cancelled before finishing ${projectLabel}; completed writes are listed above.`);
+
+				// Phase 2: drift repair, only while no refusal is latched.
+				if (request.drift.length > 0 && !projectRefused) {
+					try {
+						const repairResult = await repairDriftedMetadata(request.project.path, request.drift, trust, (message) => update("Construct scan reconcile", [message]));
+						removedMetadata += repairResult.removed;
+						repairedMetadata += repairResult.updated;
+						projectWarnings.push(...repairResult.warnings);
+						if (repairResult.refused) {
+							projectRefused = true;
+							projectWarnings.push(`Drift repair refused (${repairResult.refused === "unknown" ? "Pi trust state unreadable" : "not trusted"}); no drift metadata was written.`);
+						}
+						lines.push(`+ Stale metadata removed: ${repairResult.removed}`, `+ Metadata state repaired: ${repairResult.updated}`);
+						if (repairResult.cancelled) {
+							flushWarnings();
+							if (projectRefused) refusedProjects += 1;
+							return cancelled(`Cancelled while finishing ${projectLabel}; completed writes are listed above.`);
+						}
+					} catch (error) {
+						flushWarnings();
+						if (signal.aborted) return cancelled(`Cancelled while finishing ${projectLabel}; completed writes are listed above.`);
+						warningCount += 1;
+						lines.push(`! Drift repair failed: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+				flushWarnings();
+				if (projectRefused) refusedProjects += 1;
+				if (signal.aborted) return cancelled(`Cancelled while finishing ${projectLabel}; completed writes are listed above.`);
 				lines.push("");
 			}
 			while (lines.at(-1) === "") lines.pop();
 			return {
 				title: "Construct scan reconcile complete",
 				lines: [
-					`Packages armed: ${loadedPackages}`,
-					`Direct resources adopted: ${adoptedDirect}`,
-					`Stale metadata removed: ${removedMetadata}`,
-					`Metadata state repaired: ${repairedMetadata}`,
-					`Warnings: ${warningCount}`,
+					...totalsLines(),
 					"No /reload needed; scan reconcile updates the Construct library and project metadata only.",
 					".pi/settings.json was not edited.",
 					"",

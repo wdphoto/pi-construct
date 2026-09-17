@@ -7,6 +7,7 @@ import { getPaths } from "../paths.js";
 import { collectPackageSourceSets, getPackages } from "../project-settings.js";
 import { knownProjectCountForSources, knownProjectCounts, readKnownProjects, rememberKnownProject } from "../projects.js";
 import { managedPackageSourceIdentity, packageSourceMatchValues } from "../sources.js";
+import { TrustRefusedError, targetTrustDecision } from "../target-trust.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 function unloadUsage(): string {
@@ -70,7 +71,7 @@ async function currentProjectActiveCount(paths: ConstructPaths, selected: Catalo
 	return { active };
 }
 
-async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: CatalogItem[]): Promise<{ removed: number; warning?: string }> {
+async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: CatalogItem[], prewrite?: () => Promise<void>): Promise<{ removed: number; warning?: string }> {
 	const constructRead = await readJson(paths.projectConstructPath);
 	if (constructRead.state === "missing") return { removed: 0 };
 	if (constructRead.state === "invalid") return { removed: 0, warning: `Could not update project Construct metadata because ${describeJsonReadIssue(".pi/construct.json", constructRead)}` };
@@ -94,8 +95,218 @@ async function removeCurrentProjectMetadata(paths: ConstructPaths, removed: Cata
 		if (shouldRemove) removedCount += 1;
 		else nextItems[id] = value;
 	}
-	if (removedCount > 0) await writeJson(paths.projectConstructPath, { ...constructRead.data, items: nextItems });
+	if (removedCount > 0) {
+		await prewrite?.();
+		await writeJson(paths.projectConstructPath, { ...constructRead.data, items: nextItems });
+	}
 	return { removed: removedCount };
+}
+
+export interface UnloadSelection {
+	id: string;
+	source: string;
+}
+
+class UnloadAbortedError extends Error {
+	constructor() {
+		super("Unload cancelled");
+		this.name = "UnloadAbortedError";
+	}
+}
+
+export interface UnloadMutationResult {
+	removed: CatalogItem[];
+	missing: string[];
+	metadataRemoved: number;
+	activeRemaining?: number;
+	knownProjectLines: string[];
+	indexUpdated: boolean;
+	trustSkipped: boolean;
+	trustReason?: "untrusted" | "unknown";
+	metadataCleanupFailed?: boolean;
+	warnings: string[];
+	cancelled: boolean;
+	error?: string;
+	refusal?: string;
+}
+
+// Shared catalog/profile/current-metadata mutation used by both /construct unload and the
+// dashboard u action. Global library cleanup is independent of cwd trust; current-project
+// metadata and the known-project index are gated by fresh native current trust and bounded
+// cancellation before each write.
+export async function unloadConstructSources(
+	ctx: ExtensionCommandContext,
+	selections: UnloadSelection[],
+	options: {
+		signal?: AbortSignal;
+		progress?: (title: string, lines: string[]) => void;
+		validate?: (reviewed: UnloadSelection[]) => Promise<{ refusal?: string; error?: string } | undefined>;
+	} = {},
+): Promise<UnloadMutationResult | undefined> {
+	const paths = await getPaths(ctx);
+	const aborted = () => options.signal?.aborted === true;
+	const empty = (overrides: Partial<UnloadMutationResult>): UnloadMutationResult => ({
+		removed: [],
+		missing: [],
+		metadataRemoved: 0,
+		knownProjectLines: [],
+		indexUpdated: false,
+		trustSkipped: false,
+		warnings: [],
+		cancelled: false,
+		...overrides,
+	});
+	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct unload", options.progress, options.signal);
+	if (!ready || aborted()) return undefined;
+
+	// Narrow validation callback runs after the idle wait and before any write.
+	if (options.validate) {
+		const validation = await options.validate(selections);
+		if (aborted()) return undefined;
+		if (validation?.error) return empty({ error: validation.error });
+		if (validation?.refusal) return empty({ refusal: validation.refusal });
+	}
+	if (aborted()) return undefined;
+
+	const reviewedKeys = new Set(selections.map((selection) => `${selection.id}\u0000${selection.source}`));
+	let freshCatalog: Awaited<ReturnType<typeof loadCatalog>>;
+	try {
+		freshCatalog = await loadCatalog(ctx);
+	} catch (error) {
+		return empty({ error: `Could not read the Construct library: ${error instanceof Error ? error.message : String(error)}` });
+	}
+	if (freshCatalog.read.state === "invalid") return empty({ error: describeJsonReadIssue("Construct library catalog", freshCatalog.read) });
+	if (freshCatalog.read.state === "ok" && freshCatalog.warnings.length > 0) return empty({ error: `Fix ${paths.userCatalogPath} first.` });
+	// Apply narrows to the exact reviewed id+source keys; it never re-resolves broadly against the
+	// fresh catalog, so equivalent entries that appeared after review are not widened into the set.
+	const selected = freshCatalog.catalog.items.filter((item) => reviewedKeys.has(catalogItemKey(item)));
+	const freshKeys = new Set(selected.map(catalogItemKey));
+	const missing = selections
+		.filter((selection) => !freshKeys.has(`${selection.id}\u0000${selection.source}`))
+		.map((selection) => `${selection.id}: ${selection.source} disappeared before unload`);
+	if (aborted()) return undefined;
+	if (selected.length === 0) return empty({ missing });
+
+	const warnings: string[] = [];
+	let indexUpdated = false;
+	let trustSkipped = false;
+	let trustReason: "untrusted" | "unknown" | undefined;
+	const completed = (overrides: Partial<UnloadMutationResult>): UnloadMutationResult => ({
+		removed: selected,
+		missing,
+		metadataRemoved: 0,
+		knownProjectLines: [],
+		indexUpdated,
+		trustSkipped,
+		trustReason,
+		warnings,
+		cancelled: false,
+		...overrides,
+	});
+	const partial = (): UnloadMutationResult => completed({ removed: [], cancelled: true });
+
+	// Actual project-side writes use fresh current trust + abort before AND after the native await.
+	const prewriteProjectWrite = async (): Promise<void> => {
+		if (aborted()) throw new UnloadAbortedError();
+		const trust = await targetTrustDecision(ctx, paths.cwd);
+		if (aborted()) throw new UnloadAbortedError();
+		if (trust !== "trusted") throw new TrustRefusedError(paths.cwd, trust);
+	};
+
+	// Known-project index write (independent of catalog removal).
+	if (aborted()) return partial();
+	try {
+		const remembered = await rememberKnownProject(ctx, prewriteProjectWrite);
+		if (remembered.warning) warnings.push(remembered.warning);
+		if (remembered.updated) indexUpdated = true;
+	} catch (error) {
+		if (error instanceof TrustRefusedError) {
+			trustSkipped = true;
+			trustReason = error.reason;
+		} else if (error instanceof UnloadAbortedError) {
+			return partial();
+		} else {
+			warnings.push(`Could not update the known-project index: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	if (aborted()) return partial();
+
+	// Source-count diagnostics read after the index refresh (as the command originally did).
+	const selectedKnownCounts = await knownProjectCountsByItem(ctx, selected);
+	warnings.push(...selectedKnownCounts.warnings);
+
+	const removedIds = new Set(selected.map((item) => item.id));
+	const removedKeys = new Set(selected.map(catalogItemKey));
+	const removedSourceMatches = new Set<string>();
+	for (const item of selected) for (const match of await sourceMatchSet(item.source, paths)) removedSourceMatches.add(match);
+	const nextItems = freshCatalog.catalog.items.filter((item) => !removedKeys.has(catalogItemKey(item)));
+	const nextProfiles = [];
+	for (const profile of freshCatalog.catalog.profiles) {
+		const nextProfileItems = profile.items.filter((id) => !removedIds.has(id));
+		const nextSources: string[] = [];
+		for (const source of profile.sources) {
+			if (!overlaps(await sourceMatchSet(source, paths), removedSourceMatches)) nextSources.push(source);
+		}
+		// Preserve unchanged parsed recipe fields (including updatedAt); only rewrite when membership shrinks.
+		// Note: the whole catalog is reserialized, so this is field preservation, not raw-byte preservation.
+		if (nextProfileItems.length === profile.items.length && nextSources.length === profile.sources.length) {
+			nextProfiles.push(profile);
+		} else {
+			nextProfiles.push({
+				...profile,
+				items: nextProfileItems,
+				sources: nextSources,
+				updatedAt: new Date().toISOString(),
+			});
+		}
+	}
+	if (aborted()) return partial();
+	try {
+		await writeJson(paths.userCatalogPath, { ...freshCatalog.catalog, version: 1, items: nextItems, profiles: nextProfiles });
+	} catch (error) {
+		// Any index write already completed survives; library removal did not happen.
+		return completed({ removed: [], error: `Could not update the Construct library: ${error instanceof Error ? error.message : String(error)}` });
+	}
+
+	// Current-project metadata write (trust + abort gated at the write), skipped if trust was latched off.
+	let metadataRemoved = 0;
+	let metadataCleanupFailed = false;
+	if (!trustSkipped) {
+		if (aborted()) return completed({ cancelled: true });
+		try {
+			const metadata = await removeCurrentProjectMetadata(paths, selected, prewriteProjectWrite);
+			metadataRemoved = metadata.removed;
+			if (metadata.warning) {
+				warnings.push(metadata.warning);
+				metadataCleanupFailed = true;
+			}
+		} catch (error) {
+			if (error instanceof TrustRefusedError) {
+				trustSkipped = true;
+				trustReason = error.reason;
+			} else if (error instanceof UnloadAbortedError) {
+				return completed({ cancelled: true, metadataCleanupFailed: true });
+			} else {
+				warnings.push(`Could not update current project Construct metadata: ${error instanceof Error ? error.message : String(error)}`);
+				metadataCleanupFailed = true;
+			}
+		}
+	}
+
+	let activeRemaining: number | undefined;
+	try {
+		const currentProject = await currentProjectActiveCount(paths, selected);
+		if (currentProject.warning) {
+			// Unreadable declarations are unknown, not "no declarations".
+			warnings.push(currentProject.warning);
+		} else {
+			activeRemaining = currentProject.active;
+		}
+	} catch (error) {
+		warnings.push(`Could not read current project declarations: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	const knownProjectLines = selected.map((item) => `Known projects for ${item.id}: ${selectedKnownCounts.counts.get(catalogItemKey(item)) ?? 0}`);
+	return completed({ removed: selected, metadataRemoved, activeRemaining, knownProjectLines, cancelled: aborted(), metadataCleanupFailed });
 }
 
 export async function handleUnload(args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -150,73 +361,71 @@ export async function handleUnload(args: string, ctx: ExtensionCommandContext): 
 		return;
 	}
 
-	await waitForIdleBeforeConstructWrite(ctx, "Construct unload");
-
-	const selectedKeysBeforeWait = new Set(selected.map(catalogItemKey));
-	const freshCatalog = await loadCatalog(ctx);
-	if (freshCatalog.read.state === "invalid") {
-		showText(ctx, `Construct unload failed.\nAfter waiting, ${describeJsonReadIssue("Construct library catalog", freshCatalog.read)}`);
+	const result = await unloadConstructSources(ctx, selected.map((item) => ({ id: item.id, source: item.source })));
+	if (!result) {
+		showText(ctx, ["Construct unload cancelled.", "No files were changed.", ...missing.map((query) => `! Not found: ${query}`)].join("\n"));
 		return;
 	}
-	if (freshCatalog.read.state === "ok" && freshCatalog.warnings.length > 0) {
-		showText(ctx, ["Construct unload failed.", `Fix ${paths.userCatalogPath} first.`, ...freshCatalog.warnings.map((warning) => `! ${warning}`)].join("\n"));
+	if (result.refusal) {
+		showText(ctx, ["Construct unload needs re-review.", result.refusal, ...missing.map((query) => `! Not found: ${query}`), "No files were changed."].join("\n"));
 		return;
 	}
-	const selectedAfterWait = freshCatalog.catalog.items.filter((item) => selectedKeysBeforeWait.has(catalogItemKey(item)));
-	missing.push(...selected.filter((item) => !selectedAfterWait.some((fresh) => catalogItemKey(fresh) === catalogItemKey(item))).map((item) => `${item.id}: ${item.source} disappeared before unload`));
-	selected = selectedAfterWait;
-	if (selected.length === 0) {
-		showText(ctx, ["Construct unload complete.", "No selected resources are still present in the Construct library.", ...missing.map((query) => `! ${query}`), "No files were changed."].join("\n"));
+	if (result.error) {
+		showText(
+			ctx,
+			[
+				"Construct unload failed.",
+				`Construct library removed: ${result.removed.length}`,
+				`Current project Construct metadata removed: ${result.metadataRemoved}`,
+				result.indexUpdated ? "Known-project index was updated before the failure." : undefined,
+				...result.warnings.map((warning) => `! ${warning}`),
+				...missing.map((query) => `! Not found: ${query}`),
+				`! ${result.error}`,
+			]
+				.filter((line): line is string => line !== undefined)
+				.join("\n"),
+		);
 		return;
 	}
-
-	const remembered = await rememberKnownProject(ctx);
-	const selectedKnownCounts = await knownProjectCountsByItem(ctx, selected);
-
-	const removedIds = new Set(selected.map((item) => item.id));
-	const removedKeys = new Set(selected.map(catalogItemKey));
-	const removedSourceMatches = new Set<string>();
-	for (const item of selected) for (const match of await sourceMatchSet(item.source, paths)) removedSourceMatches.add(match);
-	const nextItems = freshCatalog.catalog.items.filter((item) => !removedKeys.has(catalogItemKey(item)));
-	const nextProfiles = [];
-	for (const profile of freshCatalog.catalog.profiles) {
-		const nextSources: string[] = [];
-		for (const source of profile.sources) {
-			if (!overlaps(await sourceMatchSet(source, paths), removedSourceMatches)) nextSources.push(source);
-		}
-		nextProfiles.push({
-			...profile,
-			items: profile.items.filter((id) => !removedIds.has(id)),
-			sources: nextSources,
-			updatedAt: new Date().toISOString(),
-		});
-	}
-	await writeJson(paths.userCatalogPath, { ...freshCatalog.catalog, version: 1, items: nextItems, profiles: nextProfiles });
-
-	const [metadata, currentProject] = await Promise.all([removeCurrentProjectMetadata(paths, selected), currentProjectActiveCount(paths, selected)]);
-	const knownProjectLines = selected.map((item) => `Known projects for ${item.id}: ${selectedKnownCounts.counts.get(catalogItemKey(item)) ?? 0}`);
 	const outputWarnings = [
 		...missing.map((query) => `Not found: ${query}`),
 		...knownCounts.warnings,
-		...selectedKnownCounts.warnings,
-		...(remembered.warning ? [remembered.warning] : []),
-		...(metadata.warning ? [metadata.warning] : []),
-		...(currentProject.warning ? [currentProject.warning] : []),
+		...result.warnings,
 	];
+	const trustLine = result.trustSkipped
+		? result.indexUpdated
+			? "Known-project index was updated; current-project Construct metadata was not updated (project not trusted)."
+			: "Project is not trusted by Pi; current-project Construct metadata and known-project index were not updated."
+		: undefined;
+	const activeLine = result.activeRemaining === undefined
+		? "Project declarations were not read; .pi/settings.json was left unchanged."
+		: result.activeRemaining > 0
+			? result.trustSkipped
+				? `Still declared in this project: ${result.activeRemaining} (current-project metadata was not updated).`
+				: result.metadataCleanupFailed
+					? `Still declared in this project: ${result.activeRemaining} (current-project metadata cleanup was incomplete).`
+					: `Still declared in this project: ${result.activeRemaining} (may be disabled or unresolved; shown as Unloaded in /construct).`
+			: "No selected sources are still declared in this project.";
+	const hadWrites = result.removed.length > 0 || result.indexUpdated || result.metadataRemoved > 0;
 	await showSummary(
 		ctx,
 		[
 			"Construct unload complete.",
-			`Construct forgot: ${selected.length} resource${selected.length === 1 ? "" : "s"}`,
-			metadata.removed > 0 ? `Current project Construct metadata removed: ${metadata.removed}` : "Current project Construct metadata removed: 0",
+			`Construct forgot: ${result.removed.length} resource${result.removed.length === 1 ? "" : "s"}`,
+			`Current project Construct metadata removed: ${result.metadataRemoved}`,
 			"Project package declarations were left alone in .pi/settings.json.",
-			currentProject.active > 0 ? `Still active in this project: ${currentProject.active} resource${currentProject.active === 1 ? "" : "s"} (shown as Unloaded in /construct).` : "No selected resources are active in this project's .pi/settings.json.",
-			...knownProjectLines,
+			trustLine,
+			activeLine,
+			...result.knownProjectLines,
 			"Known-project counts are informational only.",
 			"Packages may still be active in other projects too; unload only removes Construct ownership/metadata.",
-			...selected.map((item) => `- ${item.id}: ${item.source}`),
+			...result.removed.map((item) => `- ${item.id}: ${item.source}`),
+			...result.missing.map((entry) => `! ${entry}`),
 			...outputWarnings.map((warning) => `! ${warning}`),
+			result.cancelled && hadWrites ? "Cancelled after some writes; remaining steps were skipped." : undefined,
 			"No /reload needed; unload does not disable packages or edit .pi/settings.json.",
-		].join("\n"),
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n"),
 	);
 }

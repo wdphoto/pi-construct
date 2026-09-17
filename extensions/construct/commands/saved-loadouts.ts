@@ -6,7 +6,9 @@ import { deriveId, findCatalogItem, loadCatalog, addSourcesToCatalog } from "../
 import { describeJsonReadIssue, writeJson } from "../json.js";
 import { runConstructOperationSteps, showOperationRunPanel, type ConstructOperationRunResult, type ConstructOperationStep, type ProgressUpdate } from "../operation-runner.js";
 import { getPaths } from "../paths.js";
-import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
+import { collectProjectInventory, withEffectivePackageStates, type ProjectInventory } from "../project-inventory.js";
+import { collectProjectPackageResources } from "../package-resources.js";
+import { savedSourceDecision } from "../effective-state.js";
 import { rememberKnownProject } from "../projects.js";
 import {
 	findSavedLoadout,
@@ -44,19 +46,31 @@ interface SavePackageSnapshot {
 	activeManagedSources: string[];
 	activeUnloadedPackages: Array<{ id: string; source: string }>;
 	disabledPackageCount: number;
+	allOffPackageCount: number;
+	unresolvedPackageCount: number;
+	resourceWarnings: string[];
 }
 
-function savePackageSnapshotFromInventory(inventory: ProjectInventory): SavePackageSnapshot {
+function savePackageSnapshotFromInventory(inventory: ProjectInventory, resourceWarnings: string[] = []): SavePackageSnapshot {
 	if (inventory.reads.projectConstruct.state === "invalid") throw new Error(`Cannot save a loadout because ${describeJsonReadIssue(".pi/construct.json", inventory.reads.projectConstruct)}`);
 	return {
-		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.state === "active" && !item.projectOverride).map((item) => item.source)),
-		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => !candidate.disabledByFilters).map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
+		activeManagedSources: uniqueSorted(inventory.managedPackages.filter((item) => item.effectiveState === "active" && !item.projectOverride).map((item) => item.source)),
+		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => candidate.effectiveState === "active").map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
 		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && !pkg.projectOverride && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
+		allOffPackageCount:
+			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && item.effectiveState === "inactive").length
+			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && item.effectiveState === "inactive").length,
+		unresolvedPackageCount:
+			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && item.effectiveState === "unknown").length
+			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && item.effectiveState === "unknown").length,
+		resourceWarnings,
 	};
 }
 
 async function collectSavePackageSnapshot(ctx: ExtensionCommandContext): Promise<SavePackageSnapshot> {
-	return savePackageSnapshotFromInventory(await collectProjectInventory(ctx, { directResources: false }));
+	const inventory = await collectProjectInventory(ctx, { directResources: false });
+	const packageResources = await collectProjectPackageResources(ctx, inventory);
+	return savePackageSnapshotFromInventory(withEffectivePackageStates(inventory, packageResources), packageResources.warnings);
 }
 
 async function promptForUnloadedSources(
@@ -131,11 +145,17 @@ function saveSummaryText(options: {
 	loadedSources: string[];
 	skippedActiveUnloaded: number;
 	skippedDisabled: number;
+	skippedAllOff: number;
+	skippedUnresolved: number;
+	resourceWarnings: string[];
 	directNotice: string[];
 }): string {
 	const notIncluded = [
 		options.skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${options.skippedActiveUnloaded}` : undefined,
 		options.skippedDisabled > 0 ? `! Disabled package declarations: ${options.skippedDisabled}` : undefined,
+		options.skippedAllOff > 0 ? `! Packages with all resolved resources off: ${options.skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+		options.skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${options.skippedUnresolved} (not included; inspect the declaration with pi config -l)` : undefined,
+		...options.resourceWarnings.map((warning) => `! ${warning}`),
 		...options.directNotice,
 	].filter((line): line is string => line !== undefined);
 	return [
@@ -218,14 +238,20 @@ function overlaps(a: Iterable<string>, b: Set<string>): boolean {
 	return false;
 }
 
+interface SavedLoadoutSkip {
+	source: string;
+	reason: "all-off" | "unresolved";
+}
+
 async function stepsForSavedLoadoutSources(
 	inventory: ProjectInventory,
 	sources: string[],
 	catalogItems: CatalogItem[],
-): Promise<{ steps: ConstructOperationStep[]; alreadyActive: string[]; projectOverrides: string[] }> {
+): Promise<{ steps: ConstructOperationStep[]; alreadyActive: string[]; projectOverrides: string[]; skipped: SavedLoadoutSkip[] }> {
 	const steps: ConstructOperationStep[] = [];
 	const alreadyActive: string[] = [];
 	const projectOverrides: string[] = [];
+	const skipped: SavedLoadoutSkip[] = [];
 	const scheduled = new Set<string>();
 
 	function addStep(action: "Install" | "Enable", source: string, label: string, catalogItem = findCatalogItem(catalogItems, source)): void {
@@ -253,16 +279,23 @@ async function stepsForSavedLoadoutSources(
 		}
 		const managed = inventory.managedPackages.filter((item) => overlaps(item.matchSources, matches)).sort((a, b) => packageStateRank(a.state) - packageStateRank(b.state))[0];
 		if (managed) {
-			if (managed.state === "active") alreadyActive.push(source);
-			else if (managed.state === "disabled") addStep("Enable", managed.source, managed.metadata.id);
-			else addStep("Install", source, findCatalogItem(catalogItems, source)?.id ?? deriveId(source));
+			// Shared activate-only decision so dashboard saved-row Enter and /construct run agree.
+			const decision = savedSourceDecision({ section: managed.declared ? "Disabled" : "Available", wholePackageDisabled: managed.disabledByFilters, effectiveState: managed.effectiveState });
+			if (decision === "install") addStep("Install", source, findCatalogItem(catalogItems, source)?.id ?? deriveId(source));
+			else if (decision === "enable") addStep("Enable", managed.source, managed.metadata.id);
+			else if (decision === "active") alreadyActive.push(source);
+			else if (decision === "all-off") skipped.push({ source, reason: "all-off" });
+			else skipped.push({ source, reason: "unresolved" });
 			continue;
 		}
 
 		const unloaded = inventory.unloadedPackageDeclarations.find((candidate) => overlaps(candidate.matchSources, matches));
 		if (unloaded) {
-			if (unloaded.disabledByFilters) addStep("Enable", unloaded.rawSource, deriveId(unloaded.source));
-			else alreadyActive.push(source);
+			const decision = savedSourceDecision({ section: "Unloaded", wholePackageDisabled: Boolean(unloaded.disabledByFilters), effectiveState: unloaded.effectiveState });
+			if (decision === "enable") addStep("Enable", unloaded.rawSource, deriveId(unloaded.source));
+			else if (decision === "active") alreadyActive.push(source);
+			else if (decision === "all-off") skipped.push({ source, reason: "all-off" });
+			else skipped.push({ source, reason: "unresolved" });
 			continue;
 		}
 
@@ -270,7 +303,18 @@ async function stepsForSavedLoadoutSources(
 		addStep("Install", source, item?.id ?? deriveId(source), item);
 	}
 
-	return { steps, alreadyActive, projectOverrides };
+	return { steps, alreadyActive, projectOverrides, skipped };
+}
+
+function skippedSourceLines(skipped: SavedLoadoutSkip[]): string[] {
+	const allOff = skipped.filter((entry) => entry.reason === "all-off");
+	const unresolved = skipped.filter((entry) => entry.reason === "unresolved");
+	return [
+		allOff.length > 0 ? `Already effectively off (not enabled): ${allOff.length}` : undefined,
+		...allOff.map((entry) => `– ${entry.source} — all resolved resources are off; use pi config -l to enable specific resources`),
+		unresolved.length > 0 ? `Unresolved declarations skipped: ${unresolved.length}` : undefined,
+		...unresolved.map((entry) => `? ${entry.source} — Pi resolved no package resources; inspect the declaration with pi config -l`),
+	].filter((line): line is string => line !== undefined);
 }
 
 async function runSavedLoadoutOperations(
@@ -300,12 +344,29 @@ async function runSavedLoadoutOperations(
 
 	let operationPlan: Awaited<ReturnType<typeof stepsForSavedLoadoutSources>>;
 	try {
-		operationPlan = await stepsForSavedLoadoutSources(await collectProjectInventory(ctx, { directResources: false }), sources, fresh.catalog.items);
+		const inventory = await collectProjectInventory(ctx, { directResources: false });
+		const packageResources = await collectProjectPackageResources(ctx, inventory);
+		operationPlan = await stepsForSavedLoadoutSources(withEffectivePackageStates(inventory, packageResources), sources, fresh.catalog.items);
 	} catch (error) {
 		return { title: "Saved loadout run failed", lines: [`Could not inspect current project package state: ${error instanceof Error ? error.message : String(error)}`] };
 	}
-	const { steps, alreadyActive, projectOverrides } = operationPlan;
+	const { steps, alreadyActive, projectOverrides, skipped } = operationPlan;
 	if (steps.length === 0) {
+		const skippedLines = skippedSourceLines(skipped);
+		if (skipped.length > 0) {
+			return {
+				title: `Saved loadout made no changes: ${currentProfile.id}`,
+				confirmHint: "Press Enter/Esc to return to session",
+				lines: [
+					"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
+					`Already active: ${alreadyActive.length}/${sources.length}`,
+					...alreadyActive.map((source) => `✓ ${source}`),
+					...skippedLines,
+					...(projectOverrides.length > 0 ? [`Pi project overrides skipped: ${projectOverrides.length}`, ...projectOverrides.map((source) => `↔ ${source} — manage with pi config -l`)] : []),
+					"No package settings changed.",
+				],
+			};
+		}
 		return {
 			title: projectOverrides.length > 0 ? `Saved loadout made no changes: ${currentProfile.id}` : `Saved loadout already active: ${currentProfile.id}`,
 			confirmHint: "Press Enter/Esc to return to session",
@@ -351,6 +412,7 @@ async function runSavedLoadoutOperations(
 			...loaded.map((step) => `+ ${step.item.label}: ${step.item.source}`),
 			enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 			...enabled.map((step) => `+ ${step.item.label}: ${step.item.source}`),
+			...skippedSourceLines(skipped),
 			...(projectOverrides.length > 0 ? [`Pi project overrides skipped: ${projectOverrides.length}`, ...projectOverrides.map((source) => `↔ ${source} — manage with pi config -l`)] : []),
 			outcome.partialRuntimeChanges.length > 0 ? `Package settings changed, but Construct metadata failed: ${outcome.partialRuntimeChanges.length}` : undefined,
 			...outcome.partialRuntimeChanges.map((change) => `! ${change.item.label}: ${change.error}`),
@@ -386,7 +448,8 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	let directNotice: string[];
 	try {
 		const initialInventory = await collectProjectInventory(ctx);
-		initialSnapshot = savePackageSnapshotFromInventory(initialInventory);
+		const initialPackageResources = await collectProjectPackageResources(ctx, initialInventory);
+		initialSnapshot = savePackageSnapshotFromInventory(withEffectivePackageStates(initialInventory, initialPackageResources), initialPackageResources.warnings);
 		directNotice = directResourceSaveNotice(initialInventory);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -404,6 +467,8 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 
 	if (initialManaged.length === 0 && selectedBeforeWait.length === 0) {
 		const skippedDisabled = initialSnapshot.disabledPackageCount;
+		const skippedAllOff = initialSnapshot.allOffPackageCount;
+		const skippedUnresolved = initialSnapshot.unresolvedPackageCount;
 		showText(
 			ctx,
 			saveNotCreatedText(
@@ -411,6 +476,9 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 					"No active package sources were selected for this saved loadout.",
 					initialUnloaded.length > 0 ? `! Active package declarations not loaded into Construct: ${initialUnloaded.length}` : undefined,
 					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
+					skippedAllOff > 0 ? `! Packages with all resolved resources off: ${skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+					skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${skippedUnresolved} (inspect the declaration with pi config -l)` : undefined,
+					...initialSnapshot.resourceWarnings.map((warning) => `! ${warning}`),
 					...directNotice,
 				].filter((line): line is string => line !== undefined),
 			),
@@ -439,6 +507,9 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	let currentSources: string[] = [];
 	let skippedActiveUnloaded = 0;
 	let skippedDisabled = 0;
+	let skippedAllOff = 0;
+	let skippedUnresolved = 0;
+	let resourceWarnings: string[] = [];
 	try {
 		const freshSnapshot = await collectSavePackageSnapshot(ctx);
 		const selectedSet = new Set(selectedBeforeWait);
@@ -446,6 +517,9 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 		const selectedAfterWait = new Set(selectedToLoad);
 		skippedActiveUnloaded = freshSnapshot.activeUnloadedPackages.filter((candidate) => !selectedAfterWait.has(candidate.source)).length;
 		skippedDisabled = freshSnapshot.disabledPackageCount;
+		skippedAllOff = freshSnapshot.allOffPackageCount;
+		skippedUnresolved = freshSnapshot.unresolvedPackageCount;
+		resourceWarnings = freshSnapshot.resourceWarnings;
 		currentSources = uniqueSorted([...freshSnapshot.activeManagedSources, ...selectedToLoad]);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -461,6 +535,9 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 					"No active package sources were selected for this saved loadout.",
 					skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
 					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
+					skippedAllOff > 0 ? `! Packages with all resolved resources off: ${skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+					skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${skippedUnresolved} (inspect the declaration with pi config -l)` : undefined,
+					...resourceWarnings.map((warning) => `! ${warning}`),
 					...directNotice,
 				].filter((line): line is string => line !== undefined),
 			),
@@ -538,6 +615,9 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 			loadedSources: selectedToLoad,
 			skippedActiveUnloaded,
 			skippedDisabled,
+			skippedAllOff,
+			skippedUnresolved,
+			resourceWarnings,
 			directNotice,
 		}),
 	);

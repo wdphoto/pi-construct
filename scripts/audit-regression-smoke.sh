@@ -80,7 +80,7 @@ JSON
 JSON
   S0="$(shasum -a 256 "$P/.pi/settings.json" | awk '{print $1}')"
   F0="$(shasum -a 256 "$P/.pi/skills/skill-x/SKILL.md" | awk '{print $1}')"
-  ( cd "$P" && HOME="$H" pi --no-extensions -e "$ROOT" -p '/construct unload X git-eq npm-eq local-eq skill-x' ) >/dev/null 2>&1
+  ( cd "$P" && HOME="$H" pi --no-extensions --approve -e "$ROOT" -p '/construct unload X git-eq npm-eq local-eq skill-x' ) >/dev/null 2>&1
 
   python3 - "$P/.pi/construct.json" <<PY
 import json,sys

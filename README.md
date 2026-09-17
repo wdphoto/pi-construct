@@ -54,7 +54,7 @@ Run that saved loadout in another project:
 
 ## What it does
 
-- Shows active, disabled, available, and unloaded project resources.
+- Shows active, disabled, unresolved, available, and unloaded project resources.
 - Remembers package sources so you can reuse them across projects.
 - Saves named loadouts as package-source recipes.
 - Lets the dashboard enable, disable, install, or remove project package declarations from one TUI.
@@ -68,11 +68,19 @@ For exact extension/skill/prompt/theme inheritance and overrides, use Pi's nativ
 pi config -l
 ```
 
-Construct treats Pi `autoload: false` project override entries as read-only and leaves their inherit/load/unload state to `pi config -l`. Saved Construct loadouts remain package-source recipes: they do not copy direct skill files or serialize package child-resource filters.
+Construct uses Pi-resolved package resources to identify known active and all-off states. A Construct-managed declared package with no resolved resources is shown as **Unresolved** unless it is explicitly whole-package-disabled; that declaration stays **Disabled** and enableable. An unadopted declaration remains read-only **Unloaded**, with its unresolved or all-off detail shown rather than treated as active. Remembered sources no longer declared remain installable.
+
+Saving excludes all-off partial-filter and unresolved declarations with an explicit summary. Running a saved loadout skips and explains those rows; inspect the declaration with `pi config -l`. Partly active filtered packages remain active, and Construct preserves partial Pi filters rather than clearing them as a workaround.
+
+Child-resource filter actions cannot be mixed with package, direct-resource, or saved-loadout selections: split them into separate actions. Parent aggregate selection within one child group and multiple child-only package groups remain valid. Before filtering, Construct rechecks the reviewed declaration and Pi-resolved resource list and enabled state; additions, removals, or state changes require re-review without changing unrelated settings. Installing an Available package and then filtering it is non-atomic: installation can remain if refreshed declaration policy, resources, or trust stop filtering. If installation succeeds but filters do not, package defaults may remain enabled; re-review before reloading.
+
+Construct always treats Pi `autoload: false` project override entries as read-only and excludes them from Construct package operations; use `pi config -l` for their inherit/load/unload state. Saved Construct loadouts remain package-source recipes: they do not copy direct skill files or serialize package child-resource filters.
 
 Construct is a loadout manager, not a new package manager. `.pi/settings.json` stays the source of truth.
 
-Unload forgets matching package ownership without deleting resources or changing Pi settings. Scan refuses the filesystem root, home directory, and home-level `.pi`, `.agents`, `.claude`, and `.codex` directories as scan roots, including symlink aliases. Share's credential-warning output omits rejected source values; always review source URLs before sharing.
+Unload forgets matching package ownership without deleting resources or changing Pi settings. In the dashboard, Space-select eligible package rows (or all children of one package), press `Ctrl+U`, and confirm to forget them from the Construct library, saved-loadout references, and current-project metadata. `Ctrl+R` still removes a package from the project with its existing focused-row fallback, while `Alt+I` opens details and `/construct wipe <name>` deletes only a saved recipe. Plain `u`, `r`, and `i` (upper or lower case) always remain filter text. Partial child groups, direct resources, saved rows, Unloaded rows, and override rows refuse the whole unload batch. Declarations can remain visible as Unloaded after reopening.
+
+Scan refuses the filesystem root, home directory, and home-level `.pi`, `.agents`, `.claude`, and `.codex` directories as scan roots, including symlink aliases. Before every scan/reconcile metadata or catalog write, Construct rechecks target trust through Pi; denied, missing, or unreadable trust skips the target without granting trust. Earlier writes can remain and are reported, while independent trusted targets can continue. Share's credential-warning output omits rejected source values; always review source URLs before sharing.
 
 ## Common commands
 

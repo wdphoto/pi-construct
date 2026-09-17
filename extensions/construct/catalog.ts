@@ -167,6 +167,7 @@ export async function packageSourcesFromSettings(settingsPath: string): Promise<
 export async function addSourcesToCatalog(
 	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
 	sources: string[],
+	prewrite?: () => Promise<void>,
 ): Promise<LoadResult> {
 	const paths = await getPaths(ctx);
 	const catalogRead = await readJson(paths.userCatalogPath);
@@ -201,6 +202,7 @@ export async function addSourcesToCatalog(
 	}
 
 	if (added.length > 0) {
+		await prewrite?.();
 		await writeJson(paths.userCatalogPath, { ...catalog, version: 1, items: nextItems.sort((a, b) => a.id.localeCompare(b.id)) });
 	}
 	return { added, alreadyKnown, warnings };

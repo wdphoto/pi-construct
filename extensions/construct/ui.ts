@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, type KeyId } from "@earendil-works/pi-tui";
 import { checkboxPickerRemoveTargetIds } from "./picker-actions.js";
 
 export function splitArgs(args: string): { command: string; rest: string } {
@@ -191,7 +191,7 @@ export interface CheckboxPickerApplyResult {
 	confirmAction?: "reload";
 }
 
-export type CheckboxPickerSubmitAction = "confirm" | "remove";
+export type CheckboxPickerSubmitAction = "confirm" | "remove" | "unload";
 
 export interface CheckboxPickerResult {
 	selectedIds: string[];
@@ -234,9 +234,12 @@ export interface CheckboxPickerOptions {
 	initialSelection?: "checked" | "empty";
 	actions?: {
 		remove?: boolean;
+		unload?: boolean;
 	};
 	resolveRemoveIds?: (selectedIds: string[]) => string[];
 	removeConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
+	resolveUnloadIds?: (selectedIds: string[]) => string[];
+	unloadConfirmation?: (selectedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	submitConfirmation?: (selectedIds: string[], action: CheckboxPickerSubmitAction, changedIds: string[]) => CheckboxPickerConfirmation | undefined;
 	inspect?: (focusedItem: CheckboxPickerItem) => CheckboxPickerConfirmation | undefined;
 	inspectKey?: string;
@@ -641,6 +644,18 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 			startConfirmation("remove", confirmation, ids);
 		}
 
+		// Unload is selected-only: callers pass the already-selected ids (no focused fallback),
+		// and callers may normalize complete package child groups to their parent row.
+		function startUnload(): void {
+			const ids = options.resolveUnloadIds ? options.resolveUnloadIds(selectedIds()) : selectedIds();
+			const confirmation = options.unloadConfirmation?.(ids) ?? options.submitConfirmation?.(ids, "unload", [...changed]);
+			if (!confirmation) {
+				startSubmit("unload", ids);
+				return;
+			}
+			startConfirmation("unload", confirmation, ids);
+		}
+
 		function refreshItemIndex(): void {
 			itemById = new Map(items.map((item) => [item.id, item]));
 		}
@@ -865,7 +880,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				}
 				return;
 			}
-			if (options.inspect && data.toLowerCase() === (options.inspectKey ?? "i").toLowerCase()) {
+			if (options.inspect && matchesKey(data, (options.inspectKey ?? "alt+i") as KeyId)) {
 				const item = selectedItem();
 				const inspection = item ? options.inspect(item) : undefined;
 				if (inspection) {
@@ -937,8 +952,14 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				else startSubmit("confirm", ids);
 				return;
 			}
-			if (options.actions?.remove && (data.toLowerCase() === "r" || data === "\u001b[3~")) {
+			if (options.actions?.remove && (matchesKey(data, "ctrl+r") || matchesKey(data, "delete"))) {
 				startRemove();
+				return;
+			}
+			// Ctrl+U unloads selected-only; plain u/U always falls through to filter text.
+			// No fallback to the focused row: unload acts only on checked ids.
+			if (options.actions?.unload && matchesKey(data, "ctrl+u")) {
+				startUnload();
 				return;
 			}
 			if (keybindings.matches(data, "tui.select.cancel")) {

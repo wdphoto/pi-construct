@@ -4,6 +4,19 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## Unreleased
+
+### Added
+- Let dashboard users Space-select eligible package rows and press `Ctrl+U` to confirm removal from the global Construct library, saved-loadout references, and current-project metadata without uninstalling, disabling, filtering, editing Pi settings, or reloading. Plain `u`, `r`, and `i` remain filter text; `Ctrl+R` retains project removal and `Alt+I` opens details.
+
+### Fixed
+- Use Pi-resolved package resources consistently for dashboard, save, and run effective state: zero-resolved Construct-managed declarations are Unresolved unless explicitly whole-package-disabled, while unadopted declarations remain Unloaded with state detail.
+- Exclude all-off partial-filter and unresolved declarations from saved active recipes, and explain their skipped saved-loadout runs without clearing partial filters; retain whole-package-disabled Enable and undeclared remembered-source Install behavior.
+- Refuse mixed child-resource filter and package/direct/saved-row actions before mutation while retaining same-group aggregate and multiple child-only package selection; re-review stale per-target declaration/resource state without changing unrelated settings.
+- Treat Available install → re-resolve → filter as non-atomic: preserve a completed install when refreshed declaration policy/resources or trust prevent filtering, and report the partial outcome with reload consent rather than promise rollback.
+- Recheck Pi-native target trust before every scan/reconcile catalog, project-metadata, or known-project write; refuse denied, missing, or unreadable trust without granting trust and report retained earlier writes or cancellation honestly.
+- Honor current-session trust denial during scan discovery, while preserving read-only print scan, broad/private-root restrictions, and native persisted trust behavior for other targets.
+
 ## 0.0.30 - 2026-09-09
 
 ### Fixed

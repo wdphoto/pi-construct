@@ -1,19 +1,24 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ConstructPaths, DirectResourceSummary } from "../types.js";
-import { deriveId } from "../catalog.js";
-import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
-import { collectProjectInventory } from "../project-inventory.js";
+import type { ConstructPaths, DirectResourceSummary, PackageDeclarationSummary } from "../types.js";
+import { deriveId, findCatalogItemForSource, loadCatalog } from "../catalog.js";
+import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, packageResourceMatches, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
+import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
+import { isObject } from "../json.js";
+import { effectivePackageState, savedSourceDecision, type EffectivePackageState, type SavedSourceRow } from "../effective-state.js";
 import { savedLoadoutSources, uniqueSorted } from "../saved-loadouts.js";
 import { formatPackageSourceLabel, packageSourceIdentityKey } from "../sources.js";
+import { packageSourceMatchValues } from "../pi-adapter/source-identity.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { type PackageResourceFilterKey } from "../package-filters.js";
-import { packageResourceSelectionKey, packageResourceSetsDiffer, planPackageResourceFilters } from "../package-resource-plans.js";
+import { packageResourceSelectionKey, packageResourceSetsDiffer, packageResourceStateDrift, planPackageResourceFilters } from "../package-resource-plans.js";
 import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
-import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
+import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerOptions, type CheckboxPickerResult, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
+import { unloadConstructSources, type UnloadSelection } from "./unload.js";
 
-type DashboardSection = "Saved" | "Active" | "Disabled" | "Overrides" | "Available" | "Unloaded";
+type DashboardSection = "Saved" | "Active" | "Disabled" | "Unresolved" | "Overrides" | "Available" | "Unloaded";
 type PackageDashboardSection = Exclude<DashboardSection, "Saved">;
 type DashboardAction = ConstructOperationAction;
 type DashboardOperationItem = ConstructOperationItem;
@@ -28,6 +33,7 @@ interface DashboardPackage extends DashboardOperationItem {
 	description?: string;
 	disabledByFilters?: boolean;
 	filterState?: "unfiltered" | "whole-package-disabled" | "partially-filtered" | "invalid";
+	effectiveState?: EffectivePackageState;
 	matchSources: string[];
 }
 
@@ -60,7 +66,7 @@ interface DashboardDirectResource {
 
 type DashboardItem = DashboardPackage | DashboardSavedLoadout | DashboardDirectResource;
 
-const dashboardSections: DashboardSection[] = ["Saved", "Active", "Disabled", "Overrides", "Available", "Unloaded"];
+const dashboardSections: DashboardSection[] = ["Saved", "Active", "Disabled", "Unresolved", "Overrides", "Available", "Unloaded"];
 
 function sectionRank(section: DashboardSection): number {
 	return dashboardSections.indexOf(section);
@@ -86,7 +92,7 @@ function countLabel(count: number, label: string): string {
 
 function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPackage[]): { value: string; relatedIds: string[] } {
 	if (sources.length === 0) return { value: "0 package sources", relatedIds: [] };
-	const counts: Record<PackageDashboardSection, number> = { Active: 0, Disabled: 0, Overrides: 0, Available: 0, Unloaded: 0 };
+	const counts: Record<PackageDashboardSection, number> = { Active: 0, Disabled: 0, Unresolved: 0, Overrides: 0, Available: 0, Unloaded: 0 };
 	const relatedIds: string[] = [];
 	const seenRows = new Set<string>();
 	for (const source of sources) {
@@ -102,6 +108,7 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 		value: [
 			counts.Active > 0 ? countLabel(counts.Active, "active") : undefined,
 			counts.Disabled > 0 ? countLabel(counts.Disabled, "disabled") : undefined,
+			counts.Unresolved > 0 ? countLabel(counts.Unresolved, "unresolved") : undefined,
 			counts.Overrides > 0 ? countLabel(counts.Overrides, "override") : undefined,
 			counts.Available > 0 ? countLabel(counts.Available, "available") : undefined,
 			counts.Unloaded > 0 ? countLabel(counts.Unloaded, "unloaded") : undefined,
@@ -112,7 +119,59 @@ function savedLoadoutMemberSummary(sources: string[], packageItems: DashboardPac
 	};
 }
 
-async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory }> {
+interface DeclarationEntry {
+	summary: PackageDeclarationSummary;
+	entry: unknown;
+	// Scope-aware normalized match values (Construct's existing source-matching helper), precomputed so the
+	// synchronous preview and signature comparisons do not duplicate source identity.
+	matchValues: string[];
+}
+
+// Raw declaration entry pairs (aligned with packageDeclarations order) plus normalized match values, so a
+// broad filter that becomes an exact filter with the same current enabled resources still counts as policy
+// drift, including when Construct metadata stores an absolute source while settings store an equivalent
+// relative one.
+async function packageDeclarationEntries(inventory: ProjectInventory): Promise<DeclarationEntry[]> {
+	const settings = inventory.reads.projectSettings;
+	const rawPackages = settings.state === "ok" && isObject(settings.data) && Array.isArray(settings.data.packages) ? (settings.data.packages as unknown[]) : [];
+	const settingsDir = dirname(inventory.paths.projectSettingsPath);
+	return Promise.all(inventory.packageDeclarations.map(async (summary, index) => ({
+		summary,
+		entry: rawPackages[index],
+		matchValues: summary.source.trim() ? await packageSourceMatchValues(summary.source, settingsDir) : [],
+	})));
+}
+
+function declarationSignature(entry: DeclarationEntry): string {
+	return JSON.stringify({
+		raw: entry.entry ?? null,
+		form: entry.summary.form,
+		autoload: entry.summary.autoload,
+		projectOverride: entry.summary.projectOverride,
+		enabled: entry.summary.enabled,
+		disabledByFilters: entry.summary.disabledByFilters ?? false,
+		filterState: entry.summary.filterState,
+	});
+}
+
+function declarationMatchesItem(item: DashboardPackage, entry: DeclarationEntry): boolean {
+	if (entry.summary.source === item.source) return true;
+	if (item.matchSources.includes(entry.summary.source)) return true;
+	return entry.matchValues.some((value) => item.matchSources.includes(value));
+}
+
+function packageDeclarationSignatures(item: DashboardPackage, declarations: DeclarationEntry[]): string[] {
+	return uniqueSorted(declarations.filter((declaration) => declarationMatchesItem(item, declaration)).map(declarationSignature));
+}
+
+function declarationPolicyChanged(baseline: string[], fresh: string[]): boolean {
+	if (baseline.length !== fresh.length) return true;
+	const sortedBaseline = [...baseline].sort();
+	const sortedFresh = [...fresh].sort();
+	return sortedBaseline.some((value, index) => value !== sortedFresh[index]);
+}
+
+async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ paths: ConstructPaths; packages: DashboardItem[]; warnings: string[]; projectMetadataMissing: boolean; packageResources?: PackageResourceInventory; declarations: DeclarationEntry[] }> {
 	const inventory = await collectProjectInventory(ctx);
 	const { paths } = inventory;
 	const projectMetadataMissing = inventory.reads.projectConstruct.state === "missing";
@@ -169,8 +228,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			? managed.filterState === "partially-filtered"
 				? "Filtered package. Construct will not replace partial Pi filters with whole-package toggles; use pi config -l for exact overrides."
 				: managed.disabledByFilters
-					? "Disabled package. Enter enables the whole package; r removes."
-					: "Active package. Enter disables the whole package; r removes."
+					? "Disabled package. Enter enables the whole package; Ctrl+R removes."
+					: "Active package. Enter disables the whole package; Ctrl+R removes."
 			: missingDeclarationDrift
 				? "Drifted package. Enter restores; if resources are available, Right Arrow selects individual package resources."
 				: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.";
@@ -245,6 +304,12 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
+	const projectResources = await collectProjectPackageResources(ctx, inventory);
+	warnings.push(...projectResources.warnings);
+	reclassifyManagedPackagesByEffectiveState(projectResources, packages);
+
+	// Recipe summaries/counts must reflect the effective sections, not the pre-resolve declaration
+	// sections that `reclassifyManagedPackagesByEffectiveState` just corrected.
 	const packageRows = packages.filter((item): item is DashboardPackage => item.type === "package");
 	for (const saved of packages.filter((item): item is DashboardSavedLoadout => item.type === "saved")) {
 		const summary = savedLoadoutMemberSummary(saved.sources, packageRows);
@@ -254,10 +319,6 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			saved.description = `Loadout recipe: ${summary.value}. Enter runs; Space selects recipe items.`;
 		}
 	}
-
-	const projectResources = await collectProjectPackageResources(ctx, inventory);
-	warnings.push(...projectResources.warnings);
-	reclassifyManagedPackagesByEffectiveState(projectResources, packages);
 	let packageResources: PackageResourceInventory = projectResources;
 	if (ctx.mode === "tui") {
 		const availableSources = packages.filter((item): item is DashboardPackage => item.type === "package" && item.section === "Available" && !item.disabled).map((item) => item.source);
@@ -269,30 +330,61 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		};
 	}
 	sortDashboardPackages(packages);
-	return { paths, packages, warnings, projectMetadataMissing, packageResources };
+	return { paths, packages, warnings, projectMetadataMissing, packageResources, declarations: await packageDeclarationEntries(inventory) };
 }
 
 function reclassifyManagedPackagesByEffectiveState(projectResources: PackageResourceInventory, packages: DashboardItem[]): void {
-	// A partially-filtered package may be effectively fully disabled by Pi resource filters
-	// (e.g. every resource force-excluded via `pi config` `-path` entries). Construct's array-shape
-	// classifier reads those as "partially-filtered/active", but Pi's resolved view is the truth.
-	// Surface such packages in the Disabled section so the dashboard agrees with `pi config`, while
-	// keeping the whole-package Enter guard (partial Pi filters are never clobbered here; use Right Arrow).
+	// Pi's resolved resources are the truth for declared packages. Declaration policy stays separate:
+	// whole-package-disabled declarations remain explicitly Disabled even when Pi resolves no resources,
+	// so ordinary whole-package Enable behavior is preserved. Everything else follows effective state:
+	// active when any resolved resource is enabled, Disabled when resolved resources are all off, and a
+	// truthful Unresolved section when nothing resolved (never Active, and Enter never enables/installs).
 	for (const item of packages) {
-		if (item.type !== "package" || !item.managed || item.filterState !== "partially-filtered") continue;
+		if (item.type !== "package") continue;
+		if (!item.managed) {
+			// Unloaded declarations stay read-only/Unloaded (not adopted just because resolved), but still
+			// carry effective state so dashboard saved-row runs agree with /construct run skips.
+			if (item.section !== "Unloaded") continue;
+			const unloadedState = effectivePackageState(projectResources.resources, { matchSources: item.matchSources });
+			item.effectiveState = unloadedState;
+			if (unloadedState === "unknown") {
+				item.description = "Read-only package declaration; Pi resolved no package resources yet (not installed, or no matching resources). Run /construct load to adopt, or remove with Pi directly.";
+			} else if (unloadedState === "inactive") {
+				item.description = item.filterState === "partially-filtered"
+					? "Read-only package declaration; all resolved resources are currently off. Run /construct load to adopt, then use pi config -l for exact overrides."
+					: "Read-only package declaration; Pi resolves every resource as disabled.";
+			}
+			continue;
+		}
 		if (item.section !== "Active" && item.section !== "Disabled") continue;
-		const resources = resourcesForPackage(item, projectResources);
-		if (resources.length === 0 || resources.some((resource) => resource.enabled)) continue;
-		item.section = "Disabled";
-		item.description = "Disabled via Pi resource filters (all resources off). Use pi config -l for native project override editing; Right Arrow remains available for ordinary project declarations.";
+		const state = effectivePackageState(projectResources.resources, { id: item.id, matchSources: item.matchSources });
+		item.effectiveState = state;
+		if (item.filterState === "whole-package-disabled") {
+			item.section = "Disabled";
+			continue;
+		}
+		if (state === "active") {
+			item.section = "Active";
+			continue;
+		}
+		if (state === "inactive") {
+			item.section = "Disabled";
+			item.description = item.filterState === "partially-filtered"
+				? "Disabled via Pi resource filters (all resolved resources off). Use pi config -l for native project override editing; Right Arrow remains available for ordinary project declarations."
+				: "Pi resolves every resource for this package as disabled. Use pi config -l for exact overrides.";
+			continue;
+		}
+		item.section = "Unresolved";
+		item.description = "Declared in .pi/settings.json, but Pi resolved no package resources yet (not installed, or the package resolved no matching resources). Construct will not treat this as active or install it; inspect the declaration with pi config -l. Ctrl+R removes the declaration.";
 	}
 }
 
-function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; overrides: number; available: number; unloaded: number } {
+function dashboardCounts(packages: DashboardItem[]): { active: number; disabled: number; unresolved: number; overrides: number; available: number; unloaded: number } {
 	const resources = packages.filter((item) => item.section !== "Saved");
 	return {
 		active: resources.filter((item) => item.section === "Active").length,
 		disabled: resources.filter((item) => item.section === "Disabled").length,
+		unresolved: resources.filter((item) => item.section === "Unresolved").length,
 		overrides: resources.filter((item) => item.section === "Overrides").length,
 		available: resources.filter((item) => item.section === "Available").length,
 		unloaded: resources.filter((item) => item.section === "Unloaded").length,
@@ -303,7 +395,7 @@ function dashboardSummary(packages: DashboardItem[], projectTrusted = true): str
 	const counts = dashboardCounts(packages);
 	const activeLabel = projectTrusted ? "active" : "declared active";
 	const disabledLabel = projectTrusted ? "disabled" : "declared disabled";
-	return `${counts.active} ${activeLabel} · ${counts.disabled} ${disabledLabel}${counts.overrides > 0 ? ` · ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} · ${counts.available} available · ${counts.unloaded} unloaded`;
+	return `${counts.active} ${activeLabel} · ${counts.disabled} ${disabledLabel}${counts.unresolved > 0 ? ` · ${counts.unresolved} unresolved` : ""}${counts.overrides > 0 ? ` · ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} · ${counts.available} available · ${counts.unloaded} unloaded`;
 }
 
 function dashboardPickerTitle(_packages: DashboardItem[]): string {
@@ -312,7 +404,7 @@ function dashboardPickerTitle(_packages: DashboardItem[]): string {
 
 function dashboardPickerSubtitle(packages: DashboardItem[], projectMetadataMissing: boolean): string {
 	const counts = dashboardCounts(packages);
-	return `${counts.active} active | ${counts.disabled} disabled${counts.overrides > 0 ? ` | ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} | ${counts.available} available | ${counts.unloaded} unloaded${projectMetadataMissing ? " | no Construct metadata yet" : ""}`;
+	return `${counts.active} active | ${counts.disabled} disabled${counts.unresolved > 0 ? ` | ${counts.unresolved} unresolved` : ""}${counts.overrides > 0 ? ` | ${counts.overrides} Pi override${counts.overrides === 1 ? "" : "s"}` : ""} | ${counts.available} available | ${counts.unloaded} unloaded${projectMetadataMissing ? " | no Construct metadata yet" : ""}`;
 }
 
 function sectionLabel(section: DashboardSection): string {
@@ -326,6 +418,7 @@ function sectionTone(_section: DashboardSection): CheckboxPickerTone {
 function stateTone(section: DashboardSection): CheckboxPickerTone {
 	if (section === "Active") return "accent";
 	if (section === "Disabled") return "muted";
+	if (section === "Unresolved") return "warning";
 	if (section === "Available") return "warning";
 	if (section === "Saved") return "accent";
 	return "muted";
@@ -335,6 +428,7 @@ function stateIcon(section: DashboardSection): string {
 	if (section === "Saved") return "◆";
 	if (section === "Active") return "✓";
 	if (section === "Disabled") return "–";
+	if (section === "Unresolved") return "?";
 	if (section === "Overrides") return "↔";
 	if (section === "Unloaded") return "◇";
 	return "+";
@@ -363,6 +457,7 @@ function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: 
 	if (counts.overrides > 0 && counts.active + counts.disabled + counts.available + counts.unloaded === 0) return "Pi project overrides are read-only here; manage inherit/load/unload with pi config -l.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
 	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
+	if (counts.unresolved > 0) return "Unresolved rows are declared but Pi resolved no resources; Construct will not install or enable them. Use pi config -l, or Ctrl+R to remove the declaration.";
 	if (counts.unloaded > 0) return "Run /construct load to adopt already-installed resources into the Construct.";
 	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
 	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
@@ -382,7 +477,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · ↔ Pi override · + available · ◇ unloaded.",
-		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · i details · r removes · Esc cancels.",
+		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · Alt+I details · Ctrl+R removes · Ctrl+U unloads · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -399,27 +494,39 @@ function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardItem
 		if (item.type === "package" && item.section === "Available") return "Install";
 		if (item.type === "package" && packageWholeToggleBlocked(item)) return undefined;
 		if (item.section === "Active") return "Disable";
-		if (item.section === "Disabled") return "Enable";
+		// Only whole-package-disabled declarations have clearable whole-package filters; partial/invalid
+		// are blocked above, and a Disabled row without them would enable nothing.
+		if (item.section === "Disabled") {
+			if (item.type === "direct") return "Enable";
+			return item.filterState === "whole-package-disabled" ? "Enable" : undefined;
+		}
 		return undefined;
 	}
-	if (action === "remove" && item.type === "package") return item.section === "Active" || item.section === "Disabled" ? "Remove" : undefined;
+	if (action === "remove" && item.type === "package") return item.section === "Active" || item.section === "Disabled" || item.section === "Unresolved" ? "Remove" : undefined;
 	return undefined;
 }
 
-function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackages: DashboardPackage[] = []): string[] {
+function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackages: DashboardPackage[] = [], effectivelyOffPackages: DashboardPackage[] = []): string[] {
 	if (action === "confirm" && blockedPartialPackages.length > 0) {
 		return [
 			"No whole-package changes were applied.",
 			`${blockedPartialPackages.length} selected package${blockedPartialPackages.length === 1 ? " already has" : "s already have"} partial Pi package filters, so Construct will not toggle the whole package row.`,
 			"Use Right Arrow to unfold the package, Space to change individual child resources, then Enter to write package filters.",
-			"Use r if you want to remove the package declaration from this project.",
+			"Use Ctrl+R if you want to remove the package declaration from this project.",
+		];
+	}
+	if (action === "confirm" && effectivelyOffPackages.length > 0) {
+		return [
+			"No whole-package changes were applied.",
+			`${effectivelyOffPackages.length} selected package${effectivelyOffPackages.length === 1 ? " resolves" : "s resolve"} every resource as off without a whole-package filter Construct can clear.`,
+			"Use pi config -l to inspect the native package filters; Construct will not report a successful enable when no resource would change.",
 		];
 	}
 	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to adopt already-installed resources into Construct metadata."];
 	return [
 		"No active or disabled project packages were selected to remove.",
-		"Select Active or Disabled package rows, then press r.",
-		"r always targets the whole package: child resource rows fold into their parent package for removal.",
+		"Select Active or Disabled package rows, then press Ctrl+R.",
+		"Ctrl+R always targets the whole package: child resource rows fold into their parent package for removal.",
 		"To filter package-contained resources instead of removing the package, use Space then Enter.",
 		"Available packages are not installed in this project; use /construct unload to forget them from the Construct library.",
 		"Unloaded resources are read-only here; remove them with Pi directly if needed.",
@@ -428,7 +535,7 @@ function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackage
 
 function removablePackages(packages: DashboardItem[], ids: string[]): DashboardPackage[] {
 	const selected = new Set(ids);
-	return packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled"));
+	return packages.filter((item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && (item.section === "Active" || item.section === "Disabled" || item.section === "Unresolved"));
 }
 
 function removeSkipSummary(packages: DashboardItem[], ids: string[]): string[] {
@@ -450,7 +557,7 @@ function removeSkipSummary(packages: DashboardItem[], ids: string[]): string[] {
 		else if (item.type === "direct") direct += 1;
 		else if (item.section === "Available") available += 1;
 		else if (item.section === "Unloaded") unloaded += 1;
-		else if (item.section !== "Active" && item.section !== "Disabled") other += 1;
+		else if (item.section !== "Active" && item.section !== "Disabled" && item.section !== "Unresolved") other += 1;
 	}
 
 	const lines: string[] = [];
@@ -475,7 +582,7 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 			canSubmit: false,
 			lines: [
 				"Nothing will be removed.",
-				"Focus or select Active/Disabled package rows, then press r.",
+				"Focus or select Active/Disabled/Unresolved package rows, then press Ctrl+R.",
 				...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
 			],
 		};
@@ -491,6 +598,102 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 			...preview,
 			...extra,
 			...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
+		],
+	};
+}
+
+const unloadEligibleSections: PackageDashboardSection[] = ["Active", "Disabled", "Unresolved", "Available"];
+
+function unloadEligiblePackages(packages: DashboardItem[], ids: string[], selectionByRowId: Map<string, UnloadSelection>): DashboardPackage[] {
+	const selected = new Set(ids);
+	return packages.filter(
+		(item): item is DashboardPackage => item.type === "package" && selected.has(item.rowId) && unloadEligibleSections.includes(item.section) && selectionByRowId.has(item.rowId),
+	);
+}
+
+// IDs not present as dashboard rowIds are partial child groups or unknown ids and are refused,
+// never silently promoted to a parent and never widened to direct resources or saved recipes.
+function unloadSkipSummary(packages: DashboardItem[], ids: string[], selectionByRowId: Map<string, UnloadSelection>): string[] {
+	const selected = new Set(ids);
+	const byRowId = new Map(packages.map((item) => [item.rowId, item]));
+	let saved = 0;
+	let direct = 0;
+	let override = 0;
+	let unloaded = 0;
+	let notLibrary = 0;
+	let child = 0;
+	let other = 0;
+	for (const id of selected) {
+		const item = byRowId.get(id);
+		if (!item) {
+			child += 1;
+			continue;
+		}
+		if (item.type === "saved") saved += 1;
+		else if (item.type === "direct") direct += 1;
+		else if (item.section === "Overrides") override += 1;
+		else if (item.section === "Unloaded") unloaded += 1;
+		else if (unloadEligibleSections.includes(item.section) && !selectionByRowId.has(item.rowId)) notLibrary += 1;
+		else if (!unloadEligibleSections.includes(item.section)) other += 1;
+	}
+	const lines: string[] = [];
+	if (child > 0) lines.push(`${child} package child row${child === 1 ? "" : "s"} or unknown row${child === 1 ? "" : "s"}: select the whole package group (parent Space) so the complete source can be unloaded; partial child groups are not unloaded.`);
+	if (saved > 0) lines.push(`${saved} saved loadout row${saved === 1 ? "" : "s"}: loadouts are recipes; delete them with /construct wipe <name>.`);
+	if (direct > 0) lines.push(`${direct} direct resource row${direct === 1 ? "" : "s"}: Construct does not delete project files; unload only forgets library package sources.`);
+	if (override > 0) lines.push(`${override} Pi project override (autoload:false) row${override === 1 ? "" : "s"}: read-only; manage with pi config -l.`);
+	if (unloaded > 0) lines.push(`${unloaded} Unloaded row${unloaded === 1 ? "" : "s"}: not library-backed here; nothing to forget.`);
+	if (notLibrary > 0) lines.push(`${notLibrary} package row${notLibrary === 1 ? "" : "s"}: no matching Construct library item was captured for this row.`);
+	if (other > 0) lines.push(`${other} row${other === 1 ? "" : "s"}: not eligible for library unload.`);
+	return lines;
+}
+
+function unloadConfirmationFor(packages: DashboardItem[], ids: string[], selectionByRowId: Map<string, UnloadSelection>): CheckboxPickerConfirmation {
+	const eligible = unloadEligiblePackages(packages, ids, selectionByRowId);
+	const skipped = unloadSkipSummary(packages, ids, selectionByRowId);
+	// Show the actual captured catalog id+source pairs, deduplicated.
+	const unique = new Map<string, UnloadSelection>();
+	for (const item of eligible) {
+		const selection = selectionByRowId.get(item.rowId);
+		if (selection) unique.set(`${selection.id}\u0000${selection.source}`, selection);
+	}
+	const targets = [...unique.values()];
+	const preview = targets.slice(0, 8).map((selection) => `- ${selection.id}: ${selection.source}`);
+	const extra = targets.length > preview.length ? [`…and ${targets.length - preview.length} more`] : [];
+	if (skipped.length > 0) {
+		return {
+			title: "Unload selection includes unsupported rows",
+			confirmHint: "Esc to return · select only complete library package rows",
+			canSubmit: false,
+			lines: [
+				"Unload applies only to complete, catalog-backed package groups.",
+				"No files were changed.",
+				"",
+				"Unsupported selection:",
+				...skipped.map((line) => `- ${line}`),
+				...(eligible.length > 0 ? ["", "Eligible if selected alone:", ...preview, ...extra] : []),
+			],
+		};
+	}
+	if (eligible.length === 0) {
+		return {
+			title: "No library package selected",
+			confirmHint: "Press Enter/Esc to return",
+			canSubmit: false,
+			lines: ["Nothing will be forgotten from the Construct library.", "Select Active, Disabled, Unresolved, or Available package rows, then press Ctrl+U."],
+		};
+	}
+	return {
+		title: `Unload ${targets.length} package source${targets.length === 1 ? "" : "s"} from Construct?`,
+		confirmHint: "Press Enter to unload from Construct · Esc cancels",
+		lines: [
+			`Will remove ${targets.length} package source${targets.length === 1 ? "" : "s"} from the global Construct library and prune saved-recipe membership.`,
+			"Also removes matching current-project .pi/construct.json metadata.",
+			"Does not uninstall packages, disable them, edit .pi/settings.json, or reload Pi.",
+			"Complete child groups mean forgetting the whole package source; individual children are never unloaded.",
+			"If still declared in .pi/settings.json, the package will show as Unloaded (read-only) after reopen.",
+			"",
+			...preview,
+			...extra,
 		],
 	};
 }
@@ -540,6 +743,7 @@ function packageMatchesSource(item: DashboardPackage, source: string): boolean {
 function packageStateRank(section: PackageDashboardSection): number {
 	if (section === "Active") return 0;
 	if (section === "Disabled") return 1;
+	if (section === "Unresolved") return 2;
 	if (section === "Overrides") return 2;
 	if (section === "Unloaded") return 3;
 	return 4;
@@ -549,24 +753,15 @@ function findPackageForSavedSource(packages: DashboardPackage[], source: string)
 	return packages.filter((item) => packageMatchesSource(item, source)).sort((a, b) => packageStateRank(a.section) - packageStateRank(b.section))[0];
 }
 
-function actionForSavedSource(item: DashboardPackage | undefined): DashboardAction | undefined {
-	// Saved loadout rows are activate-only: install missing sources, enable disabled sources, and never disable/remove anything.
-	if (!item) return "Install";
-	// Never clobber partial Pi package filters from a saved-loadout run; use the dashboard Right-Arrow resource picker instead.
-	if (packageWholeToggleBlocked(item)) return undefined;
-	if (item.section === "Active") return undefined;
-	if (item.section === "Disabled") return "Enable";
-	if (item.section === "Available") return "Install";
-	return item.disabledByFilters ? "Enable" : undefined;
+function dashboardSavedSourceRow(item: DashboardPackage): SavedSourceRow {
+	if (item.section === "Overrides") return { section: "Overrides", wholePackageDisabled: false, effectiveState: item.effectiveState ?? "unknown" };
+	if (item.section === "Available") return { section: "Available", wholePackageDisabled: false, effectiveState: item.effectiveState ?? "unknown" };
+	if (item.section === "Unloaded") return { section: "Unloaded", wholePackageDisabled: Boolean(item.disabledByFilters), effectiveState: item.effectiveState ?? "unknown" };
+	return { section: item.section, wholePackageDisabled: item.filterState === "whole-package-disabled" || Boolean(item.disabledByFilters), effectiveState: item.effectiveState ?? "unknown" };
 }
 
 function resourceMatchesPackage(resource: PackageResourceSummary, item: DashboardPackage): boolean {
-	return (
-		resource.packageManagedId === item.id ||
-		item.matchSources.includes(resource.packageSource) ||
-		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource)) ||
-		(resource.packageIdentityKey !== undefined && item.matchSources.includes(resource.packageIdentityKey))
-	);
+	return packageResourceMatches(resource, { id: item.id, matchSources: item.matchSources });
 }
 
 function resourcesForPackage(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): PackageResourceSummary[] {
@@ -695,7 +890,7 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 	const base = item.description;
 	if (item.section === "Available") {
 		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} cached Pi resource entries; Enter installs the whole package.`;
-		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use i for the exact path.`;
+		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use Alt+I for the exact path.`;
 		return `${base}\nNo cached package resource list is available yet, so there is no dropdown. Enter installs the whole package.`;
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
@@ -703,7 +898,7 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 			const mixedHint = item.filterState === "partially-filtered" ? " Parent Space cycles child selections: all → active → inactive → none." : "";
 			return `${base}\nRight Arrow unfolds ${resourceCount} Pi resource entries.${mixedHint}`;
 		}
-		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use i for the exact path.`;
+		if (resourceCount === 1) return `${base}\nPi sees one resource entry, so there is no dropdown. Use Alt+I for the exact path.`;
 		return `${base}\nNo package-contained resources resolved for this package.`;
 	}
 	return base;
@@ -746,9 +941,11 @@ interface PackageResourceFilterPlan {
 	selectedResourceKeys: Set<string>;
 	filters: Partial<Record<PackageResourceFilterKey, string[] | null>>;
 	selectedCount: number;
+	// Declaration-policy signatures captured from the dashboard-build read (empty for Available installs).
+	declarationBaselines: string[];
 }
 
-function packageResourceFilterPlanForResources(item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>): PackageResourceFilterPlan {
+function packageResourceFilterPlanForResources(item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>, declarationBaselines: string[]): PackageResourceFilterPlan {
 	const planned = planPackageResourceFilters(resources, selectedResourceKeys);
 	return {
 		item,
@@ -756,10 +953,11 @@ function packageResourceFilterPlanForResources(item: DashboardPackage, resources
 		selectedResourceKeys: planned.selectedResourceKeys,
 		filters: planned.filters,
 		selectedCount: planned.selectedCount,
+		declarationBaselines,
 	};
 }
 
-function packageResourceFilterPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, selectedIds: string[], changedIds: string[]): PackageResourceFilterPlan[] {
+function packageResourceFilterPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, selectedIds: string[], changedIds: string[], declarations: DeclarationEntry[]): PackageResourceFilterPlan[] {
 	if (!packageResources || changedIds.length === 0) return [];
 	const selectedActionIds = new Set(selectedIds);
 	const changed = new Set(changedIds);
@@ -782,7 +980,7 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 			const targetEnabled = item.section === "Available" ? actionSelected : actionSelected ? !resource.enabled : resource.enabled;
 			if (targetEnabled) selectedResourceKeys.add(packageResourceSelectionKey(resource.kind, resource.packageRelativePath));
 		}
-		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys));
+		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys, item.section === "Available" ? [] : packageDeclarationSignatures(item, declarations)));
 	}
 	return plans;
 }
@@ -810,21 +1008,93 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
 }
 
-function packageResourceProgressLines(plans: PackageResourceFilterPlan[], complete = 0, failures: string[] = [], warnings: string[] = []): string[] {
+async function freshProjectState(ctx: ExtensionCommandContext): Promise<{ inventory: ProjectInventory; resources: PackageResourceInventory }> {
+	const inventory = await collectProjectInventory(ctx, { directResources: false });
+	const resources = await collectProjectPackageResources(ctx, inventory);
+	return { inventory, resources };
+}
+
+function dashboardForeignOrdinarySelections(packages: DashboardItem[], selected: Set<string>, planParentIds: Set<string>): { count: number; labels: string[] } {
+	const labels: string[] = [];
+	for (const item of packages) {
+		if (item.disabled || !selected.has(item.rowId)) continue;
+		if (item.type === "saved") {
+			labels.push(`saved loadout ${item.label}`);
+			continue;
+		}
+		// A child group's aggregate parent row belongs to that same child plan, not to a whole-package action.
+		if (item.type === "package" && planParentIds.has(item.rowId)) continue;
+		labels.push(item.type === "package" ? `package ${item.label}` : `direct resource ${item.label}`);
+	}
+	return { count: labels.length, labels };
+}
+
+function dashboardMixedSelectionRefusal(foreign: { count: number; labels: string[] }): { title: string; lines: string[] } {
+	return {
+		title: "Mixed selection not applied",
+		lines: [
+			`Child resource filters cannot be combined with other selected actions in one submit: ${foreign.labels.slice(0, 6).join(", ")}${foreign.count > 6 ? `, and ${foreign.count - 6} more` : ""}.`,
+			"No files were changed.",
+			"Apply child resource filters and package, direct-resource, or saved-loadout actions in separate submits.",
+		],
+	};
+}
+
+// Scope-aware source equivalence (equivalent relative paths count), reusing Construct's existing
+// source-matching helper (not a public Pi identity API).
+async function sourceMatchesDeclaration(source: string, declaration: DeclarationEntry, settingsDir: string): Promise<boolean> {
+	if (!declaration.summary.source.trim()) return false;
+	if (declaration.summary.source === source) return true;
+	const sourceMatches = new Set(await packageSourceMatchValues(source, settingsDir));
+	return declaration.matchValues.some((value) => sourceMatches.has(value));
+}
+
+async function matchingDeclarations(declarations: DeclarationEntry[], source: string, settingsDir: string): Promise<DeclarationEntry[]> {
+	const matched: DeclarationEntry[] = [];
+	for (const declaration of declarations) if (await sourceMatchesDeclaration(source, declaration, settingsDir)) matched.push(declaration);
+	return matched;
+}
+
+type InstalledDeclarationPolicy = "ok" | "missing" | "project-override" | "partial-filters" | "whole-package-disabled" | "invalid" | "unexpected-policy";
+
+// After Construct's own install, accept only the expected ordinary/unfiltered declaration for the returned source.
+async function installedDeclarationPolicy(declarations: DeclarationEntry[], source: string, settingsDir: string): Promise<InstalledDeclarationPolicy> {
+	const matched = await matchingDeclarations(declarations, source, settingsDir);
+	if (matched.length === 0) return "missing";
+	if (matched.length > 1) return "unexpected-policy";
+	const declaration = matched[0].summary;
+	if (declaration.form === "invalid") return "invalid";
+	if (declaration.projectOverride) return "project-override";
+	if (declaration.filterState === "whole-package-disabled") return "whole-package-disabled";
+	if (declaration.filterState === "partially-filtered") return "partial-filters";
+	if (declaration.filterState !== "unfiltered") return "unexpected-policy";
+	return "ok";
+}
+
+type PackageResourcePlanStatus = "done" | "warn" | "fail";
+
+function packageResourceProgressLines(plans: PackageResourceFilterPlan[], status: Map<string, PackageResourcePlanStatus>, failures: string[] = [], warnings: string[] = [], refused: string[] = [], installedWithoutFilters: string[] = []): string[] {
 	return [
-		`${complete}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} complete`,
+		`${status.size}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} processed`,
 		"",
-		...plans.map((plan, index) => `${index < complete ? "✓" : " "} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} enabled after apply`),
+		...plans.map((plan) => {
+			const state = status.get(plan.item.rowId);
+			const icon = state === "done" ? "✓" : state === "warn" ? "?" : state === "fail" ? "!" : " ";
+			return `${icon} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} reviewed`;
+		}),
 		...warnings.map((warning) => `! ${warning}`),
+		...installedWithoutFilters.map((message) => `~ ${message}`),
+		...refused.map((refusal) => `? ${refusal}`),
 		...failures.map((failure) => `! ${failure}`),
 	];
 }
 
-async function recheckInstalledPackageResourcePlan(ctx: ExtensionCommandContext, item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>, filterSource: string, metadataId: string | undefined): Promise<{ plan?: PackageResourceFilterPlan; warnings: string[] }> {
+async function recheckInstalledPackageResourcePlan(ctx: ExtensionCommandContext, item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>, filterSource: string, metadataId: string | undefined): Promise<{ plan?: PackageResourceFilterPlan; resources?: PackageResourceSummary[]; declarations: DeclarationEntry[]; warnings: string[] }> {
 	const warnings: string[] = [];
 	const inventory = await collectProjectInventory(ctx, { directResources: false });
 	const inventoryResources = await collectProjectPackageResources(ctx, inventory);
 	warnings.push(...inventoryResources.warnings);
+	const declarations = await packageDeclarationEntries(inventory);
 	const installedItem: DashboardPackage = {
 		...item,
 		id: metadataId ?? item.id,
@@ -833,16 +1103,20 @@ async function recheckInstalledPackageResourcePlan(ctx: ExtensionCommandContext,
 	};
 	const installedResources = resourcesForPackage(installedItem, inventoryResources);
 	if (installedResources.length === 0) {
-		return { warnings: [...warnings, `${item.label}: installed, but Pi did not resolve package resources before filters were written.`] };
+		return { declarations, warnings: [...warnings, `${item.label}: installed, but Pi did not resolve package resources; filters were not written.`] };
 	}
 	if (packageResourceSetsDiffer(resources, installedResources)) {
-		warnings.push(`${item.label}: cached package resource list changed after install; filters were written from the installed resource list where paths still matched.`);
+		warnings.push(`${item.label}: cached package resource list changed after install; reviewed filters were not written from the cached list.`);
 	}
-	return { plan: packageResourceFilterPlanForResources(item, installedResources, selectedResourceKeys), warnings };
+	return { plan: packageResourceFilterPlanForResources(item, installedResources, selectedResourceKeys, []), resources: installedResources, declarations, warnings };
 }
 
-export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-	const { paths, packages, warnings, projectMetadataMissing, packageResources } = await buildDashboardPackages(ctx);
+// One narrow injection seam for tests: the production default is Construct's existing checkbox picker, so
+// tests can capture the actual submitConfirmation/onSubmit closures and drive them against real local projects.
+export type DashboardPicker = (ctx: ExtensionCommandContext, title: string, items: CheckboxPickerItem[], options: CheckboxPickerOptions) => Promise<CheckboxPickerResult | undefined>;
+
+export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandContext, pick: DashboardPicker = pickCheckboxes): Promise<void> {
+	const { paths, packages, warnings, projectMetadataMissing, packageResources, declarations } = await buildDashboardPackages(ctx);
 	const projectTrusted = ctx.isProjectTrusted();
 	const trustWarnings = projectTrusted ? warnings : ["Project is not trusted by Pi; project declarations are read-only and are not runtime-active until trusted.", ...warnings];
 	if (ctx.mode !== "tui") {
@@ -857,8 +1131,31 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 	}
 
 	const pickerItems = dashboardPickerItems(packages, sessionPackageResources);
+	// Capture exact catalog id+source for each eligible row BEFORE the picker review, so apply
+	// never re-resolves sources and can only act on the keys the user reviewed.
+	const unloadSelectionByRowId = new Map<string, UnloadSelection>();
+	const unloadCatalog = await loadCatalog(ctx);
+	if (unloadCatalog.read.state !== "invalid" && unloadCatalog.warnings.length === 0) {
+		const settingsDir = dirname(paths.projectSettingsPath);
+		for (const item of packages) {
+			if (item.type !== "package" || !unloadEligibleSections.includes(item.section)) continue;
+			// Prefer the exact catalog id+source row the user is looking at, then an exact source match,
+			// and only then the existing identity-helper fallback for managed source spellings.
+			const exactPair = unloadCatalog.catalog.items.find((candidate) => candidate.id === item.id && candidate.source === item.source);
+			const exactSource = exactPair ?? unloadCatalog.catalog.items.find((candidate) => candidate.source === item.source);
+			const catalogItem = exactSource ?? (await findCatalogItemForSource(unloadCatalog.catalog.items, item.source, settingsDir));
+			if (catalogItem) unloadSelectionByRowId.set(item.rowId, { id: catalogItem.id, source: catalogItem.source });
+		}
+	}
 	const childToParentRowId = new Map<string, string>();
-	for (const pickerItem of pickerItems) if (pickerItem.parentId) childToParentRowId.set(pickerItem.id, pickerItem.parentId);
+	const childrenByParentRowId = new Map<string, string[]>();
+	for (const pickerItem of pickerItems) {
+		if (!pickerItem.parentId) continue;
+		childToParentRowId.set(pickerItem.id, pickerItem.parentId);
+		const children = childrenByParentRowId.get(pickerItem.parentId) ?? [];
+		children.push(pickerItem.id);
+		childrenByParentRowId.set(pickerItem.parentId, children);
+	}
 	function resolveRemoveIds(ids: string[]): string[] {
 		const resolved: string[] = [];
 		const seen = new Set<string>();
@@ -870,7 +1167,30 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		}
 		return resolved;
 	}
-	const pickerResult = await pickCheckboxes(ctx, dashboardPickerTitle(packages), pickerItems, {
+	// Complete known child groups normalize to their parent package row for whole-package unload;
+	// partial groups and unknown ids are preserved so the confirmation refuses them explicitly.
+	function resolveUnloadIds(ids: string[]): string[] {
+		const selected = new Set(ids);
+		const resolved: string[] = [];
+		const seen = new Set<string>();
+		const push = (id: string) => {
+			if (seen.has(id)) return;
+			seen.add(id);
+			resolved.push(id);
+		};
+		for (const id of ids) {
+			const parentId = childToParentRowId.get(id);
+			if (!parentId) {
+				push(id);
+				continue;
+			}
+			const children = childrenByParentRowId.get(parentId) ?? [];
+			if (children.length > 0 && children.every((childId) => selected.has(childId))) push(parentId);
+			else push(id);
+		}
+		return resolved;
+	}
+	const pickerResult = await pick(ctx, dashboardPickerTitle(packages), pickerItems, {
 		titleBold: false,
 		subtitle: dashboardPickerSubtitle(packages, projectMetadataMissing),
 		confirmHint: "Enter applies/runs",
@@ -878,78 +1198,297 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · i details · r removes whole package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
-		actions: { remove: true },
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · Alt+I details · Ctrl+R removes whole package · Ctrl+U unloads library package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
+		actions: { remove: true, unload: true },
 		resolveRemoveIds: resolveRemoveIds,
+		resolveUnloadIds: resolveUnloadIds,
 		inspect: (focusedItem) => {
 			const packageItem = packages.find((item): item is DashboardPackage => item.type === "package" && item.rowId === focusedItem.id);
 			return packageItem ? packageResourceInspection(packageItem, sessionPackageResources) : undefined;
 		},
 		removeConfirmation: (ids) => removeConfirmationFor(packages, ids),
+		unloadConfirmation: (ids) => unloadConfirmationFor(packages, ids, unloadSelectionByRowId),
 		submitConfirmation: (ids, action, changedIds) => {
 			if (action !== "confirm") return undefined;
-			return packageResourceFilterConfirmation(packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds)) ?? disableConfirmationFor(packages, ids);
+			const plans = packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds, declarations);
+			if (plans.length > 0) {
+				const foreign = dashboardForeignOrdinarySelections(packages, new Set(ids), new Set(plans.map((plan) => plan.item.rowId)));
+				if (foreign.count > 0) return { ...dashboardMixedSelectionRefusal(foreign), canSubmit: false, confirmHint: "Esc to return · split child filters from package/direct/saved actions" };
+			}
+			return packageResourceFilterConfirmation(plans) ?? disableConfirmationFor(packages, ids);
 		},
 		onSubmit: async (ids, update, signal, submitAction, changedIds) => {
 			const selected = new Set(ids);
 			const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package");
 			const directItems = packages.filter((item): item is DashboardDirectResource => item.type === "direct");
+			if (submitAction === "unload") {
+				// Repeat normalization + eligibility validation at apply, not only in the picker.
+				const normalizedIds = resolveUnloadIds(ids);
+				const unknown = normalizedIds.filter((id) => !unloadSelectionByRowId.has(id));
+				if (unknown.length > 0) {
+					return {
+						title: "Unload selection needs re-review",
+						lines: [
+							"Some selected rows are not complete, catalog-backed package groups; unload was not applied.",
+							"Select whole package groups (parent Space) and deselect direct, saved, override, Unloaded, or unknown rows.",
+							"No files were changed.",
+						],
+					};
+				}
+				const eligible = unloadEligiblePackages(packages, normalizedIds, unloadSelectionByRowId);
+				if (eligible.length === 0) {
+					return { title: "Construct unload not applied", lines: ["No eligible library package rows remained after re-reading this project.", "No files were changed."] };
+				}
+				const reviewed = normalizedIds.map((id) => unloadSelectionByRowId.get(id)).filter((selection): selection is UnloadSelection => selection !== undefined);
+				if (reviewed.length === 0) {
+					return { title: "Construct unload not applied", lines: ["No reviewed catalog entries were found for the selected rows.", "No files were changed."] };
+				}
+				// Fresh ordinary-vs-autoload:false validation runs inside the shared helper after its idle
+				// wait and before any write; any override in the batch refuses the whole batch.
+				const validate = async (): Promise<{ refusal?: string; error?: string } | undefined> => {
+					let declarations: DeclarationEntry[];
+					try {
+						const state = await freshProjectState(ctx);
+						const settingsRead = state.inventory.reads.projectSettings;
+						if (settingsRead.state === "invalid") return { error: "This project's .pi/settings.json could not be read; re-review before unload." };
+						if (settingsRead.state === "ok" && !isObject(settingsRead.data)) return { error: "This project's .pi/settings.json is not a JSON object; re-review before unload." };
+						declarations = await packageDeclarationEntries(state.inventory);
+					} catch (error) {
+						return { error: `Could not re-read this project's settings; re-review before unload. (${error instanceof Error ? error.message : String(error)})` };
+					}
+					const settingsDir = dirname(paths.projectSettingsPath);
+					const overrideSources: string[] = [];
+					for (const selection of reviewed) {
+						const matched = await matchingDeclarations(declarations, selection.source, settingsDir);
+						if (matched.some((entry) => entry.summary.projectOverride)) overrideSources.push(selection.source);
+					}
+					if (overrideSources.length > 0) {
+						return { refusal: `Re-review required: ${overrideSources.length} selected source${overrideSources.length === 1 ? " is" : "s are"} now a Pi project override (autoload:false). Deselect or manage with pi config -l.` };
+					}
+					return undefined;
+				};
+				const unloadResult = await unloadConstructSources(ctx, reviewed, { signal, progress: update, validate });
+				if (!unloadResult) return { title: "Construct unload cancelled", lines: ["No files were changed."] };
+				if (unloadResult.refusal) return { title: "Construct unload needs re-review", lines: [unloadResult.refusal, "No files were changed."] };
+				if (unloadResult.error) {
+					return {
+						title: "Construct unload failed",
+						lines: [
+							`Construct library removed: ${unloadResult.removed.length}`,
+							`Current project Construct metadata removed: ${unloadResult.metadataRemoved}`,
+							`! ${unloadResult.error}`,
+							unloadResult.indexUpdated ? "Known-project index was updated before the failure." : undefined,
+							...unloadResult.warnings.map((warning) => `! ${warning}`),
+						].filter((line): line is string => line !== undefined),
+					};
+				}
+				const activeLine = unloadResult.activeRemaining === undefined
+					? "Project declarations were not read; .pi/settings.json was left unchanged."
+					: unloadResult.activeRemaining > 0
+						? unloadResult.trustSkipped
+							? `Still declared in this project: ${unloadResult.activeRemaining} (current-project metadata was not updated).`
+							: unloadResult.metadataCleanupFailed
+								? `Still declared in this project: ${unloadResult.activeRemaining} (current-project metadata cleanup was incomplete).`
+								: `Still declared in this project: ${unloadResult.activeRemaining} (may be disabled or unresolved; shown as Unloaded on reopen).`
+						: "No selected sources are still declared in this project.";
+				const trustLine = unloadResult.trustSkipped
+					? unloadResult.indexUpdated
+						? "Known-project index was updated; current-project Construct metadata was not updated (project not trusted)."
+						: "Project is not trusted by Pi; current-project metadata and known-project index were not updated."
+					: undefined;
+				const hadWrites = unloadResult.removed.length > 0 || unloadResult.indexUpdated || unloadResult.metadataRemoved > 0;
+				return {
+					title: unloadResult.cancelled ? (hadWrites ? "Construct unload cancelled after partial changes" : "Construct unload cancelled") : "Construct unload complete",
+					confirmHint: "Press Enter/Esc to return to session",
+					lines: [
+						`Construct library removed: ${unloadResult.removed.length}`,
+						`Current project Construct metadata removed: ${unloadResult.metadataRemoved}`,
+						unloadResult.indexUpdated && !unloadResult.trustSkipped ? "Known-project index updated." : undefined,
+						trustLine,
+						activeLine,
+						...unloadResult.missing.map((entry) => `! ${entry}`),
+						...unloadResult.warnings.map((warning) => `! ${warning}`),
+						unloadResult.cancelled && hadWrites ? "Cancelled after some writes; remaining writes were skipped." : undefined,
+						"No /reload needed; unload does not uninstall, disable, or edit .pi/settings.json.",
+					].filter((line): line is string => line !== undefined),
+				};
+			}
 			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.rowId)) : [];
-			const resourcePlans = submitAction === "confirm" ? packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds) : [];
+			const resourcePlans = submitAction === "confirm" ? packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds, declarations) : [];
 			if (resourcePlans.length > 0) {
+				const planParentIds = new Set(resourcePlans.map((plan) => plan.item.rowId));
+				const foreign = dashboardForeignOrdinarySelections(packages, selected, planParentIds);
+				if (foreign.count > 0) return { ...dashboardMixedSelectionRefusal(foreign), confirmHint: "Press Enter/Esc to return" };
+
 				const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Package Resources", update, signal);
 				if (!ready) return { title: "Package resource update cancelled", lines: ["No files were changed."] };
 
 				const failures: string[] = [];
 				const applyWarnings: string[] = [];
+				const refused: string[] = [];
+				const trustLost: string[] = [];
+				const installedWithoutFilters: string[] = [];
+				const status = new Map<string, PackageResourcePlanStatus>();
 				const succeeded = new Set<string>();
-				let complete = 0;
 				let needsReload = false;
-				update("Applying package resource filters", packageResourceProgressLines(resourcePlans));
+				let mutatorAttempted = false;
+				const settingsDir = dirname(paths.projectSettingsPath);
+				const step = () => update("Applying package resource filters", packageResourceProgressLines(resourcePlans, status, failures, applyWarnings, refused, installedWithoutFilters));
+				const finish = (rowId: string, state: PackageResourcePlanStatus) => {
+					status.set(rowId, state);
+					step();
+				};
+				update("Applying package resource filters", packageResourceProgressLines(resourcePlans, status));
 				for (let plan of resourcePlans) {
 					if (signal.aborted) break;
+					if (!ctx.isProjectTrusted()) {
+						trustLost.push(`${plan.item.label}: project is no longer trusted; reviewed filters were not applied.`);
+						finish(plan.item.rowId, "warn");
+						continue;
+					}
 					let filterSource = plan.item.source;
 					let metadataId = plan.item.managed ? plan.item.id : undefined;
+					let installedThisPlan = false;
 					if (plan.item.section === "Available") {
+						// Available: the source must still be undeclared before Construct installs on its behalf.
+						const beforeInstall = await freshProjectState(ctx);
+						applyWarnings.push(...beforeInstall.resources.warnings);
+						const appeared = await matchingDeclarations(await packageDeclarationEntries(beforeInstall.inventory), plan.item.source, settingsDir);
+						if (appeared.length > 0) {
+							refused.push(`${plan.item.label}: a package declaration appeared since this review; install and reviewed filters were not applied. Reopen /construct to re-review.`);
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						if (signal.aborted) break;
+						const trustedBeforeInstall = ctx.isProjectTrusted();
+						if (!trustedBeforeInstall) {
+							trustLost.push(`${plan.item.label}: project is no longer trusted; no install or filters were applied.`);
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						mutatorAttempted = true;
 						const load = await loadPackageIntoProject(paths, {
 							source: plan.item.source,
 							item: { id: plan.item.id, kind: "package", source: plan.item.source },
-						}, { projectTrusted, quietPackageInstallOutput: ctx.mode === "tui" });
+						}, { projectTrusted: trustedBeforeInstall, quietPackageInstallOutput: ctx.mode === "tui" });
 						if (load.needsReload) needsReload = true;
 						if (!load.ok) {
 							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
-							complete += 1;
-							update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures, applyWarnings));
+							finish(plan.item.rowId, "fail");
 							continue;
 						}
 						filterSource = load.declaredSource ?? plan.item.source;
 						metadataId = load.itemId ?? metadataId;
+						installedThisPlan = true;
+						// Trust is re-read immediately after the install, before inspecting the installed declaration.
+						if (!ctx.isProjectTrusted()) {
+							installedWithoutFilters.push(`${plan.item.label}: installed, but project is no longer trusted; reviewed filters were not applied. Re-review and reload.`);
+							needsReload = true;
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
 						const rechecked = await recheckInstalledPackageResourcePlan(ctx, plan.item, plan.resources, plan.selectedResourceKeys, filterSource, metadataId);
 						applyWarnings.push(...rechecked.warnings);
-						if (rechecked.plan) plan = rechecked.plan;
+						const policy = await installedDeclarationPolicy(rechecked.declarations, filterSource, settingsDir);
+						if (policy !== "ok") {
+							const detail = policy === "missing" ? "declaration not found" : policy === "project-override" ? "autoload:false override" : policy === "partial-filters" ? "partial filters" : policy === "whole-package-disabled" ? "whole-package-disabled filters" : policy === "invalid" ? "invalid declaration" : "unexpected declaration policy";
+							installedWithoutFilters.push(`${plan.item.label}: installed without reviewed filters (${detail}); re-review and reload.`);
+							needsReload = true;
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						if (!rechecked.plan) {
+							// Installed, but Pi resolved no package resources: stop rather than applying the stale cached plan.
+							installedWithoutFilters.push(`${plan.item.label}: installed, but Pi did not resolve package resources; reviewed filters were not applied. Re-review and reload.`);
+							needsReload = true;
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						const installDrift = packageResourceStateDrift(plan.resources, rechecked.resources ?? []);
+						if (installDrift.missing.length > 0 || installDrift.changed.length > 0 || installDrift.added.length > 0) {
+							installedWithoutFilters.push(`${plan.item.label}: installed without reviewed filters (resources changed after install: ${installDrift.missing.length} missing, ${installDrift.changed.length} state change${installDrift.changed.length === 1 ? "" : "s"}, ${installDrift.added.length} added); re-review and reload.`);
+							needsReload = true;
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						plan = rechecked.plan;
+					} else {
+						// Per-target re-read immediately before this write: an earlier install/writer must not bless a later target.
+						const fresh = await freshProjectState(ctx);
+						applyWarnings.push(...fresh.resources.warnings);
+						const freshSignatures = packageDeclarationSignatures(plan.item, await packageDeclarationEntries(fresh.inventory));
+						if (declarationPolicyChanged(plan.declarationBaselines, freshSignatures)) {
+							refused.push(`${plan.item.label}: package declaration policy changed since this review; reviewed filters were not applied. Reopen /construct to re-review.`);
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
+						const drift = packageResourceStateDrift(plan.resources, resourcesForPackage(plan.item, fresh.resources));
+						if (drift.missing.length > 0 || drift.changed.length > 0 || drift.added.length > 0) {
+							refused.push(`${plan.item.label}: package resources changed since this review (${drift.missing.length} missing, ${drift.changed.length} state change${drift.changed.length === 1 ? "" : "s"}, ${drift.added.length} added); reviewed filters were not applied. Reopen /construct to re-review.`);
+							finish(plan.item.rowId, "warn");
+							continue;
+						}
 					}
-					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted });
+					if (signal.aborted) {
+						// Esc after a resolution/install must not proceed to a write; report an install accurately.
+						if (installedThisPlan) {
+							installedWithoutFilters.push(`${plan.item.label}: installed, but the submit was cancelled before reviewed filters were applied. Re-review and reload.`);
+							needsReload = true;
+							finish(plan.item.rowId, "warn");
+						}
+						break;
+					}
+					const trustedBeforeWrite = ctx.isProjectTrusted();
+					if (!trustedBeforeWrite) {
+						if (installedThisPlan) {
+							installedWithoutFilters.push(`${plan.item.label}: installed, but project is no longer trusted; reviewed filters were not applied. Re-review and reload.`);
+							needsReload = true;
+						} else {
+							trustLost.push(`${plan.item.label}: project is no longer trusted; reviewed filters were not applied.`);
+						}
+						finish(plan.item.rowId, "warn");
+						continue;
+					}
+					mutatorAttempted = true;
+					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted: trustedBeforeWrite });
 					if (result.needsReload) needsReload = true;
-					if (!result.ok) failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
-					else succeeded.add(plan.item.rowId);
-					complete += 1;
-					update("Applying package resource filters", packageResourceProgressLines(resourcePlans, complete, failures, applyWarnings));
+					if (!result.ok) {
+						failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
+						finish(plan.item.rowId, "fail");
+					} else {
+						succeeded.add(plan.item.rowId);
+						finish(plan.item.rowId, "done");
+					}
 				}
 				const changed = succeeded.size;
 				const installedWithFilters = resourcePlans.filter((plan) => plan.item.section === "Available" && succeeded.has(plan.item.rowId));
 				const updatedWithFilters = resourcePlans.filter((plan) => plan.item.section !== "Available" && succeeded.has(plan.item.rowId));
+				const notApplied = refused.length + trustLost.length;
 				return {
-					title: signal.aborted ? (changed > 0 ? "Package resource update cancelled after partial changes" : "Package resource update cancelled") : failures.length > 0 ? "Package resource filters applied with errors" : "Package resource filters applied",
+					title: installedWithoutFilters.length > 0 ? "Installed without reviewed filters"
+						: signal.aborted
+							? changed > 0 || mutatorAttempted ? "Package resource update cancelled after partial changes" : "Package resource update cancelled"
+							: changed === 0 && trustLost.length > 0 ? "Project not trusted"
+								: notApplied > 0 ? "Package resource update needs re-review"
+									: failures.length > 0 ? "Package resource filters applied with errors"
+										: "Package resource filters applied",
 					confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
 					confirmAction: needsReload ? "reload" : undefined,
 					lines: [
 						signal.aborted ? "Cancelled before remaining changes." : undefined,
+						!mutatorAttempted ? "No files were changed." : undefined,
 						installedWithFilters.length > 0 ? `Installed with selected resources: ${installedWithFilters.length}` : undefined,
 						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled`),
 						updatedWithFilters.length > 0 ? `Updated package filters: ${updatedWithFilters.length}` : undefined,
 						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled after apply`),
 						applyWarnings.length > 0 ? `Warnings: ${applyWarnings.length}` : undefined,
 						...applyWarnings.map((warning) => `! ${warning}`),
+						installedWithoutFilters.length > 0 ? `Installed without reviewed filters: ${installedWithoutFilters.length}` : undefined,
+						...installedWithoutFilters.map((message) => `~ ${message}`),
+						trustLost.length > 0 ? `Trust changed (not applied): ${trustLost.length}` : undefined,
+						...trustLost.map((message) => `? ${message}`),
+						refused.length > 0 ? `Not applied (re-review): ${refused.length}` : undefined,
+						...refused.map((refusal) => `? ${refusal}`),
 						failures.length > 0 ? `Failures: ${failures.length}` : undefined,
 						...failures.map((failure) => `! ${failure}`),
 						needsReload ? "Reload Pi to use the updated package resource filters." : undefined,
@@ -974,26 +1513,40 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				const action = actionForSubmit(submitAction, item);
 				if (action) addStep(action, operationFromDirect(item));
 			}
+			const savedAllOff: string[] = [];
+			const savedUnresolved: string[] = [];
+			const savedOverrides: string[] = [];
 			for (const saved of selectedSaved) {
 				for (const source of saved.sources) {
-					const matchingPackage = findPackageForSavedSource(packageItems, source);
-					const action = actionForSavedSource(matchingPackage);
-					if (action) addStep(action, matchingPackage ? operationFromPackage(matchingPackage) : operationFromSource(source));
+					// Override precedence matches /construct run: autoload:false deltas are read-only and are
+					// never fed into the enable/install policy, whatever their filter shape looks like.
+					const overrideRow = packageItems.find((item) => item.section === "Overrides" && packageMatchesSource(item, source));
+					const matchingPackage = overrideRow ?? findPackageForSavedSource(packageItems, source);
+					const decision = matchingPackage ? savedSourceDecision(dashboardSavedSourceRow(matchingPackage)) : "install";
+					if (decision === "install" || decision === "enable") {
+						addStep(decision === "install" ? "Install" : "Enable", matchingPackage ? operationFromPackage(matchingPackage) : operationFromSource(source));
+					} else if (decision === "all-off") savedAllOff.push(source);
+					else if (decision === "unresolved") savedUnresolved.push(source);
+					else if (decision === "override") savedOverrides.push(source);
 				}
 			}
 			if (steps.length === 0) {
 				const blockedPartialPackages = submitAction === "confirm" ? packageItems.filter((item) => !item.disabled && selected.has(item.rowId) && packageWholeToggleBlocked(item)) : [];
+				const effectivelyOffPackages = submitAction === "confirm" ? packageItems.filter((item) => !item.disabled && selected.has(item.rowId) && item.section === "Disabled" && !packageWholeToggleBlocked(item) && item.filterState !== "whole-package-disabled") : [];
 				if (selectedSaved.length > 0) {
 					return {
-						title: "Saved loadout already active",
+						title: savedAllOff.length + savedUnresolved.length + savedOverrides.length > 0 ? "Saved loadout made no changes" : "Saved loadout already active",
 						lines: [
 							`Selected saved loadouts: ${selectedSaved.length}`,
 							"No package changes were needed in this project.",
+							...savedOverrides.map((source) => `↔ ${source} — Pi project override (autoload:false); manage with pi config -l`),
+							...savedAllOff.map((source) => `– ${source} — all resolved resources are off; use pi config -l to enable specific resources`),
+							...savedUnresolved.map((source) => `? ${source} — Pi resolved no package resources; inspect the declaration with pi config -l`),
 							"Saved loadouts are activate-only; nothing was disabled, removed, or exact-matched.",
 						],
 					};
 				}
-				return { title: blockedPartialPackages.length > 0 ? "Filtered package row not toggled" : "No Construct changes selected", lines: noChangeLines(submitAction, blockedPartialPackages) };
+				return { title: blockedPartialPackages.length > 0 ? "Filtered package row not toggled" : effectivelyOffPackages.length > 0 ? "Package resources not changeable here" : "No Construct changes selected", lines: noChangeLines(submitAction, blockedPartialPackages, effectivelyOffPackages) };
 			}
 
 			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Loadout", update, signal);
@@ -1035,6 +1588,9 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					...installed.map((item) => `+ ${item.label}: ${item.source}`),
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 					...enabled.map((item) => `+ ${item.label}: ${item.source}`),
+					...savedOverrides.map((source) => `↔ ${source} — Pi project override (autoload:false); manage with pi config -l`),
+					...savedAllOff.map((source) => `– ${source} — all resolved resources are off; use pi config -l to enable specific resources`),
+					...savedUnresolved.map((source) => `? ${source} — Pi resolved no package resources; inspect the declaration with pi config -l`),
 					disabled.length > 0 ? `Disabled: ${disabled.length}` : undefined,
 					...disabled.map((item) => `- ${item.label}: ${item.source}`),
 					removed.length > 0 ? `Removed from project: ${removed.length}` : undefined,

@@ -100,13 +100,23 @@ async function resolvedResourcesForInventory(input: {
 	return resources;
 }
 
-function resourceMatchesManagedPackage(resource: PackageResourceSummary, item: ProjectInventory["managedPackages"][number]): boolean {
+export interface PackageResourceMatchTarget {
+	id?: string;
+	matchSources: Iterable<string>;
+}
+
+export function packageResourceMatches(resource: PackageResourceSummary, target: PackageResourceMatchTarget): boolean {
+	const sources = target.matchSources instanceof Set ? target.matchSources : new Set(target.matchSources);
 	return (
-		resource.packageManagedId === item.metadata.id ||
-		item.matchSources.includes(resource.packageSource) ||
-		(resource.packageNormalizedSource !== undefined && item.matchSources.includes(resource.packageNormalizedSource)) ||
-		(resource.packageIdentityKey !== undefined && item.matchSources.includes(resource.packageIdentityKey))
+		(target.id !== undefined && resource.packageManagedId === target.id) ||
+		sources.has(resource.packageSource) ||
+		(resource.packageNormalizedSource !== undefined && sources.has(resource.packageNormalizedSource)) ||
+		(resource.packageIdentityKey !== undefined && sources.has(resource.packageIdentityKey))
 	);
+}
+
+function resourceMatchesManagedPackage(resource: PackageResourceSummary, item: ProjectInventory["managedPackages"][number]): boolean {
+	return packageResourceMatches(resource, { id: item.metadata.id, matchSources: item.matchSources });
 }
 
 function projectGitPackageRoot(cwd: string, source: string): string | undefined {

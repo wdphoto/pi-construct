@@ -6,6 +6,7 @@ import { describeJsonReadIssue, isObject, readJson, writeJson } from "./json.js"
 import { getPaths } from "./paths.js";
 import { getPackages } from "./project-settings.js";
 import { normalizeSourceForLibrary } from "./sources.js";
+import { TrustRefusedError } from "./target-trust.js";
 
 export function parseKnownProjects(read: JsonReadResult): { data: KnownProjectsData; warnings: string[] } {
 	const warnings: string[] = [];
@@ -67,7 +68,10 @@ async function projectPackageSources(paths: ConstructPaths): Promise<string[]> {
 	return [...new Set(sources)].sort((a, b) => a.localeCompare(b));
 }
 
-export async function rememberKnownProject(ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">): Promise<{ updated: boolean; warning?: string }> {
+export async function rememberKnownProject(
+	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
+	prewrite?: () => Promise<void>,
+): Promise<{ updated: boolean; warning?: string }> {
 	const paths = await getPaths(ctx);
 	try {
 		const read = await readJson(paths.userProjectsPath);
@@ -81,9 +85,12 @@ export async function rememberKnownProject(ctx: Pick<ExtensionCommandContext | E
 		const nextProjects = data.projects.filter((entry) => (entry.realPath || entry.path) !== key && entry.path !== paths.cwd);
 		nextProjects.push(project);
 		nextProjects.sort((a, b) => (a.realPath ?? a.path).localeCompare(b.realPath ?? b.path));
+		await prewrite?.();
 		await writeJson(paths.userProjectsPath, { version: 1, projects: nextProjects });
 		return { updated: true };
 	} catch (error) {
+		// Trust refusals must latch upstream instead of degrading into a warning.
+		if (error instanceof TrustRefusedError) throw error;
 		return { updated: false, warning: `Could not update known-project index: ${error instanceof Error ? error.message : String(error)}` };
 	}
 }

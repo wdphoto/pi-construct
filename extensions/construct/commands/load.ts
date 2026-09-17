@@ -8,6 +8,7 @@ import { collectProjectInventory, type ProjectInventory } from "../project-inven
 import { matchingPiProjectOverride, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
 import { rememberKnownProject } from "../projects.js";
 import { packageSourceMatchValues } from "../sources.js";
+import { TrustRefusedError, targetTrustDecision, type TargetTrustContext } from "../target-trust.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
 interface LoadCandidate {
@@ -180,47 +181,69 @@ export interface ConstructLoadResult {
 	metadataChanged: number;
 	selectedSources: number;
 	directMetadataChanged?: number;
+	refused?: "untrusted" | "unknown";
 }
 
 export async function loadSourcesIntoConstruct(
 	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
 	paths: Awaited<ReturnType<typeof getPaths>>,
 	selectedSources: string[],
-	options: { enabledBySource?: Map<string, boolean> } = {},
+	options: { enabledBySource?: Map<string, boolean>; prewrite?: () => Promise<void> } = {},
 ): Promise<ConstructLoadResult> {
 	const added: CatalogItem[] = [];
 	let alreadyKnown = 0;
 	const warnings: string[] = [];
-	const result = await addSourcesToCatalog(ctx, selectedSources);
+	let refused: "untrusted" | "unknown" | undefined;
+	let result: { added: CatalogItem[]; alreadyKnown: number; warnings: string[] };
+	try {
+		result = await addSourcesToCatalog(ctx, selectedSources, options.prewrite);
+	} catch (error) {
+		if (error instanceof TrustRefusedError) {
+			return { added: [], alreadyKnown: 0, warnings: [error.message], metadataChanged: 0, selectedSources: selectedSources.length, refused: error.reason };
+		}
+		throw error;
+	}
 	added.push(...result.added);
 	alreadyKnown += result.alreadyKnown;
 	warnings.push(...result.warnings);
 
 	const addedBySource = new Map(added.map((item) => [item.source, item]));
-	const { catalog } = await loadCatalog(ctx);
 	let metadataChanged = 0;
-	try {
-		const constructRead = await readJson(paths.projectConstructPath);
-		let construct = parseProjectConstruct(constructRead);
-		let nextMetadataChanged = 0;
-		for (const source of selectedSources) {
-			const item = addedBySource.get(source) ?? (await findCatalogItemForSource(catalog.items, source, dirname(paths.projectSettingsPath))) ?? findCatalogItem(catalog.items, source);
-			const itemId = await uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source, source, paths);
-			const enabled = options.enabledBySource?.get(source);
-			construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });
-			nextMetadataChanged += 1;
+	{
+		const { catalog } = await loadCatalog(ctx);
+		try {
+			const constructRead = await readJson(paths.projectConstructPath);
+			let construct = parseProjectConstruct(constructRead);
+			let nextMetadataChanged = 0;
+			for (const source of selectedSources) {
+				const item = addedBySource.get(source) ?? (await findCatalogItemForSource(catalog.items, source, dirname(paths.projectSettingsPath))) ?? findCatalogItem(catalog.items, source);
+				const itemId = await uniqueManagedIdInConstruct(construct, item?.id ?? deriveId(source), source, source, paths);
+				const enabled = options.enabledBySource?.get(source);
+				construct = upsertConstructItem(construct, itemId, source, source, paths, { enabled });
+				nextMetadataChanged += 1;
+			}
+			await options.prewrite?.();
+			await writeJson(paths.projectConstructPath, construct);
+			metadataChanged = nextMetadataChanged;
+		} catch (error) {
+			if (error instanceof TrustRefusedError) refused = error.reason;
+			const message = error instanceof Error ? error.message : String(error);
+			warnings.push(`Could not update project Construct metadata: ${message}`);
 		}
-		await writeJson(paths.projectConstructPath, construct);
-		metadataChanged = nextMetadataChanged;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		warnings.push(`Could not update project Construct metadata: ${message}`);
 	}
 
-	const remembered = await rememberKnownProject(ctx);
-	if (remembered.warning) warnings.push(remembered.warning);
+	// Once a trust refusal is latched, later writes (known-project index) must not resume.
+	if (!refused) {
+		try {
+			const remembered = await rememberKnownProject(ctx, options.prewrite);
+			if (remembered.warning) warnings.push(remembered.warning);
+		} catch (error) {
+			if (error instanceof TrustRefusedError) refused = error.reason;
+			else throw error;
+		}
+	}
 
-	return { added, alreadyKnown, warnings, metadataChanged, selectedSources: selectedSources.length };
+	return { added, alreadyKnown, warnings, metadataChanged, selectedSources: selectedSources.length, ...(refused ? { refused } : {}) };
 }
 
 function directBaseId(resource: DirectResourceSummary): string {
@@ -284,33 +307,90 @@ function upsertConstructDirectResource(construct: JsonObject, resource: DirectRe
 	};
 }
 
-async function loadDirectResourcesIntoConstruct(
+export async function loadDirectResourcesIntoConstruct(
 	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
 	paths: Awaited<ReturnType<typeof getPaths>>,
 	resources: DirectResourceSummary[],
-): Promise<{ metadataChanged: number; warnings: string[] }> {
+	prewrite?: () => Promise<void>,
+): Promise<{ metadataChanged: number; warnings: string[]; refused?: "untrusted" | "unknown" }> {
 	if (resources.length === 0) return { metadataChanged: 0, warnings: [] };
 	const warnings: string[] = [];
 	let metadataChanged = 0;
+	let refused: "untrusted" | "unknown" | undefined;
 	try {
 		const constructRead = await readJson(paths.projectConstructPath);
 		let construct = parseProjectConstruct(constructRead);
+		let nextMetadataChanged = 0;
 		for (const resource of resources) {
 			construct = upsertConstructDirectResource(construct, resource, paths);
-			metadataChanged += 1;
+			nextMetadataChanged += 1;
 		}
+		// Count only after the write actually succeeds so a refused or failed write
+		// never reports unwritten resources as adopted.
+		await prewrite?.();
 		await writeJson(paths.projectConstructPath, construct);
+		metadataChanged = nextMetadataChanged;
 	} catch (error) {
+		if (error instanceof TrustRefusedError) refused = error.reason;
 		warnings.push(`Could not update project Construct metadata for direct resources: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	const remembered = await rememberKnownProject(ctx);
-	if (remembered.warning) warnings.push(remembered.warning);
-	return { metadataChanged, warnings };
+	// Once a trust refusal is latched, the known-project index write must not resume.
+	if (!refused) {
+		try {
+			const remembered = await rememberKnownProject(ctx, prewrite);
+			if (remembered.warning) warnings.push(remembered.warning);
+		} catch (error) {
+			if (error instanceof TrustRefusedError) refused = error.reason;
+			else throw error;
+		}
+	}
+	return { metadataChanged, warnings, ...(refused ? { refused } : {}) };
 }
 
-export async function loadProjectResourcesIntoConstruct(projectDir: string, queries: string[]): Promise<ConstructLoadResult> {
+export interface ConstructLoadTrust {
+	// Current-project callers may pass the live context; the target's own saved trust is used
+	// for any other directory. Callers that pass no context still get native target checking.
+	ctx?: TargetTrustContext;
+	signal?: AbortSignal;
+}
+
+export async function loadProjectResourcesIntoConstruct(
+	projectDir: string,
+	queries: string[],
+	trust: ConstructLoadTrust,
+): Promise<ConstructLoadResult> {
 	const paths = await getPaths({ cwd: projectDir });
-	const projectCtx = { cwd: projectDir, isProjectTrusted: () => true };
+	const initialTrust = await targetTrustDecision(trust.ctx, projectDir);
+	if (initialTrust !== "trusted") {
+		return {
+			added: [],
+			alreadyKnown: 0,
+			warnings: [
+				initialTrust === "unknown"
+					? `Skipped because Pi trust state for ${projectDir} could not be read.`
+					: `Skipped because ${projectDir} is not trusted by Pi.`,
+			],
+			metadataChanged: 0,
+			selectedSources: 0,
+			directMetadataChanged: 0,
+			refused: initialTrust,
+		};
+	}
+	// Forward the verified native decision (never an unconditional trust assumption) into the
+	// resolver predicate used for inspection, and recheck freshness before every write.
+	const projectTrusted = initialTrust === "trusted";
+	const projectCtx = { cwd: projectDir, isProjectTrusted: () => projectTrusted };
+	const refusal: { reason?: "untrusted" | "unknown" } = {};
+	const prewrite = async () => {
+		if (trust.signal?.aborted) throw new Error("Construct load cancelled before write.");
+		const decision = await targetTrustDecision(trust.ctx, projectDir);
+		// Re-check cancellation after the native trust await, before any actual write.
+		if (trust.signal?.aborted) throw new Error("Construct load cancelled before write.");
+		if (decision !== "trusted") {
+			refusal.reason = decision;
+			throw new TrustRefusedError(projectDir, decision);
+		}
+	};
 
 	const settingsRead = await readJson(paths.projectSettingsPath);
 	if (settingsRead.state === "invalid") throw new Error(`Cannot load because ${describeJsonReadIssue(".pi/settings.json", settingsRead)}`);
@@ -340,11 +420,23 @@ export async function loadProjectResourcesIntoConstruct(projectDir: string, quer
 	const enabledBySource = new Map(selectedPackageCandidates.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
 	const result: ConstructLoadResult =
 		selectedSources.length > 0
-			? await loadSourcesIntoConstruct({ cwd: projectDir }, paths, selectedSources, { enabledBySource })
+			? await loadSourcesIntoConstruct({ cwd: projectDir }, paths, selectedSources, { enabledBySource, prewrite })
 			: { added: [], alreadyKnown: 0, warnings: [], metadataChanged: 0, selectedSources: 0 };
-	const directResult = await loadDirectResourcesIntoConstruct({ cwd: projectDir }, paths, selectedDirectCandidates.map((candidate) => candidate.resource));
+	result.warnings.push(...selectionWarnings);
+	if (result.refused) {
+		// Latched refusal: later direct adoption and known-project writes must not resume.
+		result.directMetadataChanged = 0;
+		return result;
+	}
+	const directResult = await loadDirectResourcesIntoConstruct(
+		{ cwd: projectDir },
+		paths,
+		selectedDirectCandidates.map((candidate) => candidate.resource),
+		prewrite,
+	);
 	result.directMetadataChanged = directResult.metadataChanged;
-	result.warnings.push(...directResult.warnings, ...selectionWarnings);
+	result.warnings.push(...directResult.warnings);
+	result.refused = directResult.refused ?? refusal.reason;
 	return result;
 }
 

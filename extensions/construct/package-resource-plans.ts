@@ -46,6 +46,32 @@ export function planPackageResourceFilters(
 	return { filters, selectedResourceKeys: new Set(selectedResourceKeys), selectedCount };
 }
 
+// Stale-baseline check for child filter plans: compare the reviewed (displayed) resource
+// state to freshly resolved state. Any logical change in a reviewed resource (missing,
+// enabled/disabled flip, or a newly added resource) requires re-review, so future policy
+// and newly discovered resources are never overwritten or silently disabled.
+export interface PackageResourceStateDrift {
+	missing: string[];
+	changed: string[];
+	added: string[];
+}
+
+export function packageResourceStateDrift(baseline: Iterable<PackageResourceFilterPlanInput & { enabled?: boolean }>, current: Iterable<PackageResourceFilterPlanInput & { enabled?: boolean }>): PackageResourceStateDrift {
+	const baselineState = new Map<string, boolean>();
+	for (const resource of baseline) baselineState.set(packageResourceSelectionKey(resource.kind, resource.packageRelativePath), Boolean(resource.enabled));
+	const currentState = new Map<string, boolean>();
+	for (const resource of current) currentState.set(packageResourceSelectionKey(resource.kind, resource.packageRelativePath), Boolean(resource.enabled));
+	const missing: string[] = [];
+	const changed: string[] = [];
+	const added: string[] = [];
+	for (const [key, enabled] of baselineState) {
+		if (!currentState.has(key)) missing.push(key);
+		else if (currentState.get(key) !== enabled) changed.push(key);
+	}
+	for (const key of currentState.keys()) if (!baselineState.has(key)) added.push(key);
+	return { missing, changed, added };
+}
+
 export function packageResourceSetsDiffer(a: Iterable<PackageResourceSummary>, b: Iterable<PackageResourceSummary>): boolean {
 	const aKeys = new Set([...a].map((resource) => packageResourceSelectionKey(resource.kind, resource.packageRelativePath)));
 	const bKeys = new Set([...b].map((resource) => packageResourceSelectionKey(resource.kind, resource.packageRelativePath)));
