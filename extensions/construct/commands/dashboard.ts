@@ -228,8 +228,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			? managed.filterState === "partially-filtered"
 				? "Filtered package. Construct will not replace partial Pi filters with whole-package toggles; use pi config -l for exact overrides."
 				: managed.disabledByFilters
-					? "Disabled package. Enter enables the whole package; Ctrl+R removes."
-					: "Active package. Enter disables the whole package; Ctrl+R removes."
+					? "Disabled package. Enter enables the whole package; Ctrl+Alt+R removes."
+					: "Active package. Enter disables the whole package; Ctrl+Alt+R removes."
 			: missingDeclarationDrift
 				? "Drifted package. Enter restores; if resources are available, Right Arrow selects individual package resources."
 				: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.";
@@ -375,7 +375,7 @@ function reclassifyManagedPackagesByEffectiveState(projectResources: PackageReso
 			continue;
 		}
 		item.section = "Unresolved";
-		item.description = "Declared in .pi/settings.json, but Pi resolved no package resources yet (not installed, or the package resolved no matching resources). Construct will not treat this as active or install it; inspect the declaration with pi config -l. Ctrl+R removes the declaration.";
+		item.description = "Declared in .pi/settings.json, but Pi resolved no package resources yet (not installed, or the package resolved no matching resources). Construct will not treat this as active or install it; inspect the declaration with pi config -l. Ctrl+Alt+R removes the declaration.";
 	}
 }
 
@@ -457,7 +457,7 @@ function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: 
 	if (counts.overrides > 0 && counts.active + counts.disabled + counts.available + counts.unloaded === 0) return "Pi project overrides are read-only here; manage inherit/load/unload with pi config -l.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
 	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
-	if (counts.unresolved > 0) return "Unresolved rows are declared but Pi resolved no resources; Construct will not install or enable them. Use pi config -l, or Ctrl+R to remove the declaration.";
+	if (counts.unresolved > 0) return "Unresolved rows are declared but Pi resolved no resources; Construct will not install or enable them. Use pi config -l, or Ctrl+Alt+R to remove the declaration.";
 	if (counts.unloaded > 0) return "Run /construct load to adopt already-installed resources into the Construct.";
 	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
 	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
@@ -477,7 +477,7 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
 		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · ↔ Pi override · + available · ◇ unloaded.",
-		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · Alt+I details · Ctrl+R removes · Ctrl+U unloads · Esc cancels.",
+		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · Alt+I details · Ctrl+Alt+R removes · Ctrl+U unloads · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -512,7 +512,7 @@ function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackage
 			"No whole-package changes were applied.",
 			`${blockedPartialPackages.length} selected package${blockedPartialPackages.length === 1 ? " already has" : "s already have"} partial Pi package filters, so Construct will not toggle the whole package row.`,
 			"Use Right Arrow to unfold the package, Space to change individual child resources, then Enter to write package filters.",
-			"Use Ctrl+R if you want to remove the package declaration from this project.",
+			"Use Ctrl+Alt+R if you want to remove the package declaration from this project.",
 		];
 	}
 	if (action === "confirm" && effectivelyOffPackages.length > 0) {
@@ -525,8 +525,8 @@ function noChangeLines(action: CheckboxPickerSubmitAction, blockedPartialPackage
 	if (action === "confirm") return ["No Construct changes were selected.", "Select Saved, Active, Disabled, or Available rows, then press Enter.", "Unloaded rows are read-only here; use /construct load to adopt already-installed resources into Construct metadata."];
 	return [
 		"No active or disabled project packages were selected to remove.",
-		"Select Active or Disabled package rows, then press Ctrl+R.",
-		"Ctrl+R always targets the whole package: child resource rows fold into their parent package for removal.",
+		"Select Active or Disabled package rows, then press Ctrl+Alt+R.",
+		"Ctrl+Alt+R always targets the whole package: child resource rows fold into their parent package for removal.",
 		"To filter package-contained resources instead of removing the package, use Space then Enter.",
 		"Available packages are not installed in this project; use /construct unload to forget them from the Construct library.",
 		"Unloaded resources are read-only here; remove them with Pi directly if needed.",
@@ -582,7 +582,7 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 			canSubmit: false,
 			lines: [
 				"Nothing will be removed.",
-				"Focus or select Active/Disabled/Unresolved package rows, then press Ctrl+R.",
+				"Focus or select Active/Disabled/Unresolved package rows, then press Ctrl+Alt+R.",
 				...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
 			],
 		};
@@ -1198,7 +1198,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · Alt+I details · Ctrl+R removes whole package · Ctrl+U unloads library package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · Alt+I details · Ctrl+Alt+R removes whole package · Ctrl+U unloads library package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
 		actions: { remove: true, unload: true },
 		resolveRemoveIds: resolveRemoveIds,
 		resolveUnloadIds: resolveUnloadIds,

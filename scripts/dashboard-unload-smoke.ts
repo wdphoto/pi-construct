@@ -735,6 +735,46 @@ try {
 		}
 	}
 
+	// 9b) Ctrl+Alt+R is the advertised remove trigger: legacy ESC+ctrl char and Kitty CSI-u, focused fallback and selected removal.
+	{
+		const { run, project } = await openKeyProject("project-ctrl-alt-r-focused");
+		try {
+			const text = renderedText(run.harness);
+			assert(text.includes("Ctrl+Alt+R removes"), "dashboard footer must advertise Ctrl+Alt+R removal");
+			assert(!text.includes("Ctrl+R removes"), "dashboard footer must no longer advertise Ctrl+R removal");
+			run.harness.handleInput("\x1b\x12");
+			assert(renderedText(run.harness).includes("from this project?"), "legacy Ctrl+Alt+R focused must open the remove confirmation");
+			await escAndExpectClose(run.harness, 2);
+			assert(settingsText(project).includes(pkgMulti), "legacy Ctrl+Alt+R focused then Esc must not edit settings");
+		} finally {
+			await settleRun(run);
+		}
+	}
+	{
+		const { run, project } = await openKeyProject("project-ctrl-alt-r-selected");
+		try {
+			run.harness.handleInput(" ");
+			run.harness.handleInput("\x1b\x12");
+			assert(renderedText(run.harness).includes("from this project?"), "legacy Ctrl+Alt+R selected must open the remove confirmation");
+			const result = await driveKeys(run.harness, ["\r"]);
+			assert(result, "legacy Ctrl+Alt+R selected remove did not settle");
+			assert(!settingsText(project).includes(pkgMulti), "legacy Ctrl+Alt+R selected Enter must remove the declaration");
+		} finally {
+			await settleRun(run);
+		}
+	}
+	{
+		const { run, project } = await openKeyProject("project-ctrl-alt-r-kitty");
+		try {
+			run.harness.handleInput("\x1b[114;7u");
+			assert(renderedText(run.harness).includes("from this project?"), "Kitty Ctrl+Alt+R must open the remove confirmation");
+			await escAndExpectClose(run.harness, 2);
+			assert(settingsText(project).includes(pkgMulti), "Kitty Ctrl+Alt+R then Esc must not edit settings");
+		} finally {
+			await settleRun(run);
+		}
+	}
+
 	// 10) Alt+I opens details (legacy and Kitty); Enter returns to the pick, Esc closes.
 	for (const [label, sequence] of [["legacy", "\x1bi"], ["kitty", "\x1b[105;3u"]] as const) {
 		const { run } = await openKeyProject(`project-alt-i-${label}`);

@@ -4,6 +4,11 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
+## Unreleased
+
+### Fixed
+- Advertise `Ctrl+Alt+R` for dashboard project-package removal while retaining legacy `Ctrl+R` and forward Delete compatibility inputs.
+
 ## 0.0.31 - 2026-09-16
 
 ### Added

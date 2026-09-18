@@ -952,7 +952,7 @@ export async function pickCheckboxes(ctx: ExtensionCommandContext, title: string
 				else startSubmit("confirm", ids);
 				return;
 			}
-			if (options.actions?.remove && (matchesKey(data, "ctrl+r") || matchesKey(data, "delete"))) {
+			if (options.actions?.remove && (matchesKey(data, "ctrl+alt+r") || matchesKey(data, "ctrl+r") || matchesKey(data, "delete"))) {
 				startRemove();
 				return;
 			}
