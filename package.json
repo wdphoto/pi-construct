@@ -1,6 +1,6 @@
 {
   "name": "pi-construct",
-  "version": "0.0.31",
+  "version": "0.0.33",
   "description": "A minimal Pi loadout menu for project-local packages.",
   "license": "MIT",
   "type": "module",
@@ -34,7 +34,7 @@
     "check:hygiene": "tsc --noEmit --noUnusedLocals --noUnusedParameters --pretty false",
     "pack:dry-run": "npm pack --dry-run",
     "release:verify": "npm run check && npm run pack:dry-run",
-    "smoke:all": "npm run smoke && npm run package-resource-plans-smoke && npm run effective-state-smoke && npm run dashboard-submit-safety-smoke && npm run dashboard-unload-smoke && npm run scan-trust-smoke && npm run project-overrides-smoke && npm run dashboard-action-model-smoke && npm run direct-resource-toggle-smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke && npm run audit-regression-smoke",
+    "smoke:all": "npm run smoke && npm run package-resource-plans-smoke && npm run effective-state-smoke && npm run dashboard-submit-safety-smoke && npm run dashboard-unload-smoke && npm run scan-trust-smoke && npm run project-overrides-smoke && npm run dashboard-action-model-smoke && npm run direct-resource-toggle-smoke && npm run skill-repositories-smoke && npm run e2e-smoke && npm run install-smoke && npm run invalid-drift-smoke && npm run audit-regression-smoke",
     "prepublishOnly": "npm run release:verify",
     "smoke": "./scripts/smoke.sh",
     "package-resource-plans-smoke": "./scripts/package-resource-plans-smoke.sh",
@@ -48,7 +48,8 @@
     "invalid-drift-smoke": "./scripts/invalid-drift-smoke.sh",
     "audit-regression-smoke": "./scripts/audit-regression-smoke.sh",
     "dashboard-action-model-smoke": "./scripts/dashboard-action-model-smoke.sh",
-    "direct-resource-toggle-smoke": "./scripts/direct-resource-toggle-smoke.sh"
+    "direct-resource-toggle-smoke": "./scripts/direct-resource-toggle-smoke.sh",
+    "skill-repositories-smoke": "./scripts/skill-repositories-smoke.sh"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.80.4",

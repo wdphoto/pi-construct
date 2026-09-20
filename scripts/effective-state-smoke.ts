@@ -37,6 +37,8 @@ const resourceInventory: PackageResourceInventory = {
 		resource({ packageSource: "npm:off", packageManagedId: "off", packageRelativePath: "extensions/off.ts", enabled: false }),
 	],
 	warnings: [],
+	skillRepositories: [],
+	skillInspections: [],
 };
 
 const inventory = {
@@ -58,6 +60,57 @@ assert.equal(patched.unloadedPackageDeclarations[0]?.effectiveState, "active");
 assert.equal(patched.managedPackages[1]?.state, "active");
 assert.equal(patched.managedPackages[1]?.filterState, "partially-filtered");
 assert.equal(patched.managedPackages[2]?.state, "active");
+
+// Agent Skills carriers use the same effective-state path even when Pi resolves no package resources,
+// so save/run planning classifies a linked carrier Active instead of unresolved.
+const carrierResourceInventory: PackageResourceInventory = {
+	resources: [],
+	warnings: [],
+	skillRepositories: [
+		{
+			source: "git:github.com/example/skills",
+			packageRoot: "/tmp/skills",
+			diagnostics: [],
+			skills: [
+				{ name: "active-skill", description: "", packageRelativeRoot: "a", packageRelativeFile: "a/SKILL.md", absoluteRoot: "/tmp/skills/a", absoluteFile: "/tmp/skills/a/SKILL.md", settingsPath: "git/example/skills/a", linked: true, enabled: true },
+			],
+		},
+	],
+	skillInspections: [{ source: "git:github.com/example/skills", matchSources: ["git:github.com/example/skills"], inspected: true, adapter: true }],
+};
+const carrierInventory = {
+	managedPackages: [
+		{ metadata: { id: "carrier" }, matchSources: ["git:github.com/example/skills"], declared: true, projectOverride: false, disabledByFilters: false, state: "active" },
+	],
+	unloadedPackageDeclarations: [],
+} as unknown as ProjectInventory;
+const carrierPatched = withEffectivePackageStates(carrierInventory, carrierResourceInventory);
+assert.equal(carrierPatched.managedPackages[0]?.effectiveState, "active");
+assert.equal(carrierPatched.managedPackages[0]?.skillCarrier, true, "discovered carrier is flagged on the shared inventory row");
+assert.equal(savedSourceDecision({ section: "Disabled", wholePackageDisabled: false, effectiveState: carrierPatched.managedPackages[0]?.effectiveState }), "active");
+const unlinkedCarrier = withEffectivePackageStates(carrierInventory, {
+	...carrierResourceInventory,
+	skillRepositories: [{ ...carrierResourceInventory.skillRepositories[0], skills: [{ ...carrierResourceInventory.skillRepositories[0].skills[0], linked: false, enabled: false }] }],
+});
+assert.equal(unlinkedCarrier.managedPackages[0]?.effectiveState, "inactive", "an unlinked/discovered carrier is inactive, not unknown/unresolved");
+assert.equal(unlinkedCarrier.managedPackages[0]?.skillCarrier, true);
+assert.equal(savedSourceDecision({ section: "Disabled", wholePackageDisabled: false, effectiveState: unlinkedCarrier.managedPackages[0]?.effectiveState }), "all-off");
+// An unadopted (unloaded) discovered carrier must also be inactive + flagged, not unknown, so
+// save/run give Agent Skills guidance instead of generic pi config wording or double-counting unresolved.
+const unloadedCarrierInventory = {
+	managedPackages: [],
+	unloadedPackageDeclarations: [{ source: "git:github.com/example/skills", matchSources: ["git:github.com/example/skills"], disabledByFilters: false, effectiveState: "unknown" }],
+} as unknown as ProjectInventory;
+const unloadedCarrier = withEffectivePackageStates(unloadedCarrierInventory, {
+	...carrierResourceInventory,
+	skillRepositories: [{ ...carrierResourceInventory.skillRepositories[0], skills: [{ ...carrierResourceInventory.skillRepositories[0].skills[0], linked: false, enabled: false }] }],
+});
+assert.equal(unloadedCarrier.unloadedPackageDeclarations[0]?.effectiveState, "inactive", "an unlinked unloaded carrier is inactive, not unknown");
+assert.equal(unloadedCarrier.unloadedPackageDeclarations[0]?.skillCarrier, true);
+assert.equal(savedSourceDecision({ section: "Unloaded", wholePackageDisabled: false, effectiveState: unloadedCarrier.unloadedPackageDeclarations[0]?.effectiveState }), "all-off");
+const unloadedNonCarrier = withEffectivePackageStates(unloadedCarrierInventory, { resources: [], warnings: [], skillRepositories: [], skillInspections: [] });
+assert.equal(unloadedNonCarrier.unloadedPackageDeclarations[0]?.effectiveState, "unknown", "a non-carrier unloaded zero-resource declaration stays unknown");
+assert.equal(savedSourceDecision({ section: "Unloaded", wholePackageDisabled: false, effectiveState: "unknown" }), "unresolved");
 
 // Shared saved-source decision (dashboard saved-row Enter and /construct run use the same function).
 assert.equal(savedSourceDecision({ section: "Available", wholePackageDisabled: false, effectiveState: "unknown" }), "install");

@@ -1,11 +1,13 @@
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, DirectResourceSummary, DirectResourceKind, JsonObject } from "../types.js";
 import { dirname } from "node:path";
-import { deriveId, findCatalogItem, findCatalogItemForSource, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog } from "../catalog.js";
+import { deriveId, findCatalogItem, findCatalogItemForSource, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog, updateExistingCatalogAgentSkills, type CatalogAgentSkillsOpinion } from "../catalog.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
 import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
 import { matchingPiProjectOverride, parseProjectConstruct, uniqueManagedIdInConstruct, upsertConstructItem } from "../project-settings.js";
+import { collectProjectPackageResources, packageResourceMatches, skillInspectionFor } from "../package-resources.js";
+import { catalogAgentSkillsInventory, packageSkillRepositoryFor, skillRepositoriesOwnPath, type PackageSkillRepository } from "../skill-repositories.js";
 import { rememberKnownProject } from "../projects.js";
 import { packageSourceMatchValues } from "../sources.js";
 import { TrustRefusedError, targetTrustDecision, type TargetTrustContext } from "../target-trust.js";
@@ -15,8 +17,10 @@ interface LoadCandidate {
 	kind: "package";
 	id: string;
 	source: string;
+	matchSources: string[];
 	alreadyKnown?: boolean;
 	disabledByFilters?: boolean;
+	agentSkills?: CatalogAgentSkillsOpinion;
 }
 
 interface DirectLoadCandidate {
@@ -62,7 +66,7 @@ async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ ado
 		if (seen.has(seenKey)) continue;
 		seen.add(seenKey);
 		const catalogId = matches.map((match) => catalogItemsBySource.get(match)).find((id): id is string => id !== undefined);
-		const candidate: LoadCandidate = { kind: "package", id: catalogId ?? deriveId(source), source, alreadyKnown: catalogId !== undefined, disabledByFilters: pkg.disabledByFilters };
+		const candidate: LoadCandidate = { kind: "package", id: catalogId ?? deriveId(source), source, matchSources: matches, alreadyKnown: catalogId !== undefined, disabledByFilters: pkg.disabledByFilters };
 		const managedMatch = matches.map((match) => managedPackageStates.get(match)).find((state) => state !== undefined);
 		const managedKnown = managedMatch !== undefined || matches.some((match) => managedPackageStates.has(match));
 		if (managedMatch === false && !pkg.disabledByFilters) adoptable.push(candidate);
@@ -75,10 +79,13 @@ async function projectLoadCandidates(inventory: ProjectInventory): Promise<{ ado
 	};
 }
 
-function projectDirectLoadCandidates(inventory: ProjectInventory): { adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] } {
+function projectDirectLoadCandidates(inventory: ProjectInventory, skillRepositories: readonly PackageSkillRepository[]): { adoptable: DirectLoadCandidate[]; alreadyManaged: DirectLoadCandidate[]; warnings: string[] } {
 	const adoptable: DirectLoadCandidate[] = [];
 	const alreadyManaged: DirectLoadCandidate[] = [];
 	for (const resource of inventory.directResources.resources) {
+		// Skills owned by a carrier package are managed through its child rows, not as
+		// independent direct resources, so never offer them for direct adoption.
+		if (resource.kind === "skill" && skillRepositoriesOwnPath(skillRepositories, resource.path)) continue;
 		const candidate: DirectLoadCandidate = {
 			kind: resource.kind,
 			id: `${resource.kind}:${resource.name}`,
@@ -99,12 +106,48 @@ function projectDirectLoadCandidates(inventory: ProjectInventory): { adoptable: 
 async function collectLoadCandidates(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">): Promise<{ paths: Awaited<ReturnType<typeof getPaths>>; adoptable: AnyLoadCandidate[]; alreadyManaged: AnyLoadCandidate[]; directWarnings: string[] }> {
 	const inventory = await collectProjectInventory(ctx);
 	const packageCandidates = await projectLoadCandidates(inventory);
-	const directCandidates = projectDirectLoadCandidates(inventory);
+	// Read-only: reuse the inventory's direct resources and only ask Pi for the carrier
+	// repositories, so linked carrier skills are not offered as independent direct resources.
+	const packageResources = await collectProjectPackageResources(ctx, inventory);
+	const directCandidates = projectDirectLoadCandidates(inventory, packageResources.skillRepositories);
+	const warnings: string[] = [];
+	const seenWarnings = new Set<string>();
+	const pushWarnings = (values: readonly string[]): void => {
+		for (const value of values) {
+			if (seenWarnings.has(value)) continue;
+			seenWarnings.add(value);
+			warnings.push(value);
+		}
+	};
+	pushWarnings(directCandidates.warnings);
+	pushWarnings(packageResources.warnings);
+	for (const candidate of [...packageCandidates.adoptable, ...packageCandidates.alreadyManaged]) {
+		const repository = packageSkillRepositoryFor(packageResources.skillRepositories, { source: candidate.source, matchSources: candidate.matchSources });
+		if (repository) {
+			const inventorySnapshot = catalogAgentSkillsInventory(repository);
+			if (inventorySnapshot) {
+				candidate.agentSkills = inventorySnapshot;
+			} else {
+				candidate.agentSkills = null;
+				pushWarnings([`${candidate.id}: Agent Skill inventory could not be recorded (too many, duplicate, or invalid skill roots); any stale advisory snapshot was cleared.`]);
+			}
+			continue;
+		}
+		// No adapter. Clear only when authoritative: Pi matched native resources, or a real checkout
+		// was inspected and produced no adapter. Otherwise leave no opinion so a valid snapshot survives.
+		const hasNative = packageResources.resources.some((resource) => packageResourceMatches(resource, { matchSources: candidate.matchSources }));
+		const inspection = skillInspectionFor(packageResources, { source: candidate.source, matchSources: candidate.matchSources });
+		if (hasNative || inspection?.inspected) {
+			candidate.agentSkills = null;
+		} else if (inspection && !inspection.inspected) {
+			pushWarnings([`${candidate.id}: Agent Skill checkout could not be inspected; any existing advisory snapshot was preserved.`]);
+		}
+	}
 	return {
 		paths: inventory.paths,
 		adoptable: [...packageCandidates.adoptable, ...directCandidates.adoptable],
 		alreadyManaged: [...packageCandidates.alreadyManaged, ...directCandidates.alreadyManaged],
-		directWarnings: directCandidates.warnings,
+		directWarnings: warnings,
 	};
 }
 
@@ -174,6 +217,49 @@ async function findLoadCandidates(
 	return { selected: [...selected.values()], alreadyManaged, missing };
 }
 
+/**
+ * Already Construct-managed declarations are not re-selected by `/construct load`, so their
+ * advisory Agent Skill snapshots would otherwise never be recorded. Apply the same authoritative
+ * set/clear/no-opinion decisions computed during candidate collection to already-present library
+ * entries only (`updateExistingCatalogAgentSkills` never creates a catalog item).
+ */
+async function refreshManagedAdvisorySnapshots(
+	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
+	alreadyManaged: readonly AnyLoadCandidate[],
+	prewrite?: () => Promise<void>,
+): Promise<{ updated: number; warnings: string[]; refused?: "untrusted" | "unknown" }> {
+	const opinions = new Map<string, CatalogAgentSkillsOpinion>();
+	for (const candidate of alreadyManaged) {
+		if (candidate.kind !== "package" || candidate.agentSkills === undefined) continue;
+		opinions.set(candidate.source, candidate.agentSkills);
+	}
+	if (opinions.size === 0) return { updated: 0, warnings: [] };
+	try {
+		const result = await updateExistingCatalogAgentSkills(ctx, opinions, prewrite);
+		return { updated: result.updated, warnings: result.warnings };
+	} catch (error) {
+		if (error instanceof TrustRefusedError) return { updated: 0, warnings: [error.message], refused: error.reason };
+		return { updated: 0, warnings: [`Could not refresh advisory Agent Skill inventory: ${error instanceof Error ? error.message : String(error)}`] };
+	}
+}
+
+function advisoryRefreshNote(updated: number): string {
+	return `Advisory Agent Skill inventory refreshed for ${updated} library entr${updated === 1 ? "y" : "ies"}.`;
+}
+
+/**
+ * Fresh current-project trust check for interactive writes that run after a picker or idle wait.
+ * AGENTS requires the canonical current project to use `ctx.isProjectTrusted()` (session decisions
+ * included) before every write; this reuses Pi's target trust decision so a session grant/denial is
+ * honored and an unreadable lookup refuses instead of silently writing.
+ */
+function currentProjectPrewrite(ctx: ExtensionCommandContext, targetDir: string): () => Promise<void> {
+	return async () => {
+		const trust = await targetTrustDecision(ctx, targetDir);
+		if (trust !== "trusted") throw new TrustRefusedError(targetDir, trust);
+	};
+}
+
 export interface ConstructLoadResult {
 	added: CatalogItem[];
 	alreadyKnown: number;
@@ -188,7 +274,7 @@ export async function loadSourcesIntoConstruct(
 	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
 	paths: Awaited<ReturnType<typeof getPaths>>,
 	selectedSources: string[],
-	options: { enabledBySource?: Map<string, boolean>; prewrite?: () => Promise<void> } = {},
+	options: { enabledBySource?: Map<string, boolean>; prewrite?: () => Promise<void>; agentSkillsBySource?: ReadonlyMap<string, CatalogAgentSkillsOpinion> } = {},
 ): Promise<ConstructLoadResult> {
 	const added: CatalogItem[] = [];
 	let alreadyKnown = 0;
@@ -196,7 +282,7 @@ export async function loadSourcesIntoConstruct(
 	let refused: "untrusted" | "unknown" | undefined;
 	let result: { added: CatalogItem[]; alreadyKnown: number; warnings: string[] };
 	try {
-		result = await addSourcesToCatalog(ctx, selectedSources, options.prewrite);
+		result = await addSourcesToCatalog(ctx, selectedSources, options.prewrite, options.agentSkillsBySource);
 	} catch (error) {
 		if (error instanceof TrustRefusedError) {
 			return { added: [], alreadyKnown: 0, warnings: [error.message], metadataChanged: 0, selectedSources: selectedSources.length, refused: error.reason };
@@ -418,13 +504,23 @@ export async function loadProjectResourcesIntoConstruct(
 	const selectedDirectCandidates = found.selected.filter((candidate): candidate is DirectLoadCandidate => candidate.kind !== "package");
 	const selectedSources = selectedPackageCandidates.map((candidate) => candidate.source);
 	const enabledBySource = new Map(selectedPackageCandidates.map((candidate) => [candidate.source, !candidate.disabledByFilters]));
+	const agentSkillsBySource = new Map(selectedPackageCandidates.flatMap((candidate) => candidate.agentSkills !== undefined ? [[candidate.source, candidate.agentSkills] as const] : []));
 	const result: ConstructLoadResult =
 		selectedSources.length > 0
-			? await loadSourcesIntoConstruct({ cwd: projectDir }, paths, selectedSources, { enabledBySource, prewrite })
+			? await loadSourcesIntoConstruct({ cwd: projectDir }, paths, selectedSources, { enabledBySource, prewrite, agentSkillsBySource })
 			: { added: [], alreadyKnown: 0, warnings: [], metadataChanged: 0, selectedSources: 0 };
 	result.warnings.push(...selectionWarnings);
 	if (result.refused) {
 		// Latched refusal: later direct adoption and known-project writes must not resume.
+		result.directMetadataChanged = 0;
+		return result;
+	}
+	// Already Construct-managed carriers are not re-selected above, so refresh their advisory
+	// snapshots here. This only touches existing library entries and never creates one.
+	const advisory = await refreshManagedAdvisorySnapshots({ cwd: projectDir }, candidates.alreadyManaged, prewrite);
+	result.warnings.push(...advisory.warnings);
+	if (advisory.refused) {
+		result.refused = advisory.refused;
 		result.directMetadataChanged = 0;
 		return result;
 	}
@@ -459,8 +555,11 @@ export function formatLoadResult(result: ConstructLoadResult): string {
 export async function handleLoad(args: string, ctx: ExtensionCommandContext): Promise<void> {
 	const loadArgs = parseLoadArgs(args);
 	const paths = await getPaths(ctx);
+	// Interactive writes happen after the picker/idle wait; recheck current-project trust at write
+	// time so a lost session grant or denial never lets a stale catalog/metadata write through.
+	const prewrite = currentProjectPrewrite(ctx, paths.cwd);
 	if (!ctx.isProjectTrusted()) {
-		showText(ctx, ["Construct load failed.", "Project is not trusted by Pi, so Construct will not write project metadata here.", "Trust this project in Pi, then run /construct load again."].join("\n"));
+		showText(ctx, ["Construct load failed.", "Project is not trusted by Pi, so Construct will not write project metadata or update its library from this project.", "Trust this project in Pi, then run /construct load again."].join("\n"));
 		return;
 	}
 
@@ -505,6 +604,7 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (candidates.adoptable.length === 0 && loadArgs.queries.length === 0) {
+		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
 		showText(
 			ctx,
 			[
@@ -513,7 +613,8 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 				"No project resources are waiting to be loaded.",
 				candidates.alreadyManaged.length > 0 ? `Already Construct-managed here: ${candidates.alreadyManaged.length}` : "No Construct-managed project resources found.",
 				...candidates.directWarnings.map((warning) => `! ${warning}`),
-				"No files were changed.",
+				...advisory.warnings.map((warning) => `! ${warning}`),
+				advisory.updated > 0 ? advisoryRefreshNote(advisory.updated) : "No files were changed.",
 			].join("\n"),
 		);
 		return;
@@ -553,7 +654,8 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (selectedCandidates.length === 0) {
-		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), "No files were changed."].join("\n"));
+		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
+		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), ...advisory.warnings.map((warning) => `! ${warning}`), advisory.updated > 0 ? advisoryRefreshNote(advisory.updated) : "No files were changed."].join("\n"));
 		return;
 	}
 
@@ -579,7 +681,8 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (selectedCandidates.length === 0) {
-		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), "No files were changed."].join("\n"));
+		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
+		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), ...advisory.warnings.map((warning) => `! ${warning}`), advisory.updated > 0 ? advisoryRefreshNote(advisory.updated) : "No files were changed."].join("\n"));
 		return;
 	}
 
@@ -588,12 +691,14 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	const selectedSources = selectedPackageCandidates.map((candidate) => candidate.source);
 	const selectedAfterWait = new Set(selectedSources);
 	const enabledBySource = new Map(selectedPackageCandidates.filter((candidate) => selectedAfterWait.has(candidate.source)).map((candidate) => [candidate.source, !candidate.disabledByFilters]));
+	const agentSkillsBySource = new Map(selectedPackageCandidates.flatMap((candidate) => candidate.agentSkills !== undefined ? [[candidate.source, candidate.agentSkills] as const] : []));
 	let result: ConstructLoadResult;
 	try {
-		result = await loadSourcesIntoConstruct(ctx, paths, selectedSources, { enabledBySource });
+		result = await loadSourcesIntoConstruct(ctx, paths, selectedSources, { enabledBySource, agentSkillsBySource, prewrite });
+		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
 		const directResult = await loadDirectResourcesIntoConstruct(ctx, paths, selectedDirectCandidates.map((candidate) => candidate.resource));
 		result.directMetadataChanged = directResult.metadataChanged;
-		result.warnings.push(...directResult.warnings, ...selectionWarnings);
+		result.warnings.push(...advisory.warnings, ...directResult.warnings, ...selectionWarnings);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct load failed.\n${message}`);

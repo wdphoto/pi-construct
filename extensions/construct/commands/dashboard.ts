@@ -1,8 +1,8 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceSummary, PackageDeclarationSummary } from "../types.js";
-import { deriveId, findCatalogItemForSource, loadCatalog } from "../catalog.js";
-import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, packageResourceMatches, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
+import { deriveId, findCatalogItemForSource, loadCatalog, updateExistingCatalogAgentSkills, type CatalogAgentSkillsOpinion } from "../catalog.js";
+import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, packageResourceMatches, skillInspectionFor, type PackageResourceInventory, type PackageResourceSummary } from "../package-resources.js";
 import { collectProjectInventory, type ProjectInventory } from "../project-inventory.js";
 import { isObject } from "../json.js";
 import { effectivePackageState, savedSourceDecision, type EffectivePackageState, type SavedSourceRow } from "../effective-state.js";
@@ -13,10 +13,22 @@ import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { type PackageResourceFilterKey } from "../package-filters.js";
 import { packageResourceSelectionKey, packageResourceSetsDiffer, packageResourceStateDrift, planPackageResourceFilters } from "../package-resource-plans.js";
+import { packageSubmitBlockedBySkillCarrier } from "../picker-actions.js";
 import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
-import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationStep } from "../operation-runner.js";
+import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationRunResult, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerOptions, type CheckboxPickerResult, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 import { unloadConstructSources, type UnloadSelection } from "./unload.js";
+import {
+	catalogAgentSkillsInventory,
+	catalogAgentSkillsPreview,
+	packageSkillRepositoryFor,
+	skillRepositoriesOwnPath,
+	skillRepositorySignature,
+	skillRepositoryState,
+	togglePackageSkillRepositoryLinks,
+	type PackageSkillCandidate,
+	type PackageSkillRepository,
+} from "../skill-repositories.js";
 
 type DashboardSection = "Saved" | "Active" | "Disabled" | "Unresolved" | "Overrides" | "Available" | "Unloaded";
 type PackageDashboardSection = Exclude<DashboardSection, "Saved">;
@@ -35,6 +47,7 @@ interface DashboardPackage extends DashboardOperationItem {
 	filterState?: "unfiltered" | "whole-package-disabled" | "partially-filtered" | "invalid";
 	effectiveState?: EffectivePackageState;
 	matchSources: string[];
+	skillRepository?: PackageSkillRepository;
 }
 
 interface DashboardSavedLoadout {
@@ -178,6 +191,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	const catalog = inventory.catalog.data;
 	const warnings = [...inventory.catalog.warnings];
 	const packages: DashboardItem[] = [];
+	const settingsDir = dirname(paths.projectSettingsPath);
 
 	for (const profile of catalog.profiles) {
 		const sources = uniqueSorted(savedLoadoutSources(catalog, profile));
@@ -251,6 +265,9 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 	}
 
 	for (const item of inventory.availableCatalogPackages) {
+		// Include canonical match values so equivalent source spellings still suppress an Available
+		// advisory snapshot when Pi resolves native resources for the same package.
+		const matchSources = uniqueSorted(await packageSourceMatchValues(item.source, settingsDir));
 		packages.push({
 			type: "package",
 			rowId: rowId("catalog", item.id, item.source),
@@ -260,7 +277,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			displaySource: formatPackageSourceLabel(item.source),
 			section: "Available",
 			checked: false,
-			matchSources: [item.source],
+			matchSources: matchSources.length > 0 ? matchSources : [item.source],
 			description: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.",
 		});
 	}
@@ -283,8 +300,12 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
+	const projectResources = await collectProjectPackageResources(ctx, inventory);
+
 	warnings.push(...inventory.directResources.warnings);
 	for (const resource of inventory.directResources.resources) {
+		// Skills owned by a carrier package are represented as its child rows; hide the duplicate direct row.
+		if (resource.kind === "skill" && skillRepositoriesOwnPath(projectResources.skillRepositories, resource.path)) continue;
 		const section: PackageDashboardSection = resource.managed ? (resource.enabled ? "Active" : "Disabled") : "Unloaded";
 		packages.push({
 			type: "direct",
@@ -304,8 +325,11 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		});
 	}
 
-	const projectResources = await collectProjectPackageResources(ctx, inventory);
 	warnings.push(...projectResources.warnings);
+	for (const item of packages) {
+		if (item.type !== "package") continue;
+		item.skillRepository = packageSkillRepositoryFor(projectResources.skillRepositories, { source: item.source, matchSources: item.matchSources });
+	}
 	reclassifyManagedPackagesByEffectiveState(projectResources, packages);
 
 	// Recipe summaries/counts must reflect the effective sections, not the pre-resolve declaration
@@ -324,9 +348,30 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 		const availableSources = packages.filter((item): item is DashboardPackage => item.type === "package" && item.section === "Available" && !item.disabled).map((item) => item.source);
 		const availableResources = await collectTemporaryPackageResourcesForSources(ctx, inventory, availableSources, { cacheOnly: true });
 		warnings.push(...availableResources.warnings);
+		// Available Agent Skills come from the validated catalog snapshot when one exists (recorded from
+		// the declaring project's checkout), otherwise from a cache-only inspection of Pi's temporary
+		// checkout. Never inspect a project checkout here: Pi's temporary resolver and the project
+		// install path are different scopes. Pi-resolved native resources always win, so a source that
+		// resolves native resources never shows skill children that could mix with real resource rows.
+		for (const item of packages) {
+			if (item.type !== "package" || item.skillRepository || item.section !== "Available") continue;
+			if (availableResources.resources.some((resource) => packageResourceMatches(resource, { matchSources: item.matchSources }))) continue;
+			const catalogItem = catalog.items.find((candidate) => candidate.id === item.id && candidate.source === item.source);
+			if (catalogItem?.agentSkills) {
+				item.skillRepository = catalogAgentSkillsPreview(item.source, catalogItem.agentSkills);
+				continue;
+			}
+			// No recorded snapshot: a read-only cache inspection provides the dropdown without requiring
+			// a visit to the declaring project. The temporary cache can be stale, so it never overrides
+			// a validated snapshot.
+			const cachedRepository = packageSkillRepositoryFor(availableResources.skillRepositories, { source: item.source, matchSources: item.matchSources });
+			if (cachedRepository) item.skillRepository = cachedRepository;
+		}
 		packageResources = {
 			resources: [...projectResources.resources, ...availableResources.resources],
 			warnings: [...projectResources.warnings, ...availableResources.warnings],
+			skillRepositories: projectResources.skillRepositories,
+			skillInspections: projectResources.skillInspections,
 		};
 	}
 	sortDashboardPackages(packages);
@@ -345,6 +390,16 @@ function reclassifyManagedPackagesByEffectiveState(projectResources: PackageReso
 			// Unloaded declarations stay read-only/Unloaded (not adopted just because resolved), but still
 			// carry effective state so dashboard saved-row runs agree with /construct run skips.
 			if (item.section !== "Unloaded") continue;
+			if (item.skillRepository) {
+				// Read-only until adopted: a discovered unloaded carrier shows its skill tree but stays
+				// Unloaded (children read-only); the description points at /construct load instead of
+				// claiming no package resources exist.
+				const count = item.skillRepository.skills.length;
+				const linked = item.skillRepository.skills.filter((skill) => skill.linked).length;
+				item.effectiveState = skillRepositoryState(item.skillRepository);
+				item.description = `Read-only Agent Skills repository declaration: Construct found ${count} skill${count === 1 ? "" : "s"}${linked > 0 ? ` (${linked} linked)` : " (none linked yet)"}. Run /construct load to adopt it before linking skills; the Git package stays declared for pi update --extensions.`;
+				continue;
+			}
 			const unloadedState = effectivePackageState(projectResources.resources, { matchSources: item.matchSources });
 			item.effectiveState = unloadedState;
 			if (unloadedState === "unknown") {
@@ -357,6 +412,24 @@ function reclassifyManagedPackagesByEffectiveState(projectResources: PackageReso
 			continue;
 		}
 		if (item.section !== "Active" && item.section !== "Disabled") continue;
+		if (item.skillRepository) {
+			// A skill carrier's effective state comes from its linked top-level skill paths, not
+			// Pi package resources (always zero here) or whole-package filters. A carrier with a
+			// discovered adapter is never Unresolved: unlinked and all-linked-off both mean Disabled.
+			const repositoryState = skillRepositoryState(item.skillRepository);
+			const hasLinked = item.skillRepository.skills.some((skill) => skill.linked);
+			item.effectiveState = repositoryState;
+			if (repositoryState === "active") {
+				item.section = "Active";
+				item.description = "Agent Skills repository: linked project skill paths are active.";
+				continue;
+			}
+			item.section = "Disabled";
+			item.description = hasLinked
+				? "Agent Skills repository: linked project skill paths are all disabled. Select the listed skills and press Enter to update project skill settings."
+				: `Agent Skills repository: no Agent Skills linked yet. Construct found ${item.skillRepository.skills.length} skill${item.skillRepository.skills.length === 1 ? "" : "s"} in the managed checkout. Select the listed skills and press Enter to link their roots through project skill settings; the Git package stays declared for pi update --extensions.`;
+			continue;
+		}
 		const state = effectivePackageState(projectResources.resources, { id: item.id, matchSources: item.matchSources });
 		item.effectiveState = state;
 		if (item.filterState === "whole-package-disabled") {
@@ -457,7 +530,9 @@ function dashboardFooterHint(packages: DashboardItem[], projectMetadataMissing: 
 	if (counts.overrides > 0 && counts.active + counts.disabled + counts.available + counts.unloaded === 0) return "Pi project overrides are read-only here; manage inherit/load/unload with pi config -l.";
 	if (projectMetadataMissing && counts.available > 0) return "No Construct metadata yet. Select Available rows to install remembered packages, or run /construct load after installing project resources.";
 	if (projectMetadataMissing) return "No Construct metadata yet. Install a Pi package normally, then run /construct load.";
-	if (counts.unresolved > 0) return "Unresolved rows are declared but Pi resolved no resources; Construct will not install or enable them. Use pi config -l, or Ctrl+Alt+R to remove the declaration.";
+	if (counts.unresolved > 0) {
+		return "Unresolved rows are declared but Pi resolved no resources; Construct will not install or enable them. Use pi config -l, or Ctrl+Alt+R to remove the declaration.";
+	}
 	if (counts.unloaded > 0) return "Run /construct load to adopt already-installed resources into the Construct.";
 	if (counts.available > 0) return "Select Available rows and press Enter to install them into this project.";
 	if (counts.active + counts.disabled > 0) return "Select Active or Disabled rows and press Enter to toggle them.";
@@ -490,6 +565,7 @@ function packageWholeToggleBlocked(item: DashboardPackage): boolean {
 
 function actionForSubmit(action: CheckboxPickerSubmitAction, item: DashboardItem): DashboardAction | undefined {
 	if (item.type !== "package" && item.type !== "direct") return undefined;
+	if (packageSubmitBlockedBySkillCarrier(action, item.type, item.section, item.type === "package" && item.skillRepository !== undefined)) return undefined;
 	if (action === "confirm") {
 		if (item.type === "package" && item.section === "Available") return "Install";
 		if (item.type === "package" && packageWholeToggleBlocked(item)) return undefined;
@@ -587,18 +663,21 @@ function removeConfirmationFor(packages: DashboardItem[], ids: string[]): Checkb
 			],
 		};
 	}
+	const linkedSkillCarriers = removable.filter((item) => item.skillRepository?.skills.some((skill) => skill.linked));
+	const linkedSkillCount = linkedSkillCarriers.reduce((count, item) => count + (item.skillRepository?.skills.filter((skill) => skill.linked).length ?? 0), 0);
 	return {
 		title: `Remove ${removable.length} package${removable.length === 1 ? "" : "s"} from this project?`,
 		confirmHint: "Press Enter to remove from project · Esc cancels",
 		lines: [
 			`Will remove ${removable.length} package declaration${removable.length === 1 ? "" : "s"} from this project's .pi/settings.json after creating a backup.`,
+			linkedSkillCount > 0 ? `First removes ${linkedSkillCount} linked Agent Skill path${linkedSkillCount === 1 ? "" : "s"} for ${linkedSkillCarriers.length} carrier package${linkedSkillCarriers.length === 1 ? "" : "s"} from the project skills setting.` : undefined,
 			"Does not delete global Pi package caches or saved loadout recipes.",
 			"",
 			"Remove:",
 			...preview,
 			...extra,
 			...(skipped.length > 0 ? ["", "Skipped:", ...skipped.map((line) => `- ${line}`)] : []),
-		],
+		].filter((line): line is string => line !== undefined),
 	};
 }
 
@@ -807,8 +886,29 @@ function packageResourceInspectionPath(resource: PackageResourceSummary): string
 	return displayPath === resource.packageRelativePath ? displayPath : `${displayPath} (${resource.packageRelativePath})`;
 }
 
+function skillRepositoryInspection(item: DashboardPackage, repository: PackageSkillRepository): CheckboxPickerConfirmation {
+	const lines = [
+		`Package: ${item.label}`,
+		`Source: ${item.source}`,
+		"",
+		item.section === "Available"
+			? "This package is not installed or declared in this project yet. The read-only Agent Skill inventory comes from Construct's catalog or Pi's temporary cache; cached entries can be stale. Install and reopen before linking skills."
+			: "This declared Git package is an Agent Skills repository: Pi resolves no native package resources, but Construct found skill roots in the managed checkout.",
+		item.section === "Available"
+			? "Skill links stay read-only until install and reopen. Press Enter on the package row to install it."
+			: "Checking a child links its skill root in this project's top-level skills setting; the Git package declaration stays in place for pi update --extensions.",
+		"Adapted skill selections are project-local like package child filters and are not stored in saved loadout recipes.",
+	];
+	for (const skill of repository.skills) {
+		lines.push(`- ${skill.linked ? (skill.enabled ? "[x]" : "[-]") : "[ ]"} ${skill.name} — ${skill.packageRelativeRoot}/`);
+	}
+	if (repository.diagnostics.length > 0) lines.push("", ...repository.diagnostics.map((diagnostic) => `! ${diagnostic}`));
+	return { title: `Agent Skills: ${item.label}`, confirmHint: "Press Enter/Esc to return", lines };
+}
+
 function packageResourceInspection(item: DashboardPackage, packageResources: PackageResourceInventory | undefined): CheckboxPickerConfirmation {
 	const resources = resourcesForPackage(item, packageResources);
+	if (item.skillRepository && resources.length === 0) return skillRepositoryInspection(item, item.skillRepository);
 	if (item.section === "Available" && resources.length === 0) {
 		return {
 			title: `Package resources: ${item.label}`,
@@ -886,12 +986,48 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 	return children;
 }
 
+function packageSkillRepositoryChildRowId(item: DashboardPackage, skill: PackageSkillCandidate): string {
+	return rowId("package-skill", item.rowId, skill.packageRelativeRoot);
+}
+
+function packageSkillRepositoryChildren(item: DashboardPackage): CheckboxPickerItem[] {
+	const repository = item.skillRepository;
+	if (!repository) return [];
+	const editable = item.section === "Active" || item.section === "Disabled" || item.section === "Unresolved";
+	return repository.skills.map((skill) => ({
+		id: packageSkillRepositoryChildRowId(item, skill),
+		parentId: item.rowId,
+		depth: 1,
+		label: `skill ${skill.name}`,
+		value: `${skill.packageRelativeRoot}/`,
+		description: skill.linked
+			? "Linked Agent Skill. Checking it unlinks its project skill path when you press Enter; unselected linked skills keep their state."
+			: "Unlinked Agent Skill. Checking it adds this skill root to the project skills setting when you press Enter; unselected skills stay unlinked.",
+		checked: false,
+		disabled: !editable,
+		stateText: skill.linked ? (skill.enabled ? "✓" : "–") : "+",
+		stateTone: skill.linked ? (skill.enabled ? "success" : "muted") : "warning",
+		selectionGroup: skill.linked ? (skill.enabled ? "active" : "inactive") : "available",
+		marker: editable ? undefined : "   ",
+	}));
+}
+
 function packageResourceRowDescription(item: DashboardPackage, resourceCount: number): string | undefined {
+	if (item.skillRepository) {
+		// Carrier parent rows advertise their adapted Agent Skill children; these are not native
+		// Pi package resources, so use skill-specific wording instead of the package-resource text.
+		const count = item.skillRepository.skills.length;
+		const noun = count === 1 ? "Agent Skill" : "Agent Skills";
+		const stateLine = item.section === "Available"
+			? "Available Agent Skills repository (not installed in this project): Right Arrow reviews the catalog or cached Agent Skill inventory; Enter installs the package. Skill links stay read-only until install and reopen."
+			: item.description ?? "";
+		return [stateLine, `${count} ${noun} available · Right Arrow to review.`].filter(Boolean).join("\n");
+	}
 	const base = item.description;
 	if (item.section === "Available") {
 		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} cached Pi resource entries; Enter installs the whole package.`;
 		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use Alt+I for the exact path.`;
-		return `${base}\nNo cached package resource list is available yet, so there is no dropdown. Enter installs the whole package.`;
+		return `${base}\nNo current-project cached checkout or resource list is available; package resource inventory becomes available after install. Enter installs the whole package.`;
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
 		if (resourceCount > 1) {
@@ -908,8 +1044,12 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 	const items: CheckboxPickerItem[] = [];
 	for (const item of packages) {
 		const resources = item.type === "package" ? resourcesForPackage(item, packageResources) : [];
-		const children = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
-		const visibleChildren = children.length > 1 ? children : [];
+		const resourceChildren = item.type === "package" ? packageResourceChildren(item, packageResources) : [];
+		// Skill carriers always expose their discovered skills; there is no whole-package toggle for them.
+		const skillChildren = item.type === "package" ? packageSkillRepositoryChildren(item) : [];
+		const isSkillCarrier = item.type === "package" && item.skillRepository !== undefined;
+		const children = [...resourceChildren, ...skillChildren];
+		const visibleChildren = isSkillCarrier ? children : children.length > 1 ? children : [];
 		items.push({
 			id: item.rowId,
 			label: item.label,
@@ -929,6 +1069,7 @@ function dashboardPickerItems(packages: DashboardItem[], packageResources: Packa
 			aggregateChildIds: item.type === "package" && visibleChildren.length > 0 ? visibleChildren.map((child) => child.id) : undefined,
 			confirmOnFocus: item.type === "saved",
 			expandable: visibleChildren.length > 0,
+			expandedByDefault: false,
 		});
 		items.push(...visibleChildren);
 	}
@@ -1006,6 +1147,152 @@ function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): 
 	}
 	if (plans.length > 8) lines.push(`…and ${plans.length - 8} more`);
 	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
+}
+
+interface SkillRepositoryLinkPlan {
+	item: DashboardPackage;
+	repository: PackageSkillRepository;
+	toggledRelativeRoots: Set<string>;
+	baselineSignature: string;
+}
+
+function packageSkillRepositoryLinkPlans(packages: DashboardItem[], packageResources: PackageResourceInventory | undefined, changedIds: string[]): SkillRepositoryLinkPlan[] {
+	if (!packageResources || changedIds.length === 0) return [];
+	const changed = new Set(changedIds);
+	const plans: SkillRepositoryLinkPlan[] = [];
+	for (const item of packages) {
+		if (item.type !== "package" || !item.skillRepository || item.section === "Available") continue;
+		const repository = item.skillRepository;
+		const toggled = new Set<string>();
+		for (const skill of repository.skills) {
+			if (changed.has(packageSkillRepositoryChildRowId(item, skill))) toggled.add(skill.packageRelativeRoot);
+		}
+		if (toggled.size === 0) continue;
+		plans.push({ item, repository, toggledRelativeRoots: toggled, baselineSignature: skillRepositorySignature(repository) });
+	}
+	return plans;
+}
+
+function skillRepositoryLinkConfirmation(plans: SkillRepositoryLinkPlan[]): CheckboxPickerConfirmation | undefined {
+	if (plans.length === 0) return undefined;
+	const total = plans.reduce((count, plan) => count + plan.toggledRelativeRoots.size, 0);
+	const lines = [
+		`Link or unlink ${total} Agent Skill path${total === 1 ? "" : "s"} in this project's .pi/settings.json after creating a backup.`,
+		"The Git package declaration stays in place so pi update --extensions can update the checkout.",
+		"Adapted skill selections are project-local like package child filters and are not stored in saved loadout recipes.",
+		"Existing selections toggle; unselected linked skills keep their state; selected unlinked skills are added.",
+		"",
+		"Packages:",
+	];
+	for (const plan of plans.slice(0, 8)) lines.push(`- ${plan.item.label}: ${plan.toggledRelativeRoots.size} skill${plan.toggledRelativeRoots.size === 1 ? "" : "s"} selected`);
+	if (plans.length > 8) lines.push(`…and ${plans.length - 8} more`);
+	return { title: "Apply Agent Skill links?", confirmHint: "Press Enter to write project skills · Esc cancels", lines };
+}
+
+async function applySkillRepositoryLinkPlans(input: {
+	ctx: ExtensionCommandContext;
+	paths: ConstructPaths;
+	plans: SkillRepositoryLinkPlan[];
+	update: (title: string, lines: string[]) => void;
+	signal: AbortSignal;
+}): Promise<ConstructOperationRunResult> {
+	const { ctx, paths, plans, update, signal } = input;
+	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct Agent Skills", update, signal);
+	if (!ready) return { title: "Agent Skill link update cancelled", lines: ["No files were changed."] };
+
+	const status = new Map<string, PackageResourcePlanStatus>();
+	const succeeded = new Set<string>();
+	const failures: string[] = [];
+	const warnings: string[] = [];
+	const refused: string[] = [];
+	const trustLost: string[] = [];
+	let needsReload = false;
+	let mutatorAttempted = false;
+	const step = () => update("Applying Agent Skill links", [
+		`${status.size}/${plans.length} Agent Skill update${plans.length === 1 ? "" : "s"} processed`,
+		"",
+		...plans.map((plan) => {
+			const state = status.get(plan.item.rowId);
+			const icon = state === "done" ? "✓" : state === "warn" ? "?" : state === "fail" ? "!" : " ";
+			return `${icon} Link ${plan.item.label}  ${plan.toggledRelativeRoots.size} selected`;
+		}),
+		...warnings.map((warning) => `! ${warning}`),
+		...refused.map((refusal) => `? ${refusal}`),
+		...failures.map((failure) => `! ${failure}`),
+	]);
+	const finish = (rowIdValue: string, state: PackageResourcePlanStatus) => {
+		status.set(rowIdValue, state);
+		step();
+	};
+	step();
+
+	for (const plan of plans) {
+		if (signal.aborted) break;
+		if (!ctx.isProjectTrusted()) {
+			trustLost.push(`${plan.item.label}: project is no longer trusted; Agent Skill links were not changed.`);
+			finish(plan.item.rowId, "warn");
+			continue;
+		}
+		const freshInventory = await collectProjectInventory(ctx);
+		const freshResources = await collectProjectPackageResources(ctx, freshInventory);
+		warnings.push(...freshResources.warnings);
+		const freshRepository = packageSkillRepositoryFor(freshResources.skillRepositories, { source: plan.item.source, matchSources: plan.item.matchSources });
+		if (!freshRepository) {
+			refused.push(`${plan.item.label}: the Agent Skill repository is no longer present in the managed checkout; reopen /construct to re-review.`);
+			finish(plan.item.rowId, "warn");
+			continue;
+		}
+		if (skillRepositorySignature(freshRepository) !== plan.baselineSignature) {
+			refused.push(`${plan.item.label}: Agent Skill state changed since this review; reopen /construct to re-review.`);
+			finish(plan.item.rowId, "warn");
+			continue;
+		}
+		if (signal.aborted) break;
+		const trustedBeforeWrite = ctx.isProjectTrusted();
+		if (!trustedBeforeWrite) {
+			trustLost.push(`${plan.item.label}: project is no longer trusted; Agent Skill links were not changed.`);
+			finish(plan.item.rowId, "warn");
+			continue;
+		}
+		mutatorAttempted = true;
+		const result = await togglePackageSkillRepositoryLinks(paths, freshRepository, plan.toggledRelativeRoots, { projectTrusted: trustedBeforeWrite });
+		if (result.needsReload) needsReload = true;
+		if (!result.updated) {
+			failures.push(`${plan.item.label}: ${result.reason ?? "Agent Skill link update failed"}`);
+			finish(plan.item.rowId, "fail");
+		} else {
+			succeeded.add(plan.item.rowId);
+			finish(plan.item.rowId, "done");
+		}
+	}
+
+	const changed = succeeded.size;
+	const notApplied = refused.length + trustLost.length;
+	return {
+		title: signal.aborted
+			? changed > 0 || mutatorAttempted ? "Agent Skill link update cancelled after partial changes" : "Agent Skill link update cancelled"
+			: changed === 0 && trustLost.length > 0 ? "Project not trusted"
+				: notApplied > 0 ? "Agent Skill link update needs re-review"
+					: failures.length > 0 ? "Agent Skill links applied with errors"
+						: "Agent Skill links applied",
+		confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels" : "Press Enter/Esc to return to session",
+		confirmAction: needsReload ? "reload" : undefined,
+		lines: [
+			signal.aborted ? "Cancelled before remaining changes." : undefined,
+			!mutatorAttempted ? "No files were changed." : undefined,
+			changed > 0 ? `Updated Agent Skill links: ${changed}` : undefined,
+			...plans.filter((plan) => succeeded.has(plan.item.rowId)).map((plan) => `+ ${plan.item.label}: ${plan.toggledRelativeRoots.size} skill path${plan.toggledRelativeRoots.size === 1 ? "" : "s"} toggled`),
+			warnings.length > 0 ? `Warnings: ${warnings.length}` : undefined,
+			...warnings.map((warning) => `! ${warning}`),
+			trustLost.length > 0 ? `Trust changed (not applied): ${trustLost.length}` : undefined,
+			...trustLost.map((message) => `? ${message}`),
+			refused.length > 0 ? `Not applied (re-review): ${refused.length}` : undefined,
+			...refused.map((refusal) => `? ${refusal}`),
+			failures.length > 0 ? `Failures: ${failures.length}` : undefined,
+			...failures.map((failure) => `! ${failure}`),
+			needsReload ? "Reload Pi to load the updated project Agent Skills." : undefined,
+		].filter((line): line is string => line !== undefined),
+	};
 }
 
 async function freshProjectState(ctx: ExtensionCommandContext): Promise<{ inventory: ProjectInventory; resources: PackageResourceInventory }> {
@@ -1124,7 +1411,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		return;
 	}
 
-	const sessionPackageResources: PackageResourceInventory = packageResources ?? { resources: [], warnings: [] };
+	const sessionPackageResources: PackageResourceInventory = packageResources ?? { resources: [], warnings: [], skillRepositories: [], skillInspections: [] };
 	if (!projectTrusted) {
 		showText(ctx, dashboardText(paths, packages, trustWarnings, projectMetadataMissing, projectTrusted));
 		return;
@@ -1210,12 +1497,26 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		unloadConfirmation: (ids) => unloadConfirmationFor(packages, ids, unloadSelectionByRowId),
 		submitConfirmation: (ids, action, changedIds) => {
 			if (action !== "confirm") return undefined;
+			const skillPlans = packageSkillRepositoryLinkPlans(packages, sessionPackageResources, changedIds);
 			const plans = packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds, declarations);
-			if (plans.length > 0) {
-				const foreign = dashboardForeignOrdinarySelections(packages, new Set(ids), new Set(plans.map((plan) => plan.item.rowId)));
-				if (foreign.count > 0) return { ...dashboardMixedSelectionRefusal(foreign), canSubmit: false, confirmHint: "Esc to return · split child filters from package/direct/saved actions" };
+			if (skillPlans.length > 0 && plans.length > 0) {
+				return {
+					title: "Mixed child actions not applied",
+					confirmHint: "Esc to return · split package filters from Agent Skill links",
+					canSubmit: false,
+					lines: [
+						"Package resource filters and Agent Skill links cannot be combined in one submit.",
+						"No files were changed.",
+						"Apply package resource filters and Agent Skill links in separate submits.",
+					],
+				};
 			}
-			return packageResourceFilterConfirmation(plans) ?? disableConfirmationFor(packages, ids);
+			const planParentIds = new Set<string>([...skillPlans.map((plan) => plan.item.rowId), ...plans.map((plan) => plan.item.rowId)]);
+			if (planParentIds.size > 0) {
+				const foreign = dashboardForeignOrdinarySelections(packages, new Set(ids), planParentIds);
+				if (foreign.count > 0) return { ...dashboardMixedSelectionRefusal(foreign), canSubmit: false, confirmHint: "Esc to return · split child actions from package/direct/saved actions" };
+			}
+			return skillRepositoryLinkConfirmation(skillPlans) ?? packageResourceFilterConfirmation(plans) ?? disableConfirmationFor(packages, ids);
 		},
 		onSubmit: async (ids, update, signal, submitAction, changedIds) => {
 			const selected = new Set(ids);
@@ -1314,7 +1615,24 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				};
 			}
 			const selectedSaved = submitAction === "confirm" ? packages.filter((item): item is DashboardSavedLoadout => item.type === "saved" && !item.disabled && selected.has(item.rowId)) : [];
+			const skillPlans = submitAction === "confirm" ? packageSkillRepositoryLinkPlans(packages, sessionPackageResources, changedIds) : [];
 			const resourcePlans = submitAction === "confirm" ? packageResourceFilterPlans(packages, sessionPackageResources, ids, changedIds, declarations) : [];
+			if (skillPlans.length > 0 && resourcePlans.length > 0) {
+				return {
+					title: "Mixed child actions not applied",
+					lines: [
+						"Package resource filters and Agent Skill links cannot be combined in one submit.",
+						"No files were changed.",
+						"Apply package resource filters and Agent Skill links in separate submits.",
+					],
+				};
+			}
+			if (skillPlans.length > 0) {
+				const planParentIds = new Set(skillPlans.map((plan) => plan.item.rowId));
+				const foreign = dashboardForeignOrdinarySelections(packages, selected, planParentIds);
+				if (foreign.count > 0) return { ...dashboardMixedSelectionRefusal(foreign), confirmHint: "Press Enter/Esc to return" };
+				return await applySkillRepositoryLinkPlans({ ctx, paths, plans: skillPlans, update, signal });
+			}
 			if (resourcePlans.length > 0) {
 				const planParentIds = new Set(resourcePlans.map((plan) => plan.item.rowId));
 				const foreign = dashboardForeignOrdinarySelections(packages, selected, planParentIds);
@@ -1514,6 +1832,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				if (action) addStep(action, operationFromDirect(item));
 			}
 			const savedAllOff: string[] = [];
+			const savedSkillsUnlinked: string[] = [];
 			const savedUnresolved: string[] = [];
 			const savedOverrides: string[] = [];
 			for (const saved of selectedSaved) {
@@ -1525,8 +1844,10 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					const decision = matchingPackage ? savedSourceDecision(dashboardSavedSourceRow(matchingPackage)) : "install";
 					if (decision === "install" || decision === "enable") {
 						addStep(decision === "install" ? "Install" : "Enable", matchingPackage ? operationFromPackage(matchingPackage) : operationFromSource(source));
-					} else if (decision === "all-off") savedAllOff.push(source);
-					else if (decision === "unresolved") savedUnresolved.push(source);
+					} else if (decision === "all-off") {
+						if (matchingPackage?.skillRepository) savedSkillsUnlinked.push(source);
+						else savedAllOff.push(source);
+					} else if (decision === "unresolved") savedUnresolved.push(source);
 					else if (decision === "override") savedOverrides.push(source);
 				}
 			}
@@ -1535,11 +1856,12 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				const effectivelyOffPackages = submitAction === "confirm" ? packageItems.filter((item) => !item.disabled && selected.has(item.rowId) && item.section === "Disabled" && !packageWholeToggleBlocked(item) && item.filterState !== "whole-package-disabled") : [];
 				if (selectedSaved.length > 0) {
 					return {
-						title: savedAllOff.length + savedUnresolved.length + savedOverrides.length > 0 ? "Saved loadout made no changes" : "Saved loadout already active",
+						title: savedAllOff.length + savedSkillsUnlinked.length + savedUnresolved.length + savedOverrides.length > 0 ? "Saved loadout made no changes" : "Saved loadout already active",
 						lines: [
 							`Selected saved loadouts: ${selectedSaved.length}`,
 							"No package changes were needed in this project.",
 							...savedOverrides.map((source) => `↔ ${source} — Pi project override (autoload:false); manage with pi config -l`),
+							...savedSkillsUnlinked.map((source) => `◇ ${source} — Agent Skills are not active in this project; open /construct, unfold the package, and select its Agent Skill children`),
 							...savedAllOff.map((source) => `– ${source} — all resolved resources are off; use pi config -l to enable specific resources`),
 							...savedUnresolved.map((source) => `? ${source} — Pi resolved no package resources; inspect the declaration with pi config -l`),
 							"Saved loadouts are activate-only; nothing was disabled, removed, or exact-matched.",
@@ -1569,6 +1891,52 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 			const enabled = byAction("Enable");
 			const disabled = byAction("Disable");
 			const removed = byAction("Remove");
+			// Removal updates existing catalog items only and never persists checkout paths. A removed
+			// carrier stores its bounded inventory; a removal with authoritative evidence of no adapter
+			// (matched native resources or an inspected checkout) clears stale inventory; an
+			// unresolved/uninspected removal carries no opinion and preserves the existing snapshot.
+			const removedRows = removed
+				.map((removedItem) => packageItems.find((item) => item.source === removedItem.source && item.id === removedItem.id))
+				.filter((item): item is DashboardPackage => item !== undefined);
+			if (removedRows.length > 0) {
+				if (!ctx.isProjectTrusted()) {
+					outcome.failures.push("Package removal completed, but project trust was lost before Construct could update the remembered Agent Skill inventory.");
+				} else {
+					try {
+						const opinions = new Map<string, CatalogAgentSkillsOpinion>();
+						const unclearable: string[] = [];
+						for (const item of removedRows) {
+							if (item.skillRepository) {
+								const snapshot = catalogAgentSkillsInventory(item.skillRepository);
+								if (snapshot) opinions.set(item.source, snapshot);
+								else {
+									opinions.set(item.source, null);
+									unclearable.push(item.label);
+								}
+								continue;
+							}
+							// No adapter. Clear only when authoritative: Pi matched native resources, or a real
+							// checkout was inspected with no adapter. Unresolved/uninspected rows keep the snapshot.
+							const hasNative = sessionPackageResources.resources.some((resource) => packageResourceMatches(resource, { matchSources: item.matchSources }));
+							const inspection = skillInspectionFor(sessionPackageResources, { source: item.source, matchSources: item.matchSources });
+							if (hasNative || inspection?.inspected) opinions.set(item.source, null);
+						}
+						const updated = await updateExistingCatalogAgentSkills(
+							ctx,
+							opinions,
+							async () => {
+								if (!ctx.isProjectTrusted()) throw new Error("Project trust was lost before the catalog write.");
+							},
+						);
+						outcome.failures.push(...updated.warnings);
+						if (unclearable.length > 0) {
+							outcome.failures.push(`${unclearable.length} Agent Skill inventory snapshot${unclearable.length === 1 ? "" : "s"} could not be recorded (too many, duplicate, or invalid roots); stale advisory inventory was cleared: ${unclearable.slice(0, 3).join(", ")}${unclearable.length > 3 ? ", …" : ""}.`);
+						}
+					} catch (error) {
+						outcome.failures.push(`Package removal completed, but Construct could not update the remembered Agent Skill inventory: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+			}
 			const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
 			return {
 				title: outcome.cancelled
@@ -1589,6 +1957,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 					...enabled.map((item) => `+ ${item.label}: ${item.source}`),
 					...savedOverrides.map((source) => `↔ ${source} — Pi project override (autoload:false); manage with pi config -l`),
+					...savedSkillsUnlinked.map((source) => `◇ ${source} — Agent Skills are not active in this project; open /construct, unfold the package, and select its Agent Skill children`),
 					...savedAllOff.map((source) => `– ${source} — all resolved resources are off; use pi config -l to enable specific resources`),
 					...savedUnresolved.map((source) => `? ${source} — Pi resolved no package resources; inspect the declaration with pi config -l`),
 					disabled.length > 0 ? `Disabled: ${disabled.length}` : undefined,

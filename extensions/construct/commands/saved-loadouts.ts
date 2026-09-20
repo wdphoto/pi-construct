@@ -47,6 +47,7 @@ interface SavePackageSnapshot {
 	activeUnloadedPackages: Array<{ id: string; source: string }>;
 	disabledPackageCount: number;
 	allOffPackageCount: number;
+	skillsUnlinkedPackageCount: number;
 	unresolvedPackageCount: number;
 	resourceWarnings: string[];
 }
@@ -58,11 +59,14 @@ function savePackageSnapshotFromInventory(inventory: ProjectInventory, resourceW
 		activeUnloadedPackages: inventory.unloadedPackageDeclarations.filter((candidate) => candidate.effectiveState === "active").map((candidate) => ({ id: deriveId(candidate.source), source: candidate.source })),
 		disabledPackageCount: inventory.packageDeclarations.filter((pkg) => pkg.form !== "invalid" && !pkg.projectOverride && pkg.enabled && pkg.disabledByFilters && pkg.source.trim()).length,
 		allOffPackageCount:
-			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && item.effectiveState === "inactive").length
-			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && item.effectiveState === "inactive").length,
+			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && !item.skillCarrier && item.effectiveState === "inactive").length
+			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && !item.skillCarrier && item.effectiveState === "inactive").length,
+		skillsUnlinkedPackageCount:
+			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && item.skillCarrier && item.effectiveState !== "active").length
+			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && item.skillCarrier && item.effectiveState !== "active").length,
 		unresolvedPackageCount:
-			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && item.effectiveState === "unknown").length
-			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && item.effectiveState === "unknown").length,
+			inventory.managedPackages.filter((item) => item.declared && !item.projectOverride && !item.disabledByFilters && !item.skillCarrier && item.effectiveState === "unknown").length
+			+ inventory.unloadedPackageDeclarations.filter((item) => !item.disabledByFilters && !item.skillCarrier && item.effectiveState === "unknown").length,
 		resourceWarnings,
 	};
 }
@@ -146,6 +150,7 @@ function saveSummaryText(options: {
 	skippedActiveUnloaded: number;
 	skippedDisabled: number;
 	skippedAllOff: number;
+	skippedSkillsUnlinked: number;
 	skippedUnresolved: number;
 	resourceWarnings: string[];
 	directNotice: string[];
@@ -154,6 +159,7 @@ function saveSummaryText(options: {
 		options.skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${options.skippedActiveUnloaded}` : undefined,
 		options.skippedDisabled > 0 ? `! Disabled package declarations: ${options.skippedDisabled}` : undefined,
 		options.skippedAllOff > 0 ? `! Packages with all resolved resources off: ${options.skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+		options.skippedSkillsUnlinked > 0 ? `! Declared Agent Skills carriers not linked/enabled: ${options.skippedSkillsUnlinked} (not included; open /construct and review the package children)` : undefined,
 		options.skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${options.skippedUnresolved} (not included; inspect the declaration with pi config -l)` : undefined,
 		...options.resourceWarnings.map((warning) => `! ${warning}`),
 		...options.directNotice,
@@ -240,7 +246,7 @@ function overlaps(a: Iterable<string>, b: Set<string>): boolean {
 
 interface SavedLoadoutSkip {
 	source: string;
-	reason: "all-off" | "unresolved";
+	reason: "all-off" | "unresolved" | "skills-unlinked";
 }
 
 async function stepsForSavedLoadoutSources(
@@ -284,7 +290,7 @@ async function stepsForSavedLoadoutSources(
 			if (decision === "install") addStep("Install", source, findCatalogItem(catalogItems, source)?.id ?? deriveId(source));
 			else if (decision === "enable") addStep("Enable", managed.source, managed.metadata.id);
 			else if (decision === "active") alreadyActive.push(source);
-			else if (decision === "all-off") skipped.push({ source, reason: "all-off" });
+			else if (decision === "all-off") skipped.push({ source, reason: managed.skillCarrier ? "skills-unlinked" : "all-off" });
 			else skipped.push({ source, reason: "unresolved" });
 			continue;
 		}
@@ -294,7 +300,7 @@ async function stepsForSavedLoadoutSources(
 			const decision = savedSourceDecision({ section: "Unloaded", wholePackageDisabled: Boolean(unloaded.disabledByFilters), effectiveState: unloaded.effectiveState });
 			if (decision === "enable") addStep("Enable", unloaded.rawSource, deriveId(unloaded.source));
 			else if (decision === "active") alreadyActive.push(source);
-			else if (decision === "all-off") skipped.push({ source, reason: "all-off" });
+			else if (decision === "all-off") skipped.push({ source, reason: unloaded.skillCarrier ? "skills-unlinked" : "all-off" });
 			else skipped.push({ source, reason: "unresolved" });
 			continue;
 		}
@@ -309,7 +315,10 @@ async function stepsForSavedLoadoutSources(
 function skippedSourceLines(skipped: SavedLoadoutSkip[]): string[] {
 	const allOff = skipped.filter((entry) => entry.reason === "all-off");
 	const unresolved = skipped.filter((entry) => entry.reason === "unresolved");
+	const skillsUnlinked = skipped.filter((entry) => entry.reason === "skills-unlinked");
 	return [
+		skillsUnlinked.length > 0 ? `Agent Skills carriers not active (not enabled): ${skillsUnlinked.length}` : undefined,
+		...skillsUnlinked.map((entry) => `◇ ${entry.source} — Agent Skills are not active in this project; open /construct, unfold the package, and select its Agent Skill children`),
 		allOff.length > 0 ? `Already effectively off (not enabled): ${allOff.length}` : undefined,
 		...allOff.map((entry) => `– ${entry.source} — all resolved resources are off; use pi config -l to enable specific resources`),
 		unresolved.length > 0 ? `Unresolved declarations skipped: ${unresolved.length}` : undefined,
@@ -468,6 +477,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	if (initialManaged.length === 0 && selectedBeforeWait.length === 0) {
 		const skippedDisabled = initialSnapshot.disabledPackageCount;
 		const skippedAllOff = initialSnapshot.allOffPackageCount;
+		const skippedSkillsUnlinked = initialSnapshot.skillsUnlinkedPackageCount;
 		const skippedUnresolved = initialSnapshot.unresolvedPackageCount;
 		showText(
 			ctx,
@@ -477,6 +487,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 					initialUnloaded.length > 0 ? `! Active package declarations not loaded into Construct: ${initialUnloaded.length}` : undefined,
 					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
 					skippedAllOff > 0 ? `! Packages with all resolved resources off: ${skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+					skippedSkillsUnlinked > 0 ? `! Declared Agent Skills carriers not linked/enabled: ${skippedSkillsUnlinked} (open /construct and review the package children)` : undefined,
 					skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${skippedUnresolved} (inspect the declaration with pi config -l)` : undefined,
 					...initialSnapshot.resourceWarnings.map((warning) => `! ${warning}`),
 					...directNotice,
@@ -508,6 +519,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 	let skippedActiveUnloaded = 0;
 	let skippedDisabled = 0;
 	let skippedAllOff = 0;
+	let skippedSkillsUnlinked = 0;
 	let skippedUnresolved = 0;
 	let resourceWarnings: string[] = [];
 	try {
@@ -518,6 +530,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 		skippedActiveUnloaded = freshSnapshot.activeUnloadedPackages.filter((candidate) => !selectedAfterWait.has(candidate.source)).length;
 		skippedDisabled = freshSnapshot.disabledPackageCount;
 		skippedAllOff = freshSnapshot.allOffPackageCount;
+		skippedSkillsUnlinked = freshSnapshot.skillsUnlinkedPackageCount;
 		skippedUnresolved = freshSnapshot.unresolvedPackageCount;
 		resourceWarnings = freshSnapshot.resourceWarnings;
 		currentSources = uniqueSorted([...freshSnapshot.activeManagedSources, ...selectedToLoad]);
@@ -536,6 +549,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 					skippedActiveUnloaded > 0 ? `! Active package declarations not loaded into Construct: ${skippedActiveUnloaded}` : undefined,
 					skippedDisabled > 0 ? `! Disabled package declarations: ${skippedDisabled}` : undefined,
 					skippedAllOff > 0 ? `! Packages with all resolved resources off: ${skippedAllOff} (not included; use pi config -l to enable specific resources)` : undefined,
+					skippedSkillsUnlinked > 0 ? `! Declared Agent Skills carriers not linked/enabled: ${skippedSkillsUnlinked} (open /construct and review the package children)` : undefined,
 					skippedUnresolved > 0 ? `! Declared packages with no resolved resources: ${skippedUnresolved} (inspect the declaration with pi config -l)` : undefined,
 					...resourceWarnings.map((warning) => `! ${warning}`),
 					...directNotice,
@@ -616,6 +630,7 @@ async function saveLoadout(ctx: ExtensionCommandContext, name: string): Promise<
 			skippedActiveUnloaded,
 			skippedDisabled,
 			skippedAllOff,
+			skippedSkillsUnlinked,
 			skippedUnresolved,
 			resourceWarnings,
 			directNotice,

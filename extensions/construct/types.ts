@@ -20,6 +20,18 @@ export type DirectResourceKind = Exclude<ResourceKind, "package">;
 export type ResourceScope = "user" | "project" | "temporary";
 export type ResourceOrigin = "package" | "top-level";
 
+export interface CatalogAgentSkill extends JsonObject {
+	name: string;
+	description: string;
+	/** Skill root relative to the package checkout. */
+	root: string;
+}
+
+/** Advisory inventory remembered from a previously inspected package checkout. */
+export interface CatalogAgentSkillsInventory extends JsonObject {
+	skills: CatalogAgentSkill[];
+}
+
 export interface CatalogItem extends JsonObject {
 	id: string;
 	name?: string;
@@ -28,6 +40,7 @@ export interface CatalogItem extends JsonObject {
 	description?: string;
 	groups?: string[];
 	managed?: boolean;
+	agentSkills?: CatalogAgentSkillsInventory;
 }
 
 export interface DirectResourceSummary {

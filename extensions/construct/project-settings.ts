@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { PackageSource } from "@earendil-works/pi-coding-agent";
 import type { ConstructPaths, DirectResourceKind, DirectResourceSummary, JsonObject, JsonReadResult, ManagedItemSummary, PackageDeclarationSummary } from "./types.js";
 import { describeJsonReadIssue, isObject, readJson } from "./json.js";
@@ -270,6 +270,62 @@ export function removeConstructItemsById(construct: JsonObject, ids: Iterable<st
 			continue;
 		}
 		nextItems[id] = value;
+	}
+	if (removed === 0) return { construct, removed: 0 };
+	return {
+		construct: {
+			...construct,
+			version: 1,
+			managedBy: "the-construct",
+			items: nextItems,
+		},
+		removed,
+	};
+}
+
+function canonicalPath(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return resolve(path);
+	}
+}
+
+function pathInsideOrSame(base: string, path: string): boolean {
+	const value = relative(base, path);
+	return value === "" || (!value.startsWith("..") && !isAbsolute(value));
+}
+
+function directSkillItemInsideRoot(value: JsonObject, paths: ConstructPaths, packageRoot: string): boolean {
+	// The checkout may already be deleted by the time metadata is pruned, so resolve against
+	// canonical project paths captured at inventory time (realpath would fail and fall back
+	// to a symlinked path that no longer compares equal to packageRoot).
+	const settingsDir = canonicalPath(dirname(paths.projectSettingsPath));
+	const cwd = paths.realCwd || paths.cwd;
+	for (const key of ["path", "settingsPath"] as const) {
+		const raw = value[key];
+		if (typeof raw !== "string" || !raw.trim()) continue;
+		const candidates = isAbsolute(raw) ? [raw] : [resolve(cwd, raw), resolve(settingsDir, raw)];
+		if (candidates.some((candidate) => pathInsideOrSame(packageRoot, canonicalPath(candidate)))) return true;
+	}
+	return false;
+}
+
+/**
+ * Remove Construct direct `skill` metadata whose path points inside a carrier checkout.
+ * Used when the carrier package is removed so legacy duplicate direct-skill adoption does
+ * not outlive its owner. Operates on `.pi/construct.json` only; never touches files.
+ */
+export function removeCarrierDirectSkillItems(construct: JsonObject, paths: ConstructPaths, packageRoot: string): { construct: JsonObject; removed: number } {
+	const items = isObject(construct.items) ? construct.items : {};
+	const nextItems: JsonObject = {};
+	let removed = 0;
+	for (const [id, value] of Object.entries(items)) {
+		if (!isObject(value) || value.kind !== "skill" || !directSkillItemInsideRoot(value, paths, packageRoot)) {
+			nextItems[id] = value;
+			continue;
+		}
+		removed += 1;
 	}
 	if (removed === 0) return { construct, removed: 0 };
 	return {

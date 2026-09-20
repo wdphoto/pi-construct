@@ -52,8 +52,8 @@ export class TrustRefusedError extends Error {
 	constructor(targetDir: string, reason: "untrusted" | "unknown") {
 		super(
 			reason === "unknown"
-				? `Could not read Pi trust state for ${targetDir}; refused to write project files.`
-				: `${targetDir} is not trusted by Pi; refused to write project files.`,
+				? `Could not read Pi trust state for ${targetDir}; refused to write Construct data.`
+				: `${targetDir} is not trusted by Pi; refused to write Construct data.`,
 		);
 		this.name = "TrustRefusedError";
 		this.targetDir = targetDir;

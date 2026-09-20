@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, relative, sep } from "node:path";
 import type { ResolvedResource } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DirectResourceKind } from "./types.js";
@@ -7,6 +6,7 @@ import type { ProjectInventory } from "./project-inventory.js";
 import { resolveProjectPackageResources, resolveTemporaryPackageResourcesForSources, type ResolvedPackageResources } from "./pi-adapter/package-manager.js";
 import { directResourceKinds, directResourceName, resourcePlural } from "./resources.js";
 import { normalizeSourceForLibrary, packageSourceIdentityKey, packageSourceMatchValues } from "./sources.js";
+import { discoverPackageSkillRepository, discoverTemporaryPackageSkillRepository, type PackageSkillRepository } from "./skill-repositories.js";
 
 const resolvedResourceKeys = {
 	extension: "extensions",
@@ -38,9 +38,30 @@ export interface PackageResourceSummary {
 	enabled: boolean;
 }
 
+export interface PackageSkillInspection {
+	source: string;
+	/** Canonical source match values so equivalent spellings resolve to the same inspection. */
+	matchSources: string[];
+	/** True when a real checkout was located and inspected (even if no adapter was found). */
+	inspected: boolean;
+	/** True when a discovered Agent Skills repository was produced. */
+	adapter: boolean;
+}
+
 export interface PackageResourceInventory {
 	resources: PackageResourceSummary[];
 	warnings: string[];
+	skillRepositories: PackageSkillRepository[];
+	/** Per-source authoritative inspection state; absent sources are "no opinion". */
+	skillInspections: PackageSkillInspection[];
+}
+
+/** Look up the authoritative Agent Skills inspection for a package source, by canonical identity. */
+export function skillInspectionFor(inventory: PackageResourceInventory, target: { source: string; matchSources: Iterable<string> }): PackageSkillInspection | undefined {
+	const wanted = new Set<string>([target.source, ...target.matchSources]);
+	return inventory.skillInspections.find(
+		(inspection) => inspection.source === target.source || wanted.has(inspection.source) || inspection.matchSources.some((match) => wanted.has(match)),
+	);
 }
 
 async function managedPackageIdsBySource(inventory: ProjectInventory): Promise<Map<string, string>> {
@@ -119,61 +140,51 @@ function resourceMatchesManagedPackage(resource: PackageResourceSummary, item: P
 	return packageResourceMatches(resource, { id: item.metadata.id, matchSources: item.matchSources });
 }
 
-function projectGitPackageRoot(cwd: string, source: string): string | undefined {
-	const identity = packageSourceIdentityKey(source);
-	if (!identity?.startsWith("git:")) return undefined;
-	const path = identity.slice("git:".length);
-	if (!path.includes("/")) return undefined;
-	return join(cwd, ".pi", "git", ...path.split("/"));
-}
-
-function findNonPiSkillFiles(root: string): string[] {
-	const found: string[] = [];
-	const visit = (dir: string, depth: number) => {
-		if (depth > 4 || found.length >= 6) return;
-		let entries: string[];
-		try {
-			entries = readdirSync(dir);
-		} catch {
-			return;
-		}
-		for (const entry of entries) {
-			if (entry === ".git" || entry === "node_modules" || entry === "skills") continue;
-			const path = join(dir, entry);
-			let stat;
-			try {
-				stat = statSync(path);
-			} catch {
-				continue;
-			}
-			if (stat.isDirectory()) visit(path, depth + 1);
-			else if (entry === "SKILL.md") {
-				const rel = relativeIfInside(root, path);
-				if (rel) found.push(rel);
-			}
-		}
+async function discoverSkillRepositories(inventory: ProjectInventory, resources: PackageResourceSummary[], projectTrusted: boolean): Promise<{ repositories: PackageSkillRepository[]; inspections: PackageSkillInspection[]; diagnostics: string[] }> {
+	const repositories: PackageSkillRepository[] = [];
+	const inspections: PackageSkillInspection[] = [];
+	const diagnostics: string[] = [];
+	const settingsDir = dirname(inventory.paths.projectSettingsPath);
+	const record = async (source: string, discovery: Awaited<ReturnType<typeof discoverPackageSkillRepository>>): Promise<void> => {
+		const matchSources = await packageSourceMatchValues(source, settingsDir);
+		inspections.push({ source, matchSources, inspected: discovery.inspected, adapter: discovery.repository !== undefined });
+		if (discovery.repository) repositories.push(discovery.repository);
 	};
-	if (existsSync(root)) visit(root, 0);
-	return found;
+	for (const item of inventory.managedPackages) {
+		if (!item.declared || item.projectOverride) continue;
+		if (resources.some((resource) => resourceMatchesManagedPackage(resource, item))) continue;
+		const discovery = await discoverPackageSkillRepository(inventory.paths, item.source, inventory.directResources.resources, { projectTrusted });
+		await record(item.source, discovery);
+		diagnostics.push(...discovery.diagnostics.map((diagnostic) => `${item.metadata.id}: ${diagnostic}`));
+	}
+	// /construct load must inspect not-yet-adopted declarations too. Otherwise its first adoption
+	// cannot remember a carrier inventory and can misoffer linked carrier skills as direct resources.
+	for (const item of inventory.unloadedPackageDeclarations) {
+		if (item.projectOverride) continue;
+		if (resources.some((resource) => packageResourceMatches(resource, { matchSources: item.matchSources }))) continue;
+		const discovery = await discoverPackageSkillRepository(inventory.paths, item.source, inventory.directResources.resources, { projectTrusted });
+		await record(item.source, discovery);
+		diagnostics.push(...discovery.diagnostics.map((diagnostic) => `${item.source}: ${diagnostic}`));
+	}
+	return { repositories, inspections, diagnostics };
 }
 
-function zeroResourcePackageWarning(inventory: ProjectInventory, item: ProjectInventory["managedPackages"][number]): string {
-	const root = projectGitPackageRoot(inventory.paths.cwd, item.source);
-	const skillFiles = root ? findNonPiSkillFiles(root) : [];
-	const candidates = skillFiles.length > 0 ? ` Found non-Pi skill files: ${skillFiles.slice(0, 3).join(", ")}${skillFiles.length > 3 ? ", …" : ""}.` : "";
-	return (
-		`${item.metadata.id}: package is declared in this project, but Pi resolved no package resources from ${item.source}.` +
-		candidates +
-		" Do not patch .pi/git; pi update --extensions can reset it. Keep the upstream package declared for updates and add project-local direct skill entries or a wrapper manifest; re-check paths after updates."
-	);
-}
-
-function declaredManagedPackageResourceWarnings(inventory: ProjectInventory, resources: PackageResourceSummary[]): string[] {
+function declaredManagedPackageResourceWarnings(
+	inventory: ProjectInventory,
+	resources: PackageResourceSummary[],
+	skillRepositories: PackageSkillRepository[],
+): string[] {
 	const warnings: string[] = [];
 	for (const item of inventory.managedPackages) {
 		if (!item.declared) continue;
 		if (resources.some((resource) => resourceMatchesManagedPackage(resource, item))) continue;
-		warnings.push(zeroResourcePackageWarning(inventory, item));
+		const repository = skillRepositories.find((candidate) => candidate.source === item.source);
+		if (repository) {
+			const linked = repository.skills.filter((skill) => skill.linked).length;
+			warnings.push(`${item.metadata.id}: Pi resolves no native package resources, but Construct found ${repository.skills.length} Agent Skill${repository.skills.length === 1 ? "" : "s"}${linked > 0 ? ` (${linked} linked through project skill settings)` : " ready to link"}. The Git package remains declared so pi update --extensions can update it.`);
+			continue;
+		}
+		warnings.push(`${item.metadata.id}: package is declared in this project, but Pi resolved no package resources from ${item.source}. Do not patch .pi/git; keep the upstream package declared so pi update --extensions can update it, and inspect the declaration with pi config -l.`);
 	}
 	return warnings;
 }
@@ -181,7 +192,7 @@ function declaredManagedPackageResourceWarnings(inventory: ProjectInventory, res
 export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">, inventory: ProjectInventory): Promise<PackageResourceInventory> {
 	const warnings: string[] = [];
 	if (!ctx.isProjectTrusted() && inventory.packageDeclarations.length > 0) {
-		return { resources: [], warnings: ["Project package resources were not inspected because the project is not trusted by Pi."] };
+		return { resources: [], warnings: ["Project package resources were not inspected because the project is not trusted by Pi."], skillRepositories: [], skillInspections: [] };
 	}
 	let resolved: ResolvedPackageResources;
 	try {
@@ -189,14 +200,23 @@ export async function collectProjectPackageResources(ctx: Pick<ExtensionCommandC
 		resolved = result.resolved;
 		warnings.push(...result.settingsErrors.map((error) => `Pi settings were not fully loaded for package resource inventory: ${error}`));
 	} catch (error) {
-		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`] };
+		// Resolver-level failure: no source was authoritatively inspected, so keep it as no opinion.
+		return { resources: [], warnings: [`Could not inspect project package resources: ${error instanceof Error ? error.message : String(error)}`], skillRepositories: [], skillInspections: [] };
 	}
 
 	const resources = await resolvedResourcesForInventory({ inventory, resolved, scope: "project" });
-	warnings.push(...declaredManagedPackageResourceWarnings(inventory, resources));
-	return { resources, warnings };
+	const skillDiscovery = await discoverSkillRepositories(inventory, resources, ctx.isProjectTrusted());
+	warnings.push(...skillDiscovery.diagnostics);
+	warnings.push(...declaredManagedPackageResourceWarnings(inventory, resources, skillDiscovery.repositories));
+	return { resources, warnings, skillRepositories: skillDiscovery.repositories, skillInspections: skillDiscovery.inspections };
 }
 
+/**
+ * Cache-only, offline native package-resource preview for Available catalog sources. It never
+ * installs, clones, fetches, inspects other projects, or persists data. Agent Skills use a
+ * validated catalog snapshot when present; otherwise, a read-only temporary-cache inventory may
+ * be shown. Cached inventories can be stale, and no project checkout is inspected here.
+ */
 export async function collectTemporaryPackageResourcesForSources(
 	ctx: Pick<ExtensionCommandContext, "cwd" | "isProjectTrusted">,
 	inventory: ProjectInventory,
@@ -204,9 +224,9 @@ export async function collectTemporaryPackageResourcesForSources(
 	options: { cacheOnly?: boolean } = {},
 ): Promise<PackageResourceInventory> {
 	const uniqueSources = [...new Set(sources.filter((source) => source.trim().length > 0))];
-	if (uniqueSources.length === 0) return { resources: [], warnings: [] };
+	if (uniqueSources.length === 0) return { resources: [], warnings: [], skillRepositories: [], skillInspections: [] };
 	if (!ctx.isProjectTrusted()) {
-		return { resources: [], warnings: ["Available package resources were not inspected because the project is not trusted by Pi."] };
+		return { resources: [], warnings: ["Available package resources were not inspected because the project is not trusted by Pi."], skillRepositories: [], skillInspections: [] };
 	}
 
 	const warnings: string[] = [];
@@ -216,8 +236,24 @@ export async function collectTemporaryPackageResourcesForSources(
 		resolved = result.resolved;
 		warnings.push(...result.settingsErrors.map((error) => `Pi settings were not fully loaded for available package resource inventory: ${error}`));
 	} catch (error) {
-		return { resources: [], warnings: [`Could not inspect available package resources: ${error instanceof Error ? error.message : String(error)}`] };
+		return { resources: [], warnings: [`Could not inspect available package resources: ${error instanceof Error ? error.message : String(error)}`], skillRepositories: [], skillInspections: [] };
 	}
 
-	return { resources: await resolvedResourcesForInventory({ inventory, resolved, scope: "temporary" }), warnings };
+	const temporaryResources = await resolvedResourcesForInventory({ inventory, resolved, scope: "temporary" });
+	// Available Agent Skills fall back to a cache-only, offline inspection of Pi's temporary checkout
+	// when the source resolves no native resources. The read-only, non-persistent cache may be stale;
+	// validated catalog snapshots take priority in the dashboard, while Pi-native resources always win.
+	// This never installs, clones, fetches, or inspects another project's `.pi` checkout.
+	const skillRepositories: PackageSkillRepository[] = [];
+	if (options.cacheOnly === true) {
+		const settingsDir = dirname(inventory.paths.projectSettingsPath);
+		for (const source of uniqueSources) {
+			const matchSources = await packageSourceMatchValues(source, settingsDir);
+			if (temporaryResources.some((resource) => packageResourceMatches(resource, { matchSources }))) continue;
+			const discovery = discoverTemporaryPackageSkillRepository(inventory.paths, source);
+			warnings.push(...discovery.diagnostics);
+			if (discovery.repository) skillRepositories.push(discovery.repository);
+		}
+	}
+	return { resources: temporaryResources, warnings, skillRepositories, skillInspections: [] };
 }

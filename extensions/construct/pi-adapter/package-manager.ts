@@ -92,6 +92,19 @@ export function createProjectPackageManager(
 	return { manager, settings };
 }
 
+/**
+ * Cache-only temporary checkout path for a source. Pi's `DefaultPackageManager.getInstalledPath`
+ * supports the internal `"temporary"` scope at runtime (it is what `resolveExtensionSources({ temporary: true })`
+ * uses), but the published signature narrows scope to `"user" | "project"`. It never clones or
+ * fetches: it returns Pi's temporary cache path only when a checkout already exists there, and it
+ * never points at another project's `.pi` checkout. The cache may be stale; its path is advisory
+ * only and must not be persisted into catalog metadata or settings.
+ */
+export function getTemporaryInstalledPath(manager: DefaultPackageManager, source: string): string | undefined {
+	const candidate = manager as unknown as { getInstalledPath(source: string, scope: string): string | undefined };
+	return candidate.getInstalledPath(source, "temporary");
+}
+
 export async function installAndPersistProjectPackage(paths: ConstructPaths, source: string, options: ProjectPackageManagerOptions = {}): Promise<void> {
 	const { manager, settings } = createProjectPackageManager(paths, options);
 	await manager.installAndPersist(source, { local: true });

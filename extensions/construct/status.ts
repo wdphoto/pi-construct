@@ -8,6 +8,7 @@ import { collectProjectInventory, type ProjectInventory } from "./project-invent
 import { formatList } from "./project-settings.js";
 import { missingKnownProjectEntries } from "./projects.js";
 import { directResourceKinds, resourcePlural } from "./resources.js";
+import { skillRepositoriesOwnPath, skillRepositoryState } from "./skill-repositories.js";
 import { formatPackageSourceLabel, normalizeSourceForLibrary } from "./sources.js";
 
 interface StatusData {
@@ -157,6 +158,26 @@ function packageResourceGroupLines(packageResources: PackageResourceInventory | 
 	return lines;
 }
 
+/** Agent Skills carriers show nothing under package resources, so summarize them separately. */
+function skillRepositoryGroupLines(packageResources: PackageResourceInventory | undefined): string[] {
+	if (!packageResources) return [];
+	const repositories = packageResources.skillRepositories;
+	if (repositories.length === 0) return [];
+	const lines = [`Agent Skills repositories: ${repositories.length}`];
+	for (const repository of repositories) {
+		const linked = repository.skills.filter((skill) => skill.linked).length;
+		const enabled = repository.skills.filter((skill) => skill.linked && skill.enabled).length;
+		const state = skillRepositoryState(repository);
+		const stateLabel = state === "active" ? "active" : linked === 0 ? "disabled (no skills linked)" : "disabled (all linked off)";
+		lines.push(`- ${formatPackageSourceLabel(repository.source)}: ${repository.skills.length} found · ${linked} linked · ${enabled} enabled · ${stateLabel}`);
+		for (const skill of repository.skills) {
+			const skillState = skill.linked ? (skill.enabled ? "linked, enabled" : "linked, disabled") : "unlinked";
+			lines.push(`  - skill ${skill.name} (${skillState}) — ${skill.packageRelativeRoot}/`);
+		}
+	}
+	return lines;
+}
+
 async function packageDeclarationLine(pkg: ProjectInventory["packageDeclarations"][number], settingsDir: string): Promise<string> {
 	const details: string[] = [pkg.form];
 	if (pkg.projectOverride) details.push("Pi project override, autoload false");
@@ -224,8 +245,11 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		const drift = item.drift ? ` [drift: ${item.drift}]` : "";
 		return `- ${item.id} (${item.kind}, ${enabled})${source}${drift}`;
 	});
+	const carrierManagedSkillRepositories = data.packageResources?.skillRepositories ?? [];
+	const directResources = inventory.directResources.resources.filter((resource) => !(resource.kind === "skill" && skillRepositoriesOwnPath(carrierManagedSkillRepositories, resource.path)));
+	const carrierManagedCount = inventory.directResources.resources.length - directResources.length;
 	const directResourceLines = directResourceKinds.flatMap((kind) => {
-		const resources = inventory.directResources.resources.filter((resource) => resource.kind === kind);
+		const resources = directResources.filter((resource) => resource.kind === kind);
 		return [`${resourcePlural(kind)}: ${resources.length}`, ...formatList(resources.map(directResourceLine), `no project ${resourcePlural(kind)}`)];
 	});
 	const packageResourceLines = packageResourceGroupLines(data.packageResources);
@@ -265,11 +289,13 @@ async function buildVerboseStatus(data: StatusData, argumentWarnings: string[]):
 		`Pi project overrides: ${inventory.projectOverrides.length}`,
 		...formatList(packageLines, "no project packages declared"),
 		...packageResourceLines,
+		...skillRepositoryGroupLines(data.packageResources),
 		...(data.packageResources?.warnings ?? []).map((warning) => `! ${warning}`),
 		`Construct metadata: ${describeRead(inventory.reads.projectConstruct)}`,
 		`Construct-managed items: ${inventory.managedItems.length}`,
 		...formatList(managedLines, "no Construct-managed items"),
-		`Direct project resources: ${inventory.directResources.resources.length}`,
+		`Direct project resources: ${directResources.length}`,
+		carrierManagedCount > 0 ? `Carrier-managed skills hidden here: ${carrierManagedCount} (see Agent Skills repositories below)` : undefined,
 		...directResourceLines,
 		...inventory.directResources.warnings.map((warning) => `! ${warning}`),
 		"",

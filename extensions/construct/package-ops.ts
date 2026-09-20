@@ -11,6 +11,7 @@ import {
 	uniqueManagedId,
 	upsertConstructItem,
 	removeMatchingConstructPackageItems,
+	removeCarrierDirectSkillItems,
 	readSettingsObject,
 	removeMatchingPackageDeclaration,
 	setDirectResourceEnabled,
@@ -19,6 +20,7 @@ import {
 	type PackageResourceFilterUpdate,
 } from "./project-settings.js";
 import { rememberKnownProject } from "./projects.js";
+import { removePackageSkillLinks } from "./skill-repositories.js";
 import { isObject } from "./json.js";
 
 function updateConstructItemEnabled(constructRead: Awaited<ReturnType<typeof readJson>>, id: string, enabled: boolean) {
@@ -284,6 +286,7 @@ export interface UnloadPackageResult {
 	fallbackWarning?: string;
 	changedProjectSettings?: boolean;
 	needsReload?: boolean;
+	removedSkillLinks?: number;
 	error?: string;
 	exitCode?: number;
 	stdout?: string;
@@ -307,37 +310,56 @@ export async function removePackageFromProject(
 	}
 
 	let fallbackWarning: string | undefined;
+
+	// Linked Agent Skill roots live in the top-level project `skills` array, so remove them
+	// before the carrier declaration leaves them dangling. Trust is re-asserted by the helper.
+	let removedSkillLinks = 0;
+	let skillPackageRoot: string | undefined;
+	// Any failure after the link cleanup may have changed project settings, so it must be
+	// reported as a partial runtime change so the dashboard offers reload instead of
+	// claiming no mutation.
+	const failureResult = (error: string): UnloadPackageResult => removedSkillLinks > 0
+		? { ok: false, backupPath, fallbackWarning, removedSkillLinks, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error }
+		: { ok: false, backupPath, fallbackWarning, removedSkillLinks, error };
+	try {
+		const skillLinkRemoval = await removePackageSkillLinks(paths, input.source, { projectTrusted: options.projectTrusted, backupPath });
+		skillPackageRoot = skillLinkRemoval.packageRoot;
+		if (skillLinkRemoval.updated) removedSkillLinks = skillLinkRemoval.removed;
+		else if (skillLinkRemoval.reason) return { ok: false, backupPath, removedSkillLinks, error: `Could not remove linked Agent Skill paths before removing the package. ${skillLinkRemoval.reason}` };
+	} catch (error) {
+		// The link cleanup may have enqueued a settings write before failing; report partial.
+		return { ok: false, backupPath, changedProjectSettings: true, needsReload: true, metadataOnlyFailure: true, error: `Could not remove linked Agent Skill paths before removing the package.\n${error instanceof Error ? error.message : String(error)}` };
+	}
+
 	try {
 		const removed = await removeAndPersistProjectPackage(paths, input.source, options);
 		if (!removed) {
 			const removedByEdit = await removeMatchingPackageDeclaration(paths, input.source, { backupPath, projectTrusted: options.projectTrusted });
-			if (!removedByEdit.removed) {
-				return { ok: false, backupPath, error: `No matching package declaration found for ${input.source}.` };
-			}
+			if (!removedByEdit.removed) return failureResult(`No matching package declaration found for ${input.source}.`);
 			fallbackWarning = `Pi package manager did not match ${input.source}; removed it by editing .pi/settings.json instead.`;
 		}
 	} catch (error) {
 		try {
 			const removedByEdit = await removeMatchingPackageDeclaration(paths, input.source, { backupPath, projectTrusted: options.projectTrusted });
-			if (!removedByEdit.removed) {
-				return { ok: false, backupPath, error: error instanceof Error ? error.message : String(error) };
-			}
+			if (!removedByEdit.removed) return failureResult(error instanceof Error ? error.message : String(error));
 			fallbackWarning = `Pi package manager remove failed for ${input.source}; removed it by editing .pi/settings.json instead. ${error instanceof Error ? error.message : String(error)}`;
 		} catch (fallbackError) {
-			return { ok: false, backupPath, error: `Construct remove failed during fallback settings edit.\n${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}` };
+			return failureResult(`Construct remove failed during fallback settings edit.\n${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
 		}
 	}
 
 	try {
 		const construct = await readJson(paths.projectConstructPath);
 		const removedMetadata = await removeMatchingConstructPackageItems(construct, paths, input.source, { id: input.id });
-		if (removedMetadata.removed > 0) await writeJson(paths.projectConstructPath, removedMetadata.construct);
+		const prunedDirectSkills = skillPackageRoot ? removeCarrierDirectSkillItems(removedMetadata.construct, paths, skillPackageRoot) : { construct: removedMetadata.construct, removed: 0 };
+		if (removedMetadata.removed > 0 || prunedDirectSkills.removed > 0) await writeJson(paths.projectConstructPath, prunedDirectSkills.construct);
 		await rememberKnownProject({ cwd: paths.cwd });
 	} catch (error) {
 		return {
 			ok: false,
 			backupPath,
 			fallbackWarning,
+			removedSkillLinks,
 			changedProjectSettings: true,
 			needsReload: true,
 			metadataOnlyFailure: true,
@@ -345,7 +367,7 @@ export async function removePackageFromProject(
 		};
 	}
 
-	return { ok: true, backupPath, fallbackWarning, changedProjectSettings: true, needsReload: true };
+	return { ok: true, backupPath, fallbackWarning, removedSkillLinks, changedProjectSettings: true, needsReload: true };
 }
 
 export const unloadPackageFromProject = removePackageFromProject;

@@ -9,6 +9,7 @@ import { parseKnownProjects } from "./projects.js";
 import { collectDirectProjectResources } from "./resources.js";
 import { effectivePackageState, type EffectivePackageState } from "./effective-state.js";
 import type { PackageResourceInventory } from "./package-resources.js";
+import { packageSkillRepositoryFor, skillRepositoryState } from "./skill-repositories.js";
 import { normalizeSourceForLibrary, packageSourceMatchValues } from "./sources.js";
 
 export type InventoryPackageState = "active" | "disabled" | "available" | "unloaded";
@@ -24,6 +25,8 @@ export interface ManagedPackageInventoryItem {
 	filterDescription?: string;
 	state: Exclude<InventoryPackageState, "unloaded">;
 	effectiveState: EffectivePackageState;
+	/** True when Pi resolved zero native resources but a discovered Agent Skills adapter owns this package. */
+	skillCarrier?: boolean;
 	drift?: string;
 }
 
@@ -37,6 +40,7 @@ export interface UnloadedPackageInventoryItem {
 	filterState?: PackageDeclarationSummary["filterState"];
 	filterDescription?: string;
 	effectiveState: EffectivePackageState;
+	skillCarrier?: boolean;
 }
 
 export interface ProjectInventory {
@@ -155,19 +159,27 @@ export async function collectProjectInventory(ctx: Pick<ExtensionCommandContext,
 
 /**
  * Return a copy of the inventory whose package rows carry effective state decoded
- * from Pi's resolved project package resources. Keeps declaration policy (`state`,
- * `disabledByFilters`, `filterState`) untouched; callers combine the two explicitly.
+ * from Pi's resolved project package resources and discovered Agent Skills
+ * repositories. Keeps declaration policy (`state`, `disabledByFilters`,
+ * `filterState`) untouched; callers combine the two explicitly.
  */
 export function withEffectivePackageStates(inventory: ProjectInventory, packageResources: PackageResourceInventory): ProjectInventory {
 	return {
 		...inventory,
-		managedPackages: inventory.managedPackages.map((item) => ({
-			...item,
-			effectiveState: effectivePackageState(packageResources.resources, { id: item.metadata.id, matchSources: item.matchSources }),
-		})),
-		unloadedPackageDeclarations: inventory.unloadedPackageDeclarations.map((item) => ({
-			...item,
-			effectiveState: effectivePackageState(packageResources.resources, { matchSources: item.matchSources }),
-		})),
+		managedPackages: inventory.managedPackages.map((item) => {
+			const repository = packageSkillRepositoryFor(packageResources.skillRepositories ?? [], { source: item.source, matchSources: item.matchSources });
+			const repositoryState = repository ? skillRepositoryState(repository) : undefined;
+			const effectiveState: EffectivePackageState = repositoryState === "active" ? "active" : repositoryState === "inactive" ? "inactive" : effectivePackageState(packageResources.resources, { id: item.metadata.id, matchSources: item.matchSources });
+			return { ...item, effectiveState, skillCarrier: repository !== undefined };
+		}),
+		unloadedPackageDeclarations: inventory.unloadedPackageDeclarations.map((item) => {
+			const repository = packageSkillRepositoryFor(packageResources.skillRepositories ?? [], { source: item.source, matchSources: item.matchSources });
+			const repositoryState = repository ? skillRepositoryState(repository) : undefined;
+			// A discovered unloaded carrier follows its linked skill state (inactive when nothing is
+			// linked) instead of Pi's zero-resolved-resource "unknown", so save/run treat it as an
+			// Agent Skills carrier rather than an unresolved declaration.
+			const effectiveState: EffectivePackageState = repositoryState === "active" ? "active" : repositoryState === "inactive" ? "inactive" : effectivePackageState(packageResources.resources, { matchSources: item.matchSources });
+			return { ...item, effectiveState, skillCarrier: repository !== undefined };
+		}),
 	};
 }
