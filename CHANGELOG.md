@@ -6,6 +6,9 @@ This project is currently pre-1.0. Released changes are tagged from `0.0.1` onwa
 
 ## Unreleased
 
+### Added
+- Let `/construct load <explicit-source>` remember an explicit package source in the global Construct library when it does not match a project load candidate, without installing it, editing `.pi/settings.json`, creating `.pi/construct.json`, or recording a known project. The thin top-level `/load <package-source ...>` command always performs that library-only add. Construct recognizes explicit `npm:` specs (`npm:name`, `npm:@scope/name`, `npm:name@version`), conservative Git source forms (`git:`, `http://`, `https://`, `ssh://`, `git://`, `git@host:path`), and explicit local paths (`./`, `../`, `~/`, absolute file or directory); bare ids/resource names and bare `~`, `.` or `..` keep existing project-query behavior, while generated Pi cache paths are refused. Local paths are normalized at command time (relative to the current project, `~` expansion, realpath when available) and the absolute source is stored; a local path must exist and be readable, but Construct only records it and never installs, copies, scans, or inspects it. Local sources are machine-specific and paths with whitespace are unsupported. Library-only adds do not require project trust; an explicit-source-only `/construct load` in an untrusted project is remembered library-only rather than adopted, while project declaration adoption keeps its Pi trust gates and fresh write-time recheck.
+
 ## 0.0.33 - 2026-09-19
 
 ### Fixed

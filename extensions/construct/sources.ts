@@ -1,5 +1,7 @@
 export {
 	formatPackageSourceLabel,
+	isExplicitLocalPath,
+	isExplicitPackageSource,
 	isLocalPathSource,
 	managedPackageSourceIdentity,
 	normalizeSourceForLibrary,

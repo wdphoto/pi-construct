@@ -1,6 +1,7 @@
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CatalogItem, DirectResourceSummary, DirectResourceKind, JsonObject } from "../types.js";
 import { dirname } from "node:path";
+import { accessSync, constants } from "node:fs";
 import { deriveId, findCatalogItem, findCatalogItemForSource, loadCatalog, normalizeSourceForLibrary, parseCatalog, addSourcesToCatalog, updateExistingCatalogAgentSkills, type CatalogAgentSkillsOpinion } from "../catalog.js";
 import { describeJsonReadIssue, isObject, readJson, writeJson } from "../json.js";
 import { getPaths } from "../paths.js";
@@ -9,7 +10,8 @@ import { matchingPiProjectOverride, parseProjectConstruct, uniqueManagedIdInCons
 import { collectProjectPackageResources, packageResourceMatches, skillInspectionFor } from "../package-resources.js";
 import { catalogAgentSkillsInventory, packageSkillRepositoryFor, skillRepositoriesOwnPath, type PackageSkillRepository } from "../skill-repositories.js";
 import { rememberKnownProject } from "../projects.js";
-import { packageSourceMatchValues } from "../sources.js";
+import { secretLikeSources, generatedCacheSources } from "../saved-loadouts.js";
+import { formatPackageSourceLabel, isExplicitPackageSource, isLocalPathSource, packageSourceMatchValues } from "../sources.js";
 import { TrustRefusedError, targetTrustDecision, type TargetTrustContext } from "../target-trust.js";
 import { pickCheckboxes, showSummary, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerItem } from "../ui.js";
 
@@ -35,6 +37,123 @@ type AnyLoadCandidate = LoadCandidate | DirectLoadCandidate;
 
 interface LoadArgs {
 	queries: string[];
+}
+
+interface LoadQueryPartition {
+	/** Explicit package sources, including machine-specific local paths, that may be adopted or remembered. */
+	sources: string[];
+	/** Non-explicit queries (ids, resource names) that must match project candidates. */
+	queries: string[];
+	/** Inputs refused before any write (secret-like or generated Pi cache paths). */
+	refused: { value: string; reason: string }[];
+}
+
+/**
+ * Preclassify `/construct load` arguments so explicit package sources can fall back to a
+ * library-only add while ids/resource names keep existing project-adoption semantics. Refusals
+ * mirror `/construct import`: secret-like URLs and generated Pi cache paths are never remembered.
+ */
+export function partitionLoadQueries(queries: string[]): LoadQueryPartition {
+	const sources: string[] = [];
+	const others: string[] = [];
+	const refused: { value: string; reason: string }[] = [];
+	for (const query of queries) {
+		if (secretLikeSources([query]).length > 0) {
+			refused.push({ value: query, reason: "looks like it contains credentials or secrets" });
+			continue;
+		}
+		if (generatedCacheSources([query]).length > 0) {
+			refused.push({ value: query, reason: "looks like a generated Pi package cache path" });
+			continue;
+		}
+		if (isExplicitPackageSource(query)) sources.push(query);
+		else others.push(query);
+	}
+	return { sources, queries: others, refused };
+}
+
+interface NormalizedExplicitSources {
+	/** Normalized local absolute paths and unchanged git/npm sources, deduped in request order. */
+	ordered: string[];
+	/** Raw source -> normalized value, for callers that normalize a subset later. */
+	bySource: Map<string, string>;
+	/** Local paths that do not exist or are not readable. */
+	missing: string[];
+}
+
+/**
+ * Normalize explicit sources at command time. Relative local paths resolve against the current
+ * project working directory, `~` expands, and existing paths become realpaths via the shared
+ * `normalizeSourceForLibrary` behavior; git/npm sources are unchanged. Local paths are validated
+ * for existence/readability (Pi's native local install refuses a missing path) without inspecting
+ * package structure. This never resolves package resources, installs, copies, or scans them.
+ */
+export async function normalizeExplicitSources(sources: string[], cwd: string): Promise<NormalizedExplicitSources> {
+	const ordered: string[] = [];
+	const bySource = new Map<string, string>();
+	const missing: string[] = [];
+	const seen = new Set<string>();
+	for (const source of sources) {
+		const value = await normalizeSourceForLibrary(source, cwd);
+		bySource.set(source, value);
+		if (isLocalPathSource(source)) {
+			try {
+				accessSync(value, constants.R_OK);
+			} catch {
+				missing.push(value);
+				continue;
+			}
+		}
+		if (seen.has(value)) continue;
+		seen.add(value);
+		ordered.push(value);
+	}
+	return { ordered, bySource, missing };
+}
+
+function missingLocalSourceLines(missing: string[]): string[] {
+	return [
+		"These local package sources do not exist or are not readable:",
+		...missing.map((path) => `! ${path}`),
+		"Local package sources are machine-specific and must point at an existing file or directory.",
+	];
+}
+
+interface LibraryOnlyAddResult {
+	requested: number;
+	added: CatalogItem[];
+	alreadyKnown: number;
+	warnings: string[];
+}
+
+/**
+ * Add explicit sources to the user Construct library only. Never depends on project trust and never
+ * installs or touches project files/known-project records; the catalog write is the only mutation.
+ */
+async function addLibraryOnlySources(
+	ctx: Pick<ExtensionCommandContext | ExtensionContext, "cwd">,
+	sources: string[],
+): Promise<LibraryOnlyAddResult> {
+	const result = await addSourcesToCatalog(ctx, sources);
+	return { requested: sources.length, added: result.added, alreadyKnown: result.alreadyKnown, warnings: result.warnings };
+}
+
+function libraryOnlyLines(result: LibraryOnlyAddResult): string[] {
+	// `addSourcesToCatalog` returns warnings and adds nothing when the catalog is invalid or has
+	// structural warnings; report that honestly instead of claiming a completed add.
+	const refused = result.warnings.length > 0 && result.added.length === 0;
+	const lines = refused
+		? ["Construct library was not changed (library only)."]
+		: [`Construct library updated (library only): added ${result.added.length}, already known ${result.alreadyKnown}, requested ${result.requested}.`];
+	const shown = result.added.slice(0, 8);
+	lines.push(...shown.map((item) => `+ ${formatPackageSourceLabel(item.source)} (${item.source})`));
+	if (result.added.length > shown.length) lines.push(`…and ${result.added.length - shown.length} more added`);
+	if (result.added.some((item) => isLocalPathSource(item.source))) {
+		lines.push("! Local sources are machine-specific and break if the directory moves; prefer a git or npm source for portability.");
+	}
+	lines.push("The library-only sources did not install packages or change project files.");
+	lines.push(...result.warnings.map((warning) => `! ${warning}`));
+	return lines;
 }
 
 function constructManagedPackageStates(inventory: ProjectInventory): Map<string, boolean | undefined> {
@@ -245,6 +364,13 @@ async function refreshManagedAdvisorySnapshots(
 
 function advisoryRefreshNote(updated: number): string {
 	return `Advisory Agent Skill inventory refreshed for ${updated} library entr${updated === 1 ? "y" : "ies"}.`;
+}
+
+/** Advisory snapshot lines for a report, noting a refreshed count only when something changed. */
+function advisoryResultLines(advisory: { updated: number; warnings: string[] }): string[] {
+	const lines = advisory.warnings.map((warning) => `! ${warning}`);
+	if (advisory.updated > 0) lines.push(advisoryRefreshNote(advisory.updated));
+	return lines;
 }
 
 /**
@@ -558,8 +684,37 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	// Interactive writes happen after the picker/idle wait; recheck current-project trust at write
 	// time so a lost session grant or denial never lets a stale catalog/metadata write through.
 	const prewrite = currentProjectPrewrite(ctx, paths.cwd);
+	const partition = partitionLoadQueries(loadArgs.queries);
+	if (partition.refused.length > 0) {
+		showText(ctx, ["Construct load refused.", ...partition.refused.map((entry) => `! Not loaded: ${entry.reason}.`)].join("\n"));
+		return;
+	}
+	// Normalize local paths at command time (relative to ctx.cwd) and refuse missing/unreadable
+	// local sources before any project matching or write. Pi owns any later package resolution or
+	// installation; Construct only records the source.
+	const normalizedExplicit = await normalizeExplicitSources(partition.sources, ctx.cwd);
+	if (normalizedExplicit.missing.length > 0) {
+		showText(ctx, ["Construct load refused.", ...missingLocalSourceLines(normalizedExplicit.missing)].join("\n"));
+		return;
+	}
 	if (!ctx.isProjectTrusted()) {
-		showText(ctx, ["Construct load failed.", "Project is not trusted by Pi, so Construct will not write project metadata or update its library from this project.", "Trust this project in Pi, then run /construct load again."].join("\n"));
+		// Library-only adds do not read or write project files, so they do not need project trust.
+		// Any project-declaration query still needs trust and is refused below.
+		if (loadArgs.queries.length > 0 && partition.queries.length === 0) {
+			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct load");
+			if (!ready) {
+				showText(ctx, "Construct load cancelled. No files were changed.");
+				return;
+			}
+			try {
+				const result = await addLibraryOnlySources(ctx, normalizedExplicit.ordered);
+				showText(ctx, libraryOnlyLines(result).join("\n"));
+			} catch (error) {
+				showText(ctx, `Construct load failed.\n${error instanceof Error ? error.message : String(error)}`);
+			}
+			return;
+		}
+		showText(ctx, ["Construct load failed.", "Project is not trusted by Pi, so Construct will not adopt project resources here.", "Explicit package sources can still be added with /load <source> or /construct load <source>.", "Trust this project in Pi, then run /construct load again to adopt project declarations."].join("\n"));
 		return;
 	}
 
@@ -621,6 +776,8 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	let selectedCandidates: AnyLoadCandidate[] = [];
+	let libraryOnlySources: string[] = [];
+	let normalizedLibraryOnlySources: string[] = [];
 	const selectionWarnings: string[] = [...candidates.directWarnings];
 	if (loadArgs.queries.length > 0) {
 		const loadQueries: string[] = [];
@@ -632,7 +789,9 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 		const direct = await findLoadCandidates(paths, candidates, loadQueries);
 		selectedCandidates = direct.selected;
 		selectionWarnings.push(...direct.alreadyManaged.map((query) => `Already Construct-managed here: ${query}`));
-		selectionWarnings.push(...direct.missing.map((query) => `Not an unloaded project resource: ${query}`));
+		libraryOnlySources = direct.missing.filter((query) => isExplicitPackageSource(query));
+		normalizedLibraryOnlySources = libraryOnlySources.map((source) => normalizedExplicit.bySource.get(source) ?? source);
+		selectionWarnings.push(...direct.missing.filter((query) => !isExplicitPackageSource(query)).map((query) => `Not an unloaded project resource: ${query}`));
 	} else if (ctx.mode === "tui") {
 		const pickerItems: CheckboxPickerItem[] = candidates.adoptable.map((candidate) => ({
 			id: candidateKey(candidate),
@@ -654,6 +813,24 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (selectedCandidates.length === 0) {
+		// Explicit sources that match no project candidate become library-only additions.
+		if (libraryOnlySources.length > 0) {
+			const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct load");
+			if (!ready) {
+				showText(ctx, "Construct load cancelled. No files were changed.");
+				return;
+			}
+			// Already Construct-managed candidates still get the same advisory snapshot refresh the
+			// ordinary "no resources selected" path performs; the library-only add must not bypass it.
+			const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
+			try {
+				const added = await addLibraryOnlySources(ctx, normalizedLibraryOnlySources);
+				showText(ctx, [...selectionWarnings.map((warning) => `! ${warning}`), ...advisoryResultLines(advisory), ...libraryOnlyLines(added)].join("\n"));
+			} catch (error) {
+				showText(ctx, [...advisoryResultLines(advisory), `Construct load failed.\n${error instanceof Error ? error.message : String(error)}`].join("\n"));
+			}
+			return;
+		}
 		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
 		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), ...advisory.warnings.map((warning) => `! ${warning}`), advisory.updated > 0 ? advisoryRefreshNote(advisory.updated) : "No files were changed."].join("\n"));
 		return;
@@ -681,6 +858,18 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	}
 
 	if (selectedCandidates.length === 0) {
+		if (libraryOnlySources.length > 0) {
+			// Already Construct-managed candidates still get the advisory snapshot refresh the ordinary
+			// "no resources selected" path performs; the library-only add must not bypass it.
+			const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
+			try {
+				const added = await addLibraryOnlySources(ctx, normalizedLibraryOnlySources);
+				showText(ctx, [...selectionWarnings.map((warning) => `! ${warning}`), ...advisoryResultLines(advisory), ...libraryOnlyLines(added)].join("\n"));
+			} catch (error) {
+				showText(ctx, [...advisoryResultLines(advisory), `Construct load failed.\n${error instanceof Error ? error.message : String(error)}`].join("\n"));
+			}
+			return;
+		}
 		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
 		showText(ctx, ["No resources selected for Construct load.", ...selectionWarnings.map((warning) => `! ${warning}`), ...advisory.warnings.map((warning) => `! ${warning}`), advisory.updated > 0 ? advisoryRefreshNote(advisory.updated) : "No files were changed."].join("\n"));
 		return;
@@ -695,15 +884,78 @@ export async function handleLoad(args: string, ctx: ExtensionCommandContext): Pr
 	let result: ConstructLoadResult;
 	try {
 		result = await loadSourcesIntoConstruct(ctx, paths, selectedSources, { enabledBySource, agentSkillsBySource, prewrite });
-		const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
-		const directResult = await loadDirectResourcesIntoConstruct(ctx, paths, selectedDirectCandidates.map((candidate) => candidate.resource));
-		result.directMetadataChanged = directResult.metadataChanged;
-		result.warnings.push(...advisory.warnings, ...directResult.warnings, ...selectionWarnings);
+		result.warnings.push(...selectionWarnings);
+		// A latched trust refusal from the package/library write must stop later current-project
+		// advisory/direct writes. The independent global library-only add below still runs because it
+		// never reads or writes project state.
+		if (result.refused) {
+			result.directMetadataChanged = 0;
+		} else {
+			const advisory = await refreshManagedAdvisorySnapshots(ctx, candidates.alreadyManaged, prewrite);
+			result.warnings.push(...advisory.warnings);
+			// An advisory refusal must likewise stop direct adoption.
+			if (advisory.refused) {
+				result.refused = advisory.refused;
+				result.directMetadataChanged = 0;
+			} else {
+				const directResult = await loadDirectResourcesIntoConstruct(ctx, paths, selectedDirectCandidates.map((candidate) => candidate.resource), prewrite);
+				result.directMetadataChanged = directResult.metadataChanged;
+				result.warnings.push(...directResult.warnings);
+				result.refused = directResult.refused ?? result.refused;
+			}
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		showText(ctx, `Construct load failed.\n${message}`);
 		return;
 	}
 
-	await showSummary(ctx, formatLoadResult(result));
+	let extraLines: string[] = [];
+	if (libraryOnlySources.length > 0) {
+		try {
+			const added = await addLibraryOnlySources(ctx, normalizedLibraryOnlySources);
+			extraLines = ["Construct library (explicit sources):", ...libraryOnlyLines(added)];
+		} catch (error) {
+			extraLines = [`! Construct library add failed: ${error instanceof Error ? error.message : String(error)}`];
+		}
+	}
+	await showSummary(ctx, [formatLoadResult(result), ...(extraLines.length > 0 ? ["", ...extraLines] : [])].join("\n"));
+}
+
+/**
+ * Thin top-level `/load <source ...>` command: always add explicit package sources to the user
+ * Construct library without installing them, reading/writing project configuration, or needing
+ * project trust. It refuses non-source inputs and secret-like URLs or generated Pi cache paths.
+ */
+export async function handleDirectLoad(args: string, ctx: ExtensionCommandContext): Promise<void> {
+	const inputs = parseLoadArgs(args).queries;
+	if (inputs.length === 0) {
+		showText(ctx, ["Construct /load — add explicit package sources to the library", "Usage: /load <package-source ...>", "Accepts npm: specs (npm:name, npm:@scope/name, npm:name@version), Git source forms (git:, http://, https://, ssh://, git://, git@host:path), and local paths (./relative, ../relative, ~/path, absolute).", "Paths containing spaces are not supported, and local paths are machine-specific and must exist and be readable when added. Construct only records them; it does not install, copy, scan, or inspect them, and does not change project files."].join("\n"));
+		return;
+	}
+	const partition = partitionLoadQueries(inputs);
+	const problems = [
+		...partition.refused.map((entry) => `! Refused input: ${entry.reason}.`),
+		...partition.queries.map((value) => `! Not an explicit package source: ${value}. Use an npm: spec, a Git source form, or a local path (./, ../, ~/, or absolute).`),
+	];
+	if (problems.length > 0) {
+		showText(ctx, ["Construct /load refused.", ...problems].join("\n"));
+		return;
+	}
+	const normalized = await normalizeExplicitSources(partition.sources, ctx.cwd);
+	if (normalized.missing.length > 0) {
+		showText(ctx, ["Construct /load refused.", ...missingLocalSourceLines(normalized.missing)].join("\n"));
+		return;
+	}
+	const ready = await waitForIdleBeforeConstructWrite(ctx, "Construct /load");
+	if (!ready) {
+		showText(ctx, "Construct /load cancelled. No files were changed.");
+		return;
+	}
+	try {
+		const result = await addLibraryOnlySources(ctx, normalized.ordered);
+		showText(ctx, libraryOnlyLines(result).join("\n"));
+	} catch (error) {
+		showText(ctx, `Construct /load failed.\n${error instanceof Error ? error.message : String(error)}`);
+	}
 }

@@ -90,4 +90,14 @@ export default function constructExtension(pi: ExtensionAPI) {
 			showText(ctx, [`Unknown /construct subcommand: ${command}`, "", ...unknownCommandHelp].join("\n"));
 		},
 	});
+
+	// Thin top-level command for the always-library-only behavior: `/load <source>` remembers an
+	// explicit package source in the Construct library without touching project configuration.
+	pi.registerCommand("load", {
+		description: "Remember explicit package sources in the Construct library only",
+		handler: async (args, ctx) => {
+			const { handleDirectLoad } = await import("./commands/load.js");
+			await handleDirectLoad(args, ctx);
+		},
+	});
 }

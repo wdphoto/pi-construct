@@ -91,7 +91,8 @@ Scan refuses the filesystem root, home directory, and home-level `.pi`, `.agents
 /construct                    # open the loadout menu
 /construct status [full]      # read-only diagnostics
 /construct scan [path]        # find unloaded trusted Pi-resolved project resources
-/construct load [...]         # adopt already-installed project resources into Construct metadata
+/construct load [query-or-source ...] # adopt project resources; unmatched explicit sources are remembered library-only
+/load <package-source ...>           # always add explicit package sources to the library only
 /construct unload [...]       # forget package ownership, not uninstall
 /construct save <name>        # save active package sources as a loadout
 /construct list               # list saved loadouts
@@ -100,6 +101,22 @@ Scan refuses the filesystem root, home directory, and home-level `.pi`, `.agents
 /construct import [json]      # preview/import a shared loadout snippet
 /construct wipe <name>        # delete only a saved loadout recipe
 ```
+
+`/construct load <source>` first considers matching project load candidates. A recognized explicit source with no match is remembered in the global Construct library only: nothing is installed, `.pi/settings.json` and `.pi/construct.json` are untouched, and no known project is recorded. `/load <package-source ...>` is the thin top-level command that always performs that library-only add. Construct recognizes:
+
+```text
+/load npm:package-name          # npm, unscoped
+/load npm:@scope/package-name   # npm, scoped
+/load npm:package-name@1.2.3    # npm, versioned
+/load ./packages/local-pkg      # local directory, relative to the current project
+/load ../sibling-pkg            # local directory, relative parent
+/load ~/packages/local-pkg      # local directory, home-relative
+/load /opt/example/local         # local, absolute
+/load ./single-extension.ts     # local file
+/load git:github.com/owner/repo # Git source forms
+```
+
+Relative local paths resolve against the current project directory, `~` expands, and local sources are stored as normalized absolute paths (realpaths when available). Local paths are machine-specific and break if the directory moves, so prefer a Git or npm source for portability. A local path must already exist and be readable when added; Construct records only the path and does not install, copy, scan, or inspect the local package, nor change project files. Paths containing spaces are not supported because command arguments are whitespace-separated. Bare ids/resource names and bare `~`, `.` or `..` keep the existing project-query behavior; generated Pi cache paths are refused. Library-only adds do not require project trust; an explicit-source-only `/construct load` in an untrusted project is remembered library-only rather than adopted.
 
 ## Files
 

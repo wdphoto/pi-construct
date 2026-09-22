@@ -93,6 +93,37 @@ export function packageSourceIdentityKey(source: string, normalizedLocalSource?:
 	return undefined;
 }
 
+/**
+ * Conservative predicate for an explicit local package path: `./`, `../`, `~/`, or an absolute
+ * path with at least one non-separator character. Bare `~`, bare `.`/`..`, and bare names are
+ * rejected so ids/resource names are never mistaken for sources.
+ */
+export function isExplicitLocalPath(source: string): boolean {
+	const trimmed = source.trim();
+	if (trimmed.startsWith("./")) return trimmed.length > 2;
+	if (trimmed.startsWith("../")) return trimmed.length > 3;
+	if (trimmed.startsWith("~/")) return trimmed.length > 2;
+	if (trimmed.startsWith("/")) return trimmed.length > 1;
+	return false;
+}
+
+/**
+ * Conservative predicate for an explicit package source: a recognized `npm:` spec, a Git source
+ * (`git:`, `http(s)://`, `ssh://`, `git://`, or scp-like `git@host:path`), or an explicit,
+ * machine-specific local path (`./`, `../`, `~/`, absolute). Bare ids/resource names, bare `~`,
+ * bare `.`/`..`, and other relative hints are intentionally rejected so they are never remembered
+ * as package sources.
+ * Uses Construct's shared source-identity parser via {@link packageSourceIdentityKey}; it is a
+ * conservative predicate, not Pi's parser.
+ */
+export function isExplicitPackageSource(source: string): boolean {
+	const trimmed = source.trim();
+	if (!trimmed) return false;
+	if (isExplicitLocalPath(trimmed)) return true;
+	const key = packageSourceIdentityKey(trimmed);
+	return key !== undefined && (key.startsWith("git:") || key.startsWith("npm:"));
+}
+
 export async function packageSourceMatchValues(source: string, baseDir: string): Promise<string[]> {
 	const trimmed = source.trim();
 	if (!trimmed) return [];
