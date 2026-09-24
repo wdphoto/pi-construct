@@ -4,10 +4,18 @@ All notable changes to the Construct will be documented here.
 
 This project is currently pre-1.0. Released changes are tagged from `0.0.1` onward.
 
-## Unreleased
+## 0.0.34 - 2026-09-23
 
 ### Added
 - Let `/construct load <explicit-source>` remember an explicit package source in the global Construct library when it does not match a project load candidate, without installing it, editing `.pi/settings.json`, creating `.pi/construct.json`, or recording a known project. The thin top-level `/load <package-source ...>` command always performs that library-only add. Construct recognizes explicit `npm:` specs (`npm:name`, `npm:@scope/name`, `npm:name@version`), conservative Git source forms (`git:`, `http://`, `https://`, `ssh://`, `git://`, `git@host:path`), and explicit local paths (`./`, `../`, `~/`, absolute file or directory); bare ids/resource names and bare `~`, `.` or `..` keep existing project-query behavior, while generated Pi cache paths are refused. Local paths are normalized at command time (relative to the current project, `~` expansion, realpath when available) and the absolute source is stored; a local path must exist and be readable, but Construct only records it and never installs, copies, scans, or inspects it. Local sources are machine-specific and paths with whitespace are unsupported. Library-only adds do not require project trust; an explicit-source-only `/construct load` in an untrusted project is remembered library-only rather than adopted, while project declaration adoption keeps its Pi trust gates and fresh write-time recheck.
+
+### Changed
+- Available package rows now install the whole package only with Pi's defaults; cached child resources are read-only previews and package resource filters are chosen after reopening `/construct` (or with `pi config -l`). The one-step cached install+filter path was removed.
+- Every Install step is gated by a shared operation-runner preflight that rechecks live trust and that the source is still undeclared, including `/construct run`. Installs never offer automatic reload; the result tells you to choose installed resources before a manual `/reload`.
+
+### Fixed
+- Report install preflight failures as structured failed steps instead of escaping the generic UI, and recheck cancellation after a deferred preflight so no mutation runs post-cancel.
+- A `beforeOperation` hook can only add a refusal, never clear a default one, and the runner now requires a live session context for Install steps.
 
 ## 0.0.33 - 2026-09-19
 
