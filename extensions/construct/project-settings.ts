@@ -440,6 +440,24 @@ export async function matchingPiProjectOverride(paths: ConstructPaths, source: s
 	return undefined;
 }
 
+/**
+ * First project package declaration (ordinary or `autoload:false` override) whose source matches
+ * `source` using the shared scope-aware source identity, or undefined. Throws when
+ * `.pi/settings.json` is invalid or not an object, so callers can report the failure honestly.
+ * Shared by the install preflight so an Install step never re-installs a declaration that
+ * appeared after review.
+ */
+export async function matchingDeclaredPackage(paths: ConstructPaths, source: string): Promise<string | undefined> {
+	const settings = readSettingsObject(await readJson(paths.projectSettingsPath));
+	const packages = Array.isArray(settings.packages) ? settings.packages : [];
+	for (const entry of packages) {
+		const rawSource = packageSource(entry);
+		if (!rawSource) continue;
+		if (await targetSourceMatches(paths, source, rawSource)) return rawSource;
+	}
+	return undefined;
+}
+
 function packageEntryWithDisabledResources(entry: unknown, source: string): JsonObject {
 	const base: JsonObject = isObject(entry) ? { ...entry, source } : { source };
 	for (const key of packageResourceFilterKeys) base[key] = [];

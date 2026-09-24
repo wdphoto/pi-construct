@@ -12,9 +12,9 @@ import { packageSourceMatchValues } from "../pi-adapter/source-identity.js";
 import { CONSTRUCT_TITLE } from "../metadata.js";
 import { directResourceKinds, resourcePlural } from "../resources.js";
 import { type PackageResourceFilterKey } from "../package-filters.js";
-import { packageResourceSelectionKey, packageResourceSetsDiffer, packageResourceStateDrift, planPackageResourceFilters } from "../package-resource-plans.js";
+import { packageResourceSelectionKey, packageResourceStateDrift, planPackageResourceFilters } from "../package-resource-plans.js";
 import { packageSubmitBlockedBySkillCarrier } from "../picker-actions.js";
-import { loadPackageIntoProject, setPackageResourceFiltersInProject } from "../package-ops.js";
+import { setPackageResourceFiltersInProject } from "../package-ops.js";
 import { runConstructOperationSteps, type ConstructOperationAction, type ConstructOperationItem, type ConstructOperationRunResult, type ConstructOperationStep } from "../operation-runner.js";
 import { pickCheckboxes, showText, waitForIdleBeforeConstructWrite, type CheckboxPickerConfirmation, type CheckboxPickerItem, type CheckboxPickerOptions, type CheckboxPickerResult, type CheckboxPickerSubmitAction, type CheckboxPickerTone } from "../ui.js";
 import { unloadConstructSources, type UnloadSelection } from "./unload.js";
@@ -245,8 +245,8 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 					? "Disabled package. Enter enables the whole package; Ctrl+Alt+R removes."
 					: "Active package. Enter disables the whole package; Ctrl+Alt+R removes."
 			: missingDeclarationDrift
-				? "Drifted package. Enter restores; if resources are available, Right Arrow selects individual package resources."
-				: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.";
+				? "Drifted package. Enter restores the declaration; cached resource previews are read-only. Reopen /construct after install to select the live resources."
+				: "Available package. Enter installs the whole package with Pi defaults; cached previews are read-only. Reopen /construct to select the live resources.";
 		packages.push({
 			type: "package",
 			rowId: rowId("managed", item.id, source),
@@ -278,7 +278,7 @@ async function buildDashboardPackages(ctx: ExtensionCommandContext): Promise<{ p
 			section: "Available",
 			checked: false,
 			matchSources: matchSources.length > 0 ? matchSources : [item.source],
-			description: "Available package. Enter installs; if resources are available, Right Arrow selects individual package resources.",
+			description: "Available package. Enter installs the whole package with Pi defaults; cached previews are read-only. Reopen /construct to select the live resources.",
 		});
 	}
 
@@ -551,8 +551,8 @@ function dashboardText(paths: ConstructPaths, packages: DashboardItem[], warning
 	}
 	if (warnings.length > 0) lines.push(...warnings.map((warning) => `! ${warning}`), "");
 	lines.push(
-		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive/available selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · ↔ Pi override · + available · ◇ unloaded.",
-		"Parent Space cycles child selections: all → active → inactive/available → none · Enter applies/runs · → unfolds known resources · ← folds · Alt+I details · Ctrl+Alt+R removes · Ctrl+U unloads · Esc cancels.",
+		"Legend: [ ] selectable · [x] selected/all · [~] mixed state · [-] active selected · [+] inactive selected · [*] custom child selection · [·] recipe item · [!] read-only · ◆ saved · ✓ active · – inactive · ↔ Pi override · + available preview · ◇ unloaded.",
+		"Parent Space cycles declared child selections: all → active → inactive → none · Enter applies/runs · → unfolds known resources · ← folds · Alt+I details · Ctrl+Alt+R removes · Ctrl+U unloads · Esc cancels.",
 		"",
 		dashboardFooterHint(packages, projectMetadataMissing, projectTrusted),
 	);
@@ -916,7 +916,7 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 			lines: [
 				"No cached package-contained resource list is available for this package yet.",
 				"Construct does not show an unfold arrow or run Right Arrow inspection until it already has a multi-resource list.",
-				"Press Enter to install the whole package with Pi's normal defaults.",
+				"Press Enter to install the whole package with Pi's normal defaults, then reopen /construct to select the live resources.",
 			],
 		};
 	}
@@ -932,7 +932,7 @@ function packageResourceInspection(item: DashboardPackage, packageResources: Pac
 		`Source: ${item.source}`,
 		"",
 		item.section === "Available"
-			? "Available package resources were inspected with Pi's temporary package resolver. Selecting children installs the package into this project with native Pi filters; no package files are copied into .pi/."
+			? "This read-only preview came from Pi's temporary package resolver and may be stale. Enter on the package row installs the whole package with Pi defaults; reopen /construct to select the live Pi-resolved resources with native filters."
 			: "This view uses Pi's native package resource resolver. Selecting children writes native Pi package filters in .pi/settings.json; no package files are copied.",
 	];
 	if (resources.length === 0) {
@@ -960,11 +960,14 @@ function packageResourceChildren(item: DashboardPackage, packageResources: Packa
 	for (const kind of directResourceKinds) {
 		const kindResources = resources.filter((resource) => resource.kind === kind);
 		for (const resource of kindResources) {
-			const editable = item.section === "Active" || item.section === "Disabled" || item.section === "Available";
+			// Available previews come from Pi's temporary cache and can be stale, so they are
+			// informational only: install the whole package, then reopen to select the live
+			// Pi-resolved resources. Only declared Active/Disabled packages are filter-editable here.
+			const editable = item.section === "Active" || item.section === "Disabled";
 			const available = item.section === "Available";
 			const actionDescription =
 				item.section === "Available"
-					? "Package-contained resource. The state icon shows availability; [x] selects it for install/filtering and Enter installs the package with native Pi filters."
+					? "Read-only cached resource preview (Pi's temporary cache can be stale). Enter installs the whole package; reopen /construct to select the actual Pi-resolved resources."
 					: "Package-contained resource. The state icon shows the current enabled state; [x] selects it to toggle when Enter writes native Pi package filters.";
 			const entrypointNote = packageResourceEntrypointNote(resource);
 			children.push({
@@ -994,15 +997,20 @@ function packageSkillRepositoryChildren(item: DashboardPackage): CheckboxPickerI
 	const repository = item.skillRepository;
 	if (!repository) return [];
 	const editable = item.section === "Active" || item.section === "Disabled" || item.section === "Unresolved";
+	const readOnlyDescription = item.section === "Available"
+		? "Read-only Agent Skill preview. Enter installs the whole package; reopen /construct to link the live Agent Skills."
+		: "Read-only Agent Skill. Run /construct load to adopt this declaration before linking.";
 	return repository.skills.map((skill) => ({
 		id: packageSkillRepositoryChildRowId(item, skill),
 		parentId: item.rowId,
 		depth: 1,
 		label: `skill ${skill.name}`,
 		value: `${skill.packageRelativeRoot}/`,
-		description: skill.linked
-			? "Linked Agent Skill. Checking it unlinks its project skill path when you press Enter; unselected linked skills keep their state."
-			: "Unlinked Agent Skill. Checking it adds this skill root to the project skills setting when you press Enter; unselected skills stay unlinked.",
+		description: editable
+			? skill.linked
+				? "Linked Agent Skill. Checking it unlinks its project skill path when you press Enter; unselected linked skills keep their state."
+				: "Unlinked Agent Skill. Checking it adds this skill root to the project skills setting when you press Enter; unselected skills stay unlinked."
+			: readOnlyDescription,
 		checked: false,
 		disabled: !editable,
 		stateText: skill.linked ? (skill.enabled ? "✓" : "–") : "+",
@@ -1025,9 +1033,9 @@ function packageResourceRowDescription(item: DashboardPackage, resourceCount: nu
 	}
 	const base = item.description;
 	if (item.section === "Available") {
-		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} cached Pi resource entries; Enter installs the whole package.`;
-		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry, so there is no dropdown. Use Alt+I for the exact path.`;
-		return `${base}\nNo current-project cached checkout or resource list is available; package resource inventory becomes available after install. Enter installs the whole package.`;
+		if (resourceCount > 1) return `${base}\nRight Arrow unfolds ${resourceCount} read-only cached resource previews. Enter installs the whole package; reopen /construct to select the Pi-resolved resources.`;
+		if (resourceCount === 1) return `${base}\nPi sees one cached resource entry (read-only preview), so there is no dropdown. Enter installs the whole package; reopen /construct to select resources.`;
+		return `${base}\nNo current-project cached checkout or resource list is available. Enter installs the whole package; reopen /construct to select the Pi-resolved resources.`;
 	}
 	if (item.section === "Active" || item.section === "Disabled") {
 		if (resourceCount > 1) {
@@ -1082,7 +1090,7 @@ interface PackageResourceFilterPlan {
 	selectedResourceKeys: Set<string>;
 	filters: Partial<Record<PackageResourceFilterKey, string[] | null>>;
 	selectedCount: number;
-	// Declaration-policy signatures captured from the dashboard-build read (empty for Available installs).
+	// Declaration-policy signatures captured from the dashboard-build read.
 	declarationBaselines: string[];
 }
 
@@ -1102,7 +1110,9 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 	if (!packageResources || changedIds.length === 0) return [];
 	const selectedActionIds = new Set(selectedIds);
 	const changed = new Set(changedIds);
-	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled" || item.section === "Available"));
+	// Available rows never build a filter plan: their cached preview is read-only, and the live
+	// Pi-resolved resources are selected after install/reopen. Only declared packages filter here.
+	const packageItems = packages.filter((item): item is DashboardPackage => item.type === "package" && (item.section === "Active" || item.section === "Disabled"));
 	const changedPackages = new Set<string>();
 	for (const item of packageItems) {
 		for (const resource of resourcesForPackage(item, packageResources)) {
@@ -1118,32 +1128,26 @@ function packageResourceFilterPlans(packages: DashboardItem[], packageResources:
 		const selectedResourceKeys = new Set<string>();
 		for (const resource of resources) {
 			const actionSelected = selectedActionIds.has(packageResourceChildRowId(item, resource));
-			const targetEnabled = item.section === "Available" ? actionSelected : actionSelected ? !resource.enabled : resource.enabled;
+			const targetEnabled = actionSelected ? !resource.enabled : resource.enabled;
 			if (targetEnabled) selectedResourceKeys.add(packageResourceSelectionKey(resource.kind, resource.packageRelativePath));
 		}
-		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys, item.section === "Available" ? [] : packageDeclarationSignatures(item, declarations)));
+		plans.push(packageResourceFilterPlanForResources(item, resources, selectedResourceKeys, packageDeclarationSignatures(item, declarations)));
 	}
 	return plans;
 }
 
 function packageResourceFilterConfirmation(plans: PackageResourceFilterPlan[]): CheckboxPickerConfirmation | undefined {
 	if (plans.length === 0) return undefined;
-	const installCount = plans.filter((plan) => plan.item.section === "Available").length;
-	const updateCount = plans.length - installCount;
-	const summary = installCount > 0 && updateCount > 0
-		? `Install ${installCount} available package${installCount === 1 ? "" : "s"} and update ${updateCount} existing package${updateCount === 1 ? "" : "s"}.`
-		: installCount > 0
-			? `Install ${installCount} available package${installCount === 1 ? "" : "s"} with selected resources.`
-			: `Update Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`;
+	const summary = `Update Pi package filters for ${plans.length} package${plans.length === 1 ? "" : "s"}.`;
 	const lines = [
 		summary,
 		"Creates a .pi/settings.json backup. Package files and saved loadouts are unchanged.",
-		"Existing selections toggle; unselected existing children keep their state. Available/future unselected resources stay off.",
+		"Existing selections toggle; unselected existing children keep their state. Future unselected resources stay off.",
 		"",
 		"Packages:",
 	];
 	for (const plan of plans.slice(0, 8)) {
-		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources${plan.item.section === "Available" ? " (install)" : ""}`);
+		lines.push(`- ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources`);
 	}
 	if (plans.length > 8) lines.push(`…and ${plans.length - 8} more`);
 	return { title: "Apply package resource filters?", confirmHint: "Press Enter to write Pi filters · Esc cancels", lines };
@@ -1342,60 +1346,21 @@ async function matchingDeclarations(declarations: DeclarationEntry[], source: st
 	return matched;
 }
 
-type InstalledDeclarationPolicy = "ok" | "missing" | "project-override" | "partial-filters" | "whole-package-disabled" | "invalid" | "unexpected-policy";
-
-// After Construct's own install, accept only the expected ordinary/unfiltered declaration for the returned source.
-async function installedDeclarationPolicy(declarations: DeclarationEntry[], source: string, settingsDir: string): Promise<InstalledDeclarationPolicy> {
-	const matched = await matchingDeclarations(declarations, source, settingsDir);
-	if (matched.length === 0) return "missing";
-	if (matched.length > 1) return "unexpected-policy";
-	const declaration = matched[0].summary;
-	if (declaration.form === "invalid") return "invalid";
-	if (declaration.projectOverride) return "project-override";
-	if (declaration.filterState === "whole-package-disabled") return "whole-package-disabled";
-	if (declaration.filterState === "partially-filtered") return "partial-filters";
-	if (declaration.filterState !== "unfiltered") return "unexpected-policy";
-	return "ok";
-}
-
 type PackageResourcePlanStatus = "done" | "warn" | "fail";
 
-function packageResourceProgressLines(plans: PackageResourceFilterPlan[], status: Map<string, PackageResourcePlanStatus>, failures: string[] = [], warnings: string[] = [], refused: string[] = [], installedWithoutFilters: string[] = []): string[] {
+function packageResourceProgressLines(plans: PackageResourceFilterPlan[], status: Map<string, PackageResourcePlanStatus>, failures: string[] = [], warnings: string[] = [], refused: string[] = []): string[] {
 	return [
 		`${status.size}/${plans.length} package filter update${plans.length === 1 ? "" : "s"} processed`,
 		"",
 		...plans.map((plan) => {
 			const state = status.get(plan.item.rowId);
 			const icon = state === "done" ? "✓" : state === "warn" ? "?" : state === "fail" ? "!" : " ";
-			return `${icon} ${plan.item.section === "Available" ? "Install/filter" : "Filter"} ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} reviewed`;
+			return `${icon} Filter ${plan.item.label}  ${plan.selectedCount}/${plan.resources.length} reviewed`;
 		}),
 		...warnings.map((warning) => `! ${warning}`),
-		...installedWithoutFilters.map((message) => `~ ${message}`),
 		...refused.map((refusal) => `? ${refusal}`),
 		...failures.map((failure) => `! ${failure}`),
 	];
-}
-
-async function recheckInstalledPackageResourcePlan(ctx: ExtensionCommandContext, item: DashboardPackage, resources: PackageResourceSummary[], selectedResourceKeys: Set<string>, filterSource: string, metadataId: string | undefined): Promise<{ plan?: PackageResourceFilterPlan; resources?: PackageResourceSummary[]; declarations: DeclarationEntry[]; warnings: string[] }> {
-	const warnings: string[] = [];
-	const inventory = await collectProjectInventory(ctx, { directResources: false });
-	const inventoryResources = await collectProjectPackageResources(ctx, inventory);
-	warnings.push(...inventoryResources.warnings);
-	const declarations = await packageDeclarationEntries(inventory);
-	const installedItem: DashboardPackage = {
-		...item,
-		id: metadataId ?? item.id,
-		source: filterSource,
-		matchSources: uniqueSorted([filterSource, item.source, ...item.matchSources]),
-	};
-	const installedResources = resourcesForPackage(installedItem, inventoryResources);
-	if (installedResources.length === 0) {
-		return { declarations, warnings: [...warnings, `${item.label}: installed, but Pi did not resolve package resources; filters were not written.`] };
-	}
-	if (packageResourceSetsDiffer(resources, installedResources)) {
-		warnings.push(`${item.label}: cached package resource list changed after install; reviewed filters were not written from the cached list.`);
-	}
-	return { plan: packageResourceFilterPlanForResources(item, installedResources, selectedResourceKeys, []), resources: installedResources, declarations, warnings };
 }
 
 // One narrow injection seam for tests: the production default is Construct's existing checkbox picker, so
@@ -1485,7 +1450,7 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 		filterHint: "type to narrow",
 		filterHintInline: true,
 		colorRowsByState: true,
-		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · Alt+I details · Ctrl+Alt+R removes whole package · Ctrl+U unloads library package · Esc cancel\n  parent Space: all → [-] active → [+] inactive/available → none · [~] mixed state · [*] custom selection",
+		footerHint: "  Space select/toggle · Enter apply/run · → unfold known package resources · ← fold · Alt+I details · Ctrl+Alt+R removes whole package · Ctrl+U unloads library package · Esc cancel\n  parent Space (declared packages): all → [-] active → [+] inactive → none · [~] mixed state · [*] custom selection",
 		actions: { remove: true, unload: true },
 		resolveRemoveIds: resolveRemoveIds,
 		resolveUnloadIds: resolveUnloadIds,
@@ -1645,133 +1610,58 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				const applyWarnings: string[] = [];
 				const refused: string[] = [];
 				const trustLost: string[] = [];
-				const installedWithoutFilters: string[] = [];
 				const status = new Map<string, PackageResourcePlanStatus>();
 				const succeeded = new Set<string>();
+				const seenWarnings = new Set<string>();
+				const pushWarnings = (values: readonly string[]): void => {
+					for (const value of values) {
+						if (seenWarnings.has(value)) continue;
+						seenWarnings.add(value);
+						applyWarnings.push(value);
+					}
+				};
 				let needsReload = false;
 				let mutatorAttempted = false;
-				const settingsDir = dirname(paths.projectSettingsPath);
-				const step = () => update("Applying package resource filters", packageResourceProgressLines(resourcePlans, status, failures, applyWarnings, refused, installedWithoutFilters));
+				const step = () => update("Applying package resource filters", packageResourceProgressLines(resourcePlans, status, failures, applyWarnings, refused));
 				const finish = (rowId: string, state: PackageResourcePlanStatus) => {
 					status.set(rowId, state);
 					step();
 				};
 				update("Applying package resource filters", packageResourceProgressLines(resourcePlans, status));
-				for (let plan of resourcePlans) {
+				for (const plan of resourcePlans) {
 					if (signal.aborted) break;
 					if (!ctx.isProjectTrusted()) {
 						trustLost.push(`${plan.item.label}: project is no longer trusted; reviewed filters were not applied.`);
 						finish(plan.item.rowId, "warn");
 						continue;
 					}
-					let filterSource = plan.item.source;
-					let metadataId = plan.item.managed ? plan.item.id : undefined;
-					let installedThisPlan = false;
-					if (plan.item.section === "Available") {
-						// Available: the source must still be undeclared before Construct installs on its behalf.
-						const beforeInstall = await freshProjectState(ctx);
-						applyWarnings.push(...beforeInstall.resources.warnings);
-						const appeared = await matchingDeclarations(await packageDeclarationEntries(beforeInstall.inventory), plan.item.source, settingsDir);
-						if (appeared.length > 0) {
-							refused.push(`${plan.item.label}: a package declaration appeared since this review; install and reviewed filters were not applied. Reopen /construct to re-review.`);
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						if (signal.aborted) break;
-						const trustedBeforeInstall = ctx.isProjectTrusted();
-						if (!trustedBeforeInstall) {
-							trustLost.push(`${plan.item.label}: project is no longer trusted; no install or filters were applied.`);
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						mutatorAttempted = true;
-						const load = await loadPackageIntoProject(paths, {
-							source: plan.item.source,
-							item: { id: plan.item.id, kind: "package", source: plan.item.source },
-						}, { projectTrusted: trustedBeforeInstall, quietPackageInstallOutput: ctx.mode === "tui" });
-						if (load.needsReload) needsReload = true;
-						if (!load.ok) {
-							failures.push(`${plan.item.label}: install failed: ${load.error ?? load.stderr ?? `exit ${load.exitCode ?? "unknown"}`}`);
-							finish(plan.item.rowId, "fail");
-							continue;
-						}
-						filterSource = load.declaredSource ?? plan.item.source;
-						metadataId = load.itemId ?? metadataId;
-						installedThisPlan = true;
-						// Trust is re-read immediately after the install, before inspecting the installed declaration.
-						if (!ctx.isProjectTrusted()) {
-							installedWithoutFilters.push(`${plan.item.label}: installed, but project is no longer trusted; reviewed filters were not applied. Re-review and reload.`);
-							needsReload = true;
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						const rechecked = await recheckInstalledPackageResourcePlan(ctx, plan.item, plan.resources, plan.selectedResourceKeys, filterSource, metadataId);
-						applyWarnings.push(...rechecked.warnings);
-						const policy = await installedDeclarationPolicy(rechecked.declarations, filterSource, settingsDir);
-						if (policy !== "ok") {
-							const detail = policy === "missing" ? "declaration not found" : policy === "project-override" ? "autoload:false override" : policy === "partial-filters" ? "partial filters" : policy === "whole-package-disabled" ? "whole-package-disabled filters" : policy === "invalid" ? "invalid declaration" : "unexpected declaration policy";
-							installedWithoutFilters.push(`${plan.item.label}: installed without reviewed filters (${detail}); re-review and reload.`);
-							needsReload = true;
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						if (!rechecked.plan) {
-							// Installed, but Pi resolved no package resources: stop rather than applying the stale cached plan.
-							installedWithoutFilters.push(`${plan.item.label}: installed, but Pi did not resolve package resources; reviewed filters were not applied. Re-review and reload.`);
-							needsReload = true;
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						const installDrift = packageResourceStateDrift(plan.resources, rechecked.resources ?? []);
-						if (installDrift.missing.length > 0 || installDrift.changed.length > 0 || installDrift.added.length > 0) {
-							installedWithoutFilters.push(`${plan.item.label}: installed without reviewed filters (resources changed after install: ${installDrift.missing.length} missing, ${installDrift.changed.length} state change${installDrift.changed.length === 1 ? "" : "s"}, ${installDrift.added.length} added); re-review and reload.`);
-							needsReload = true;
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						plan = rechecked.plan;
-					} else {
-						// Per-target re-read immediately before this write: an earlier install/writer must not bless a later target.
-						const fresh = await freshProjectState(ctx);
-						applyWarnings.push(...fresh.resources.warnings);
-						const freshSignatures = packageDeclarationSignatures(plan.item, await packageDeclarationEntries(fresh.inventory));
-						if (declarationPolicyChanged(plan.declarationBaselines, freshSignatures)) {
-							refused.push(`${plan.item.label}: package declaration policy changed since this review; reviewed filters were not applied. Reopen /construct to re-review.`);
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
-						const drift = packageResourceStateDrift(plan.resources, resourcesForPackage(plan.item, fresh.resources));
-						if (drift.missing.length > 0 || drift.changed.length > 0 || drift.added.length > 0) {
-							refused.push(`${plan.item.label}: package resources changed since this review (${drift.missing.length} missing, ${drift.changed.length} state change${drift.changed.length === 1 ? "" : "s"}, ${drift.added.length} added); reviewed filters were not applied. Reopen /construct to re-review.`);
-							finish(plan.item.rowId, "warn");
-							continue;
-						}
+					// Per-target re-read immediately before this write: an earlier writer must not bless a later target.
+					const fresh = await freshProjectState(ctx);
+					pushWarnings(fresh.resources.warnings);
+					const freshSignatures = packageDeclarationSignatures(plan.item, await packageDeclarationEntries(fresh.inventory));
+					if (declarationPolicyChanged(plan.declarationBaselines, freshSignatures)) {
+						refused.push(`${plan.item.label}: package declaration policy changed since this review; reviewed filters were not applied. Reopen /construct to re-review.`);
+						finish(plan.item.rowId, "warn");
+						continue;
 					}
-					if (signal.aborted) {
-						// Esc after a resolution/install must not proceed to a write; report an install accurately.
-						if (installedThisPlan) {
-							installedWithoutFilters.push(`${plan.item.label}: installed, but the submit was cancelled before reviewed filters were applied. Re-review and reload.`);
-							needsReload = true;
-							finish(plan.item.rowId, "warn");
-						}
-						break;
+					const drift = packageResourceStateDrift(plan.resources, resourcesForPackage(plan.item, fresh.resources));
+					if (drift.missing.length > 0 || drift.changed.length > 0 || drift.added.length > 0) {
+						refused.push(`${plan.item.label}: package resources changed since this review (${drift.missing.length} missing, ${drift.changed.length} state change${drift.changed.length === 1 ? "" : "s"}, ${drift.added.length} added); reviewed filters were not applied. Reopen /construct to re-review.`);
+						finish(plan.item.rowId, "warn");
+						continue;
 					}
+					if (signal.aborted) break;
 					const trustedBeforeWrite = ctx.isProjectTrusted();
 					if (!trustedBeforeWrite) {
-						if (installedThisPlan) {
-							installedWithoutFilters.push(`${plan.item.label}: installed, but project is no longer trusted; reviewed filters were not applied. Re-review and reload.`);
-							needsReload = true;
-						} else {
-							trustLost.push(`${plan.item.label}: project is no longer trusted; reviewed filters were not applied.`);
-						}
+						trustLost.push(`${plan.item.label}: project is no longer trusted; reviewed filters were not applied.`);
 						finish(plan.item.rowId, "warn");
 						continue;
 					}
 					mutatorAttempted = true;
-					const result = await setPackageResourceFiltersInProject(paths, { source: filterSource, id: metadataId, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted: trustedBeforeWrite });
+					const result = await setPackageResourceFiltersInProject(paths, { source: plan.item.source, id: plan.item.managed ? plan.item.id : undefined, filters: plan.filters, selectedCount: plan.selectedCount }, { projectTrusted: trustedBeforeWrite });
 					if (result.needsReload) needsReload = true;
 					if (!result.ok) {
-						failures.push(`${plan.item.label}: ${plan.item.section === "Available" ? "installed but filter update failed" : "filter update failed"}: ${result.error ?? "unknown error"}`);
+						failures.push(`${plan.item.label}: filter update failed: ${result.error ?? "unknown error"}`);
 						finish(plan.item.rowId, "fail");
 					} else {
 						succeeded.add(plan.item.rowId);
@@ -1779,30 +1669,24 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					}
 				}
 				const changed = succeeded.size;
-				const installedWithFilters = resourcePlans.filter((plan) => plan.item.section === "Available" && succeeded.has(plan.item.rowId));
-				const updatedWithFilters = resourcePlans.filter((plan) => plan.item.section !== "Available" && succeeded.has(plan.item.rowId));
+				const updatedWithFilters = resourcePlans.filter((plan) => succeeded.has(plan.item.rowId));
 				const notApplied = refused.length + trustLost.length;
 				return {
-					title: installedWithoutFilters.length > 0 ? "Installed without reviewed filters"
-						: signal.aborted
-							? changed > 0 || mutatorAttempted ? "Package resource update cancelled after partial changes" : "Package resource update cancelled"
-							: changed === 0 && trustLost.length > 0 ? "Project not trusted"
-								: notApplied > 0 ? "Package resource update needs re-review"
-									: failures.length > 0 ? "Package resource filters applied with errors"
-										: "Package resource filters applied",
+					title: signal.aborted
+						? changed > 0 || mutatorAttempted ? "Package resource update cancelled after partial changes" : "Package resource update cancelled"
+						: changed === 0 && trustLost.length > 0 ? "Project not trusted"
+							: notApplied > 0 ? "Package resource update needs re-review"
+								: failures.length > 0 ? "Package resource filters applied with errors"
+									: "Package resource filters applied",
 					confirmHint: needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
 					confirmAction: needsReload ? "reload" : undefined,
 					lines: [
 						signal.aborted ? "Cancelled before remaining changes." : undefined,
 						!mutatorAttempted ? "No files were changed." : undefined,
-						installedWithFilters.length > 0 ? `Installed with selected resources: ${installedWithFilters.length}` : undefined,
-						...installedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled`),
 						updatedWithFilters.length > 0 ? `Updated package filters: ${updatedWithFilters.length}` : undefined,
 						...updatedWithFilters.map((plan) => `+ ${plan.item.label}: ${plan.selectedCount}/${plan.resources.length} resources enabled after apply`),
 						applyWarnings.length > 0 ? `Warnings: ${applyWarnings.length}` : undefined,
 						...applyWarnings.map((warning) => `! ${warning}`),
-						installedWithoutFilters.length > 0 ? `Installed without reviewed filters: ${installedWithoutFilters.length}` : undefined,
-						...installedWithoutFilters.map((message) => `~ ${message}`),
 						trustLost.length > 0 ? `Trust changed (not applied): ${trustLost.length}` : undefined,
 						...trustLost.map((message) => `? ${message}`),
 						refused.length > 0 ? `Not applied (re-review): ${refused.length}` : undefined,
@@ -1876,6 +1760,9 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				return { title: "Construct Loadout cancelled", lines: ["No files were changed."] };
 			}
 
+			// Install steps are gated by the shared runner preflight (live trust + still-undeclared) and
+			// by the per-step live trust read inside runConstructOperationSteps, so a later target refuses
+			// honestly without undoing earlier results. Enable/Disable/Remove keep their package-op guards.
 			const outcome = await runConstructOperationSteps({
 				ctx,
 				paths,
@@ -1938,6 +1825,10 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 				}
 			}
 			const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
+			// An install (or a metadata-only install failure that still wrote the declaration) must not
+			// offer automatic reload: Pi's defaults would load before the user can pick resources.
+			const installRuntimeChange = installed.length > 0 || outcome.partialRuntimeChanges.some((change) => change.action === "Install");
+			const canAutoReload = outcome.needsReload && !installRuntimeChange;
 			return {
 				title: outcome.cancelled
 					? outcome.appliedChanges > 0
@@ -1946,14 +1837,17 @@ export async function handleDashboard(_pi: ExtensionAPI, ctx: ExtensionCommandCo
 					: hasErrors
 						? "Construct Loadout applied with errors"
 						: "Construct Loadout changes applied",
-				confirmHint: outcome.needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
-				confirmAction: outcome.needsReload ? "reload" : undefined,
+				confirmHint: canAutoReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+				confirmAction: canAutoReload ? "reload" : undefined,
+				manualReload: installRuntimeChange,
 				lines: [
 					outcome.cancelled ? "Cancelled before remaining changes." : undefined,
 					selectedSaved.length > 0 ? `Saved loadouts selected: ${selectedSaved.map((item) => item.label).join(", ")}` : undefined,
 					selectedSaved.length > 0 ? "Recipe mode: activate-only; non-recipe and already-active resources were left untouched." : undefined,
 					installed.length > 0 ? `Installed into project: ${installed.length}` : undefined,
 					...installed.map((item) => `+ ${item.label}: ${item.source}`),
+					installRuntimeChange ? "Installed package resources stay at Pi defaults (unfiltered) until you choose them; Construct did not reload Pi." : undefined,
+					installRuntimeChange ? "Reopen /construct (or run pi config -l) now to select the installed resources, then run /reload. Reload now instead if you want Pi's defaults." : undefined,
 					enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 					...enabled.map((item) => `+ ${item.label}: ${item.source}`),
 					...savedOverrides.map((source) => `↔ ${source} — Pi project override (autoload:false); manage with pi config -l`),

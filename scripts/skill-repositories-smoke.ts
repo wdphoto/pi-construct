@@ -11,7 +11,7 @@ import { collectProjectInventory, withEffectivePackageStates } from "../extensio
 import { collectProjectPackageResources, collectTemporaryPackageResourcesForSources, packageResourceMatches, type PackageResourceSummary } from "../extensions/construct/package-resources.js";
 import { savedSourceDecision } from "../extensions/construct/effective-state.js";
 import { removePackageFromProject } from "../extensions/construct/package-ops.js";
-import { runConstructOperationSteps } from "../extensions/construct/operation-runner.js";
+import { runConstructOperationSteps, type ConstructOperationStep } from "../extensions/construct/operation-runner.js";
 import { buildStatus } from "../extensions/construct/status.js";
 import {
 	catalogAgentSkillsInventory,
@@ -364,7 +364,7 @@ try {
 	const unknownRow = availableDashboard.items.find((item) => !item.parentId && item.label === "unknown-carrier");
 	assert(unknownRow, "unknown Available row missing");
 	assert.notEqual(unknownRow.expandable, true, "never-inspected Available must not fabricate children");
-	assert.match(unknownRow.description ?? "", /inventory becomes available after install/);
+	assert.match(unknownRow.description ?? "", /No current-project cached checkout or resource list is available/);
 
 	// Explicit load captures only relative inventory in the catalog. After the declaration and
 	// checkout disappear, the Available tree survives without package files or absolute paths.
@@ -956,6 +956,204 @@ try {
 	const snapshotWinsRow = snapshotWins.items.find((item) => !item.parentId && item.label === "go-skills");
 	assert(snapshotWinsRow?.expandable, "validated snapshot must still provide the dropdown");
 	assert.deepEqual(snapshotWins.items.filter((item) => item.parentId === snapshotWinsRow.id).map((item) => item.value), ["remembered/"], "validated snapshot must win over the stale temporary cache");
+
+	// 22) Available carrier install -> reopen without reload -> link through the dashboard.
+	const installCarrierProject = join(tmp, "install-carrier-project");
+	const installCarrierSource = join(installCarrierProject, ".pi", "local-carrier");
+	mkdirSync(join(installCarrierProject, ".pi"), { recursive: true });
+	writeFileSync(join(installCarrierProject, ".pi", "settings.json"), JSON.stringify({ packages: [] }, null, 2) + "\n");
+	writeSkill(join(installCarrierSource, "one"), "install-one", "Install carrier skill.");
+	writeFileSync(join(installCarrierSource, "package.json"), JSON.stringify({ name: "local-carrier", version: "0.0.0", pi: {} }, null, 2) + "\n");
+	const installCarrierPaths = await getPaths(makeCtx(installCarrierProject, () => true));
+	mkdirSync(installCarrierPaths.constructDir, { recursive: true });
+	writeFileSync(installCarrierPaths.userCatalogPath, JSON.stringify({ version: 1, items: [{ id: "local-carrier", kind: "package", source: installCarrierSource }] }, null, 2) + "\n");
+	const installCarrierBefore = await openDashboard(installCarrierProject);
+	const installCarrierRow = installCarrierBefore.items.find((item) => !item.parentId && item.label === "local-carrier");
+	assert(installCarrierRow, `Available local carrier row missing: ${JSON.stringify(installCarrierBefore.items.map((item) => [item.label, item.section]))}`);
+	assert.equal(installCarrierRow.section, "Available", JSON.stringify(installCarrierRow));
+	assert(installCarrierBefore.options.onSubmit, "onSubmit missing");
+	const installCarrierResult = await installCarrierBefore.options.onSubmit([installCarrierRow.id], () => {}, new AbortController().signal, "confirm", []);
+	assert.match(installCarrierResult.title, /changes applied/, JSON.stringify(installCarrierResult));
+	assert.equal(installCarrierResult.confirmAction, undefined, "carrier install must not offer automatic reload");
+	// Reopen without reload: the declared carrier is Disabled with editable skill children.
+	const installCarrierAfter = await openDashboard(installCarrierProject);
+	const installedCarrier = installCarrierAfter.items.find((item) => !item.parentId && item.section === "Disabled" && item.expandable);
+	assert(installedCarrier, `installed carrier row missing: ${JSON.stringify(installCarrierAfter.items.map((item) => [item.label, item.section, item.expandable]))}`);
+	const installedCarrierChildren = installCarrierAfter.items.filter((item) => item.parentId === installedCarrier.id);
+	assert.deepEqual(installedCarrierChildren.map((child) => child.value), ["one/"]);
+	assert.equal(installedCarrierChildren.every((child) => child.disabled !== true), true, "installed carrier children must be editable");
+	assert(installCarrierAfter.options.onSubmit, "reopened carrier onSubmit missing");
+	const linkResult = await installCarrierAfter.options.onSubmit([installedCarrierChildren[0].id], () => {}, new AbortController().signal, "confirm", [installedCarrierChildren[0].id]);
+	assert.match(linkResult.title, /Agent Skill links applied/, JSON.stringify(linkResult));
+	const installCarrierSettings = JSON.parse(readFileSync(join(installCarrierProject, ".pi", "settings.json"), "utf8")) as { skills?: string[] };
+	assert.deepEqual(installCarrierSettings.skills, ["local-carrier/one"]);
+
+	// 23) Runner install preflight: a deferred beforeOperation that resolves after cancellation must
+	// not mutate the second target, and the earlier install remains.
+	const runnerAbortProject = join(tmp, "runner-abort-project");
+	mkdirSync(join(runnerAbortProject, ".pi"), { recursive: true });
+	writeFileSync(join(runnerAbortProject, ".pi", "settings.json"), JSON.stringify({ packages: [] }, null, 2) + "\n");
+	const runnerAbortA = join(runnerAbortProject, "pkg-a");
+	const runnerAbortB = join(runnerAbortProject, "pkg-b");
+	for (const [dir, name] of [[runnerAbortA, "runner-abort-a"], [runnerAbortB, "runner-abort-b"]] as const) {
+		mkdirSync(join(dir, "extensions"), { recursive: true });
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "0.0.0", pi: { extensions: ["extensions/index.ts"] } }, null, 2) + "\n");
+		writeFileSync(join(dir, "extensions", "index.ts"), "export default function noop() {}\n");
+	}
+	const runnerAbortCtx = makeCtx(runnerAbortProject, () => true);
+	const runnerAbortPaths = await getPaths(runnerAbortCtx);
+	const runnerAbortController = new AbortController();
+	const runnerAbortSteps: ConstructOperationStep[] = [
+		{ action: "Install", item: { id: "runner-abort-a", label: "runner-abort-a", source: runnerAbortA, displaySource: runnerAbortA }, state: "pending" },
+		{ action: "Install", item: { id: "runner-abort-b", label: "runner-abort-b", source: runnerAbortB, displaySource: runnerAbortB }, state: "pending" },
+	];
+	const runnerAbortOutcome = await runConstructOperationSteps({
+		ctx: runnerAbortCtx,
+		paths: runnerAbortPaths,
+		steps: runnerAbortSteps,
+		signal: runnerAbortController.signal,
+		progressTitle: "Runner abort",
+		completeLabel: "installs",
+		beforeOperation: async (step) => {
+			if (step.item.id !== "runner-abort-b") return undefined;
+			// Deferred until after the caller cancels; must resolve post-abort without mutating.
+			await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			runnerAbortController.abort();
+			return { ok: true };
+		},
+	});
+	assert.equal(runnerAbortOutcome.completed.length, 1, JSON.stringify(runnerAbortOutcome));
+	assert.equal(runnerAbortOutcome.cancelled, true, JSON.stringify(runnerAbortOutcome));
+	assert.equal(runnerAbortOutcome.needsReload, true, JSON.stringify(runnerAbortOutcome));
+	const runnerAbortSettings = JSON.parse(readFileSync(join(runnerAbortProject, ".pi", "settings.json"), "utf8")) as { packages: string[] };
+	assert.equal(runnerAbortSettings.packages.length, 1, JSON.stringify(runnerAbortSettings));
+	assert(String(runnerAbortSettings.packages[0]).includes("pkg-a"), JSON.stringify(runnerAbortSettings));
+
+	// 24) Runner install preflight: a throwing beforeOperation becomes a structured failed step and
+	// preserves the earlier install and its reload need instead of escaping the generic UI.
+	const runnerThrowProject = join(tmp, "runner-throw-project");
+	mkdirSync(join(runnerThrowProject, ".pi"), { recursive: true });
+	writeFileSync(join(runnerThrowProject, ".pi", "settings.json"), JSON.stringify({ packages: [] }, null, 2) + "\n");
+	const runnerThrowA = join(runnerThrowProject, "pkg-a");
+	const runnerThrowB = join(runnerThrowProject, "pkg-b");
+	for (const [dir, name] of [[runnerThrowA, "runner-throw-a"], [runnerThrowB, "runner-throw-b"]] as const) {
+		mkdirSync(join(dir, "extensions"), { recursive: true });
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "0.0.0", pi: { extensions: ["extensions/index.ts"] } }, null, 2) + "\n");
+		writeFileSync(join(dir, "extensions", "index.ts"), "export default function noop() {}\n");
+	}
+	const runnerThrowCtx = makeCtx(runnerThrowProject, () => true);
+	const runnerThrowPaths = await getPaths(runnerThrowCtx);
+	const runnerThrowOutcome = await runConstructOperationSteps({
+		ctx: runnerThrowCtx,
+		paths: runnerThrowPaths,
+		steps: [
+			{ action: "Install", item: { id: "runner-throw-a", label: "runner-throw-a", source: runnerThrowA, displaySource: runnerThrowA }, state: "pending" },
+			{ action: "Install", item: { id: "runner-throw-b", label: "runner-throw-b", source: runnerThrowB, displaySource: runnerThrowB }, state: "pending" },
+		],
+		progressTitle: "Runner throw",
+		completeLabel: "installs",
+		beforeOperation: async (step) => {
+			if (step.item.id === "runner-throw-b") throw new Error("boom");
+			return undefined;
+		},
+	});
+	assert.equal(runnerThrowOutcome.completed.length, 1, JSON.stringify(runnerThrowOutcome));
+	assert.equal(runnerThrowOutcome.failures.length, 1, JSON.stringify(runnerThrowOutcome));
+	assert.match(runnerThrowOutcome.failures[0] ?? "", /install preflight failed.*boom/, JSON.stringify(runnerThrowOutcome));
+	assert.equal(runnerThrowOutcome.partialRuntimeChanges.length, 0, JSON.stringify(runnerThrowOutcome));
+	assert.equal(runnerThrowOutcome.needsReload, true, JSON.stringify(runnerThrowOutcome));
+	const runnerThrowSettings = JSON.parse(readFileSync(join(runnerThrowProject, ".pi", "settings.json"), "utf8")) as { packages: string[] };
+	assert.equal(runnerThrowSettings.packages.length, 1, JSON.stringify(runnerThrowSettings));
+	assert(String(runnerThrowSettings.packages[0]).includes("pkg-a"), JSON.stringify(runnerThrowSettings));
+
+	// 25) Two-source saved-loadout run regression: the first undeclared source installs, then lost
+	// trust refuses the second via the shared per-step preflight; print output keeps the install and
+	// advises choosing resources before a manual /reload.
+	const twoSourceProject = join(tmp, "two-source-run-project");
+	mkdirSync(join(twoSourceProject, ".pi"), { recursive: true });
+	writeFileSync(join(twoSourceProject, ".pi", "settings.json"), JSON.stringify({ packages: [] }, null, 2) + "\n");
+	const twoSourceA = join(twoSourceProject, "pkg-a");
+	const twoSourceB = join(twoSourceProject, "pkg-b");
+	for (const [dir, name] of [[twoSourceA, "two-source-a"], [twoSourceB, "two-source-b"]] as const) {
+		mkdirSync(join(dir, "extensions"), { recursive: true });
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "0.0.0", pi: { extensions: ["extensions/index.ts"] } }, null, 2) + "\n");
+		writeFileSync(join(dir, "extensions", "index.ts"), "export default function noop() {}\n");
+	}
+	const twoSourcePaths = await getPaths(makeCtx(twoSourceProject, () => true));
+	mkdirSync(twoSourcePaths.constructDir, { recursive: true });
+	writeFileSync(twoSourcePaths.userCatalogPath, JSON.stringify({ version: 1, items: [], profiles: [{ id: "two-source", kind: "profile", sources: [twoSourceA, twoSourceB] }] }, null, 2) + "\n");
+	const twoSourceNotes: string[] = [];
+	const twoSourceCtx = {
+		...makeCtx(twoSourceProject, () => {
+			const data = JSON.parse(readFileSync(join(twoSourceProject, ".pi", "settings.json"), "utf8")) as { packages?: unknown[] };
+			return !(Array.isArray(data.packages) && data.packages.length > 0);
+		}),
+		mode: "print",
+		hasUI: false,
+	} as unknown as ExtensionCommandContext;
+	const twoSourceOriginalLog = console.log;
+	console.log = (...args: unknown[]) => { twoSourceNotes.push(args.map((value) => String(value)).join(" ")); };
+	try {
+		await handleSavedLoadoutCommand(fakePi, "run two-source", twoSourceCtx);
+	} finally {
+		console.log = twoSourceOriginalLog;
+	}
+	const twoSourceOutput = twoSourceNotes.join("\n");
+	assert.match(twoSourceOutput, /Saved loadout ran with errors/, twoSourceOutput);
+	assert.match(twoSourceOutput, /Installed: 1/, twoSourceOutput);
+	assert.match(twoSourceOutput, /no longer trusted/, twoSourceOutput);
+	assert.match(twoSourceOutput, /Reopen \/construct or run pi config -l/, twoSourceOutput);
+	assert.doesNotMatch(twoSourceOutput, /Reload Pi resources with \/reload when ready/, twoSourceOutput);
+	const twoSourceSettings = JSON.parse(readFileSync(join(twoSourceProject, ".pi", "settings.json"), "utf8")) as { packages: string[] };
+	assert.equal(twoSourceSettings.packages.length, 1, JSON.stringify(twoSourceSettings));
+	assert(String(twoSourceSettings.packages[0]).includes("pkg-a"), JSON.stringify(twoSourceSettings));
+
+	// 26) A beforeOperation hook returning { ok: true } must not clear a default install preflight
+	// refusal (newly declared source or lost trust).
+	const guardProject = join(tmp, "guard-project");
+	mkdirSync(join(guardProject, ".pi"), { recursive: true });
+	const guardSource = join(guardProject, "guard-pkg");
+	mkdirSync(join(guardSource, "extensions"), { recursive: true });
+	writeFileSync(join(guardSource, "package.json"), JSON.stringify({ name: "guard-pkg", version: "0.0.0", pi: { extensions: ["extensions/index.ts"] } }, null, 2) + "\n");
+	writeFileSync(join(guardSource, "extensions", "index.ts"), "export default function noop() {}\n");
+	writeFileSync(join(guardProject, ".pi", "settings.json"), JSON.stringify({ packages: [guardSource] }, null, 2) + "\n");
+	const guardCtx = makeCtx(guardProject, () => true);
+	const guardPaths = await getPaths(guardCtx);
+	const guardOutcome = await runConstructOperationSteps({
+		ctx: guardCtx,
+		paths: guardPaths,
+		steps: [{ action: "Install", item: { id: "guard-pkg", label: "guard-pkg", source: guardSource, displaySource: guardSource }, state: "pending" }],
+		progressTitle: "Guard",
+		completeLabel: "installs",
+		beforeOperation: async () => ({ ok: true }),
+	});
+	assert.equal(guardOutcome.completed.length, 0, JSON.stringify(guardOutcome));
+	assert.equal(guardOutcome.failures.length, 1, JSON.stringify(guardOutcome));
+	assert.match(guardOutcome.failures[0] ?? "", /package declaration appeared since this review/, JSON.stringify(guardOutcome));
+	const guardSettings = JSON.parse(readFileSync(join(guardProject, ".pi", "settings.json"), "utf8")) as { packages: string[] };
+	assert.deepEqual(guardSettings.packages, [guardSource], JSON.stringify(guardSettings));
+
+	const trustGuardProject = join(tmp, "trust-guard-project");
+	mkdirSync(join(trustGuardProject, ".pi"), { recursive: true });
+	const trustGuardSource = join(trustGuardProject, "trust-guard-pkg");
+	mkdirSync(join(trustGuardSource, "extensions"), { recursive: true });
+	writeFileSync(join(trustGuardSource, "package.json"), JSON.stringify({ name: "trust-guard-pkg", version: "0.0.0", pi: { extensions: ["extensions/index.ts"] } }, null, 2) + "\n");
+	writeFileSync(join(trustGuardSource, "extensions", "index.ts"), "export default function noop() {}\n");
+	writeFileSync(join(trustGuardProject, ".pi", "settings.json"), JSON.stringify({ packages: [] }, null, 2) + "\n");
+	const trustGuardCtx = makeCtx(trustGuardProject, () => false);
+	const trustGuardPaths = await getPaths(trustGuardCtx);
+	const trustGuardOutcome = await runConstructOperationSteps({
+		ctx: trustGuardCtx,
+		paths: trustGuardPaths,
+		steps: [{ action: "Install", item: { id: "trust-guard-pkg", label: "trust-guard-pkg", source: trustGuardSource, displaySource: trustGuardSource }, state: "pending" }],
+		progressTitle: "Trust guard",
+		completeLabel: "installs",
+		beforeOperation: async () => ({ ok: true }),
+	});
+	assert.equal(trustGuardOutcome.completed.length, 0, JSON.stringify(trustGuardOutcome));
+	assert.equal(trustGuardOutcome.failures.length, 1, JSON.stringify(trustGuardOutcome));
+	assert.match(trustGuardOutcome.failures[0] ?? "", /no longer trusted/, JSON.stringify(trustGuardOutcome));
+	assert.deepEqual((JSON.parse(readFileSync(join(trustGuardProject, ".pi", "settings.json"), "utf8")) as { packages: string[] }).packages, [], "lost-trust refusal must not install");
 
 	console.log("skill-repositories smoke ok");
 } finally {

@@ -349,7 +349,9 @@ try {
 	assert.deepEqual(ordinarySettings.packages[0].extensions, [], "ordinary whole-package disable applied");
 	assert.equal(ordinarySettings.packages[0].source, pkgA);
 
-	// 15) Available install then zero resolved inventory: installed, filters not applied, reload required.
+	// 15) Available cached preview is read-only; selecting the parent installs the whole package
+	// without applying cached child filters, and points at selecting live resources after reopening
+	// (before /reload).
 	const availZeroDir = join(tmp, "pkg-avail-zero");
 	makePackage(availZeroDir, "pkg-avail-zero", ["extensions/x.ts", "extensions/y.ts"]);
 	const availZero = join(tmp, "proj-avail-zero");
@@ -359,18 +361,38 @@ try {
 	const availZeroParent = parentOfValue(availZeroCaptured, "extensions/x.ts");
 	const availZeroChildren = childrenByValue(availZeroCaptured, availZeroParent.id);
 	assert.equal(availZeroChildren.length, 2, "Available children must come from cached temporary resources");
-	writePackageManifest(availZeroDir, "pkg-avail-zero", []);
-	const availZeroResult = await submit(availZeroCaptured, [availZeroParent.id, ...availZeroChildren.map((c) => c.id)], availZeroChildren.map((c) => c.id));
-	assert.equal(availZeroResult.title, "Installed without reviewed filters", JSON.stringify(availZeroResult));
-	assert(availZeroResult.lines.some((line) => line.includes("installed, but Pi did not resolve package resources")), JSON.stringify(availZeroResult));
-	assert.equal(availZeroResult.confirmAction, "reload", "install requires reload");
+	assert.equal(availZeroChildren.every((child) => child.disabled === true), true, "cached Available children must be read-only previews");
+	assert.match(availZeroParent.description ?? "", /read-only cached resource previews/);
+	assert.equal(availZeroParent.aggregateChildIds?.length, 2, "parent aggregate selection must still cover the read-only preview children");
+	// A changed cached child id must not build a filter plan; the parent installs the whole package.
+	const availZeroResult = await submit(availZeroCaptured, [availZeroParent.id], availZeroChildren.map((child) => child.id));
+	assert.equal(availZeroResult.title, "Construct Loadout changes applied", JSON.stringify(availZeroResult));
+	assert(availZeroResult.lines.some((line) => line.includes("Installed into project: 1")), JSON.stringify(availZeroResult));
+	assert(availZeroResult.lines.some((line) => line.includes("Pi defaults (unfiltered)")), JSON.stringify(availZeroResult));
+	assert(availZeroResult.lines.some((line) => line.includes("Reopen /construct") && line.includes("then run /reload")), JSON.stringify(availZeroResult));
+	assert.equal(availZeroResult.confirmAction, undefined, "Available install must not offer automatic reload");
 	const availZeroSettings = JSON.parse(settings(availZero));
 	assert.equal(availZeroSettings.packages.length, 1, "install must add exactly one declaration");
 	const availZeroEntry = availZeroSettings.packages[0] as string | { source: string; extensions?: string[] };
 	assert((typeof availZeroEntry === "string" ? availZeroEntry : availZeroEntry.source).includes("pkg-avail-zero"), JSON.stringify(availZeroEntry));
-	assert.equal(typeof availZeroEntry === "string" ? undefined : availZeroEntry.extensions, undefined, "no filters written after zero resolve");
+	assert.equal(typeof availZeroEntry === "string" ? undefined : availZeroEntry.extensions, undefined, "no filters written for an Available install");
+	// Reopen WITHOUT reload: the now-declared package exposes editable live Pi-resolved children,
+	// and selecting one writes a real native filter allowlist.
+	const availZeroReopen = await openDashboard(availZero, makeCtx(availZero, () => true));
+	const availZeroDeclared = availZeroReopen.items.find((item) => !item.parentId && item.label === "pkg-avail-zero");
+	assert(availZeroDeclared, "installed package row missing after reopen");
+	const availZeroLiveChildren = childrenByValue(availZeroReopen, availZeroDeclared.id);
+	assert.deepEqual(availZeroLiveChildren.map((child) => child.value).slice().sort(), ["extensions/x.ts", "extensions/y.ts"]);
+	assert.equal(availZeroLiveChildren.every((child) => child.disabled !== true), true, "live declared children must be editable");
+	const liveZeroX = availZeroLiveChildren.find((child) => child.value === "extensions/x.ts");
+	assert(liveZeroX, "live x child missing");
+	const availZeroFilterResult = await submit(availZeroReopen, [liveZeroX.id], [liveZeroX.id]);
+	assert.equal(availZeroFilterResult.title, "Package resource filters applied", JSON.stringify(availZeroFilterResult));
+	const availZeroFiltered = JSON.parse(settings(availZero));
+	assert.deepEqual((availZeroFiltered.packages[0] as { extensions?: string[] }).extensions, ["extensions/y.ts"], "selecting the live x child toggles x off and allowlists y");
 
-	// 16) Available install then changed inventory: installed, reviewed filters refused, reload required.
+	// 16) Available with a stale cached preview: install still succeeds whole-package with no
+	// drift/refusal noise; after reopen the live Pi-resolved resources are selectable.
 	const availChangedDir = join(tmp, "pkg-avail-changed");
 	makePackage(availChangedDir, "pkg-avail-changed", ["extensions/x.ts", "extensions/y.ts"]);
 	const availChanged = join(tmp, "proj-avail-changed");
@@ -379,20 +401,37 @@ try {
 	const availChangedCaptured = await openDashboard(availChanged, makeCtx(availChanged, () => true));
 	const availChangedParent = parentOfValue(availChangedCaptured, "extensions/x.ts");
 	const availChangedChildren = childrenByValue(availChangedCaptured, availChangedParent.id);
-	assert.equal(availChangedChildren.length, 2);
+	assert.equal(availChangedChildren.length, 2, "stale cache must still show read-only preview children");
+	assert.equal(availChangedChildren.every((child) => child.disabled === true), true, "stale preview children must be read-only");
 	writeFileSync(join(availChangedDir, "extensions/z.ts"), "export default function noop() {}\n");
-	writePackageManifest(availChangedDir, "pkg-avail-changed", ["extensions/z.ts"]);
-	const availChangedResult = await submit(availChangedCaptured, [availChangedParent.id, ...availChangedChildren.map((c) => c.id)], availChangedChildren.map((c) => c.id));
-	assert.equal(availChangedResult.title, "Installed without reviewed filters", JSON.stringify(availChangedResult));
-	assert(availChangedResult.lines.some((line) => line.includes("resources changed after install")), JSON.stringify(availChangedResult));
-	assert.equal(availChangedResult.confirmAction, "reload", "install requires reload");
+	writeFileSync(join(availChangedDir, "extensions/w.ts"), "export default function noop() {}\n");
+	writePackageManifest(availChangedDir, "pkg-avail-changed", ["extensions/z.ts", "extensions/w.ts"]);
+	const availChangedResult = await submit(availChangedCaptured, [availChangedParent.id], availChangedChildren.map((child) => child.id));
+	assert.equal(availChangedResult.title, "Construct Loadout changes applied", JSON.stringify(availChangedResult));
+	for (const noise of ["installed without reviewed filters", "resources changed after install", "cached package resource list changed"]) {
+		assert(!availChangedResult.lines.some((line) => line.includes(noise)), `${noise} must not appear: ${JSON.stringify(availChangedResult)}`);
+	}
+	assert.equal(availChangedResult.confirmAction, undefined, "stale-cache install must not offer automatic reload");
+	assert(availChangedResult.lines.some((line) => line.includes("Pi defaults (unfiltered)")), JSON.stringify(availChangedResult));
 	const availChangedSettings = JSON.parse(settings(availChanged));
 	assert.equal(availChangedSettings.packages.length, 1, "install must add exactly one declaration");
 	const availChangedEntry = availChangedSettings.packages[0] as string | { source: string; extensions?: string[] };
 	assert((typeof availChangedEntry === "string" ? availChangedEntry : availChangedEntry.source).includes("pkg-avail-changed"), JSON.stringify(availChangedEntry));
-	assert.equal(typeof availChangedEntry === "string" ? undefined : availChangedEntry.extensions, undefined, "no filters written after changed inventory");
+	assert.equal(typeof availChangedEntry === "string" ? undefined : availChangedEntry.extensions, undefined, "no filters written for a stale-cache install");
+	const availChangedReopen = await openDashboard(availChanged, makeCtx(availChanged, () => true));
+	const availChangedDeclared = availChangedReopen.items.find((item) => !item.parentId && item.label === "pkg-avail-changed");
+	assert(availChangedDeclared, "installed stale-cache package row missing after reopen");
+	const liveChildren = childrenByValue(availChangedReopen, availChangedDeclared.id);
+	assert.deepEqual(liveChildren.map((child) => child.value).slice().sort(), ["extensions/w.ts", "extensions/z.ts"], "reopen must show the live resolved resources");
+	assert.equal(liveChildren.every((child) => child.disabled !== true), true, "live declared children must be editable");
+	const liveChangedW = liveChildren.find((child) => child.value === "extensions/w.ts");
+	assert(liveChangedW, "live w child missing");
+	const availChangedFilterResult = await submit(availChangedReopen, [liveChangedW.id], [liveChangedW.id]);
+	assert.equal(availChangedFilterResult.title, "Package resource filters applied", JSON.stringify(availChangedFilterResult));
+	const availChangedFiltered = JSON.parse(settings(availChanged));
+	assert.deepEqual((availChangedFiltered.packages[0] as { extensions?: string[] }).extensions, ["extensions/z.ts"], "selecting the live w child toggles w off and allowlists z");
 
-	// 17) Available gains an equivalent-relative declaration before submit: refused before install, no mutation.
+	// 17) A declaration appearing after review is refused by the pre-install recheck: no mutation.
 	const availGainDir = join(tmp, "pkg-avail-gain");
 	makePackage(availGainDir, "pkg-avail-gain", ["extensions/x.ts", "extensions/y.ts"]);
 	const availGain = join(tmp, "proj-avail-gain");
@@ -400,76 +439,32 @@ try {
 	makeCatalog(process.env.HOME, { items: [{ id: "pkg-avail-gain", kind: "package", source: availGainDir }], profiles: [] });
 	const availGainCaptured = await openDashboard(availGain, makeCtx(availGain, () => true));
 	const availGainParent = parentOfValue(availGainCaptured, "extensions/x.ts");
-	const availGainChildren = childrenByValue(availGainCaptured, availGainParent.id);
-	assert.equal(availGainChildren.length, 2);
+	assert.equal(childrenByValue(availGainCaptured, availGainParent.id).length, 2);
 	const relativeGain = relative(join(availGain, ".pi"), availGainDir);
 	backupSettings(availGain);
 	writeFileSync(settingsPath(availGain), JSON.stringify({ packages: [{ source: relativeGain, extensions: ["extensions/x.ts", "extensions/y.ts"] }] }, null, 2) + "\n");
 	const beforeGain = settings(availGain);
-	const availGainResult = await submit(availGainCaptured, [availGainParent.id, ...availGainChildren.map((c) => c.id)], availGainChildren.map((c) => c.id));
-	assert.equal(availGainResult.title, "Package resource update needs re-review", JSON.stringify(availGainResult));
+	const availGainResult = await submit(availGainCaptured, [availGainParent.id], []);
+	assert.equal(availGainResult.title, "Construct Loadout applied with errors", JSON.stringify(availGainResult));
 	assert(availGainResult.lines.some((line) => line.includes("a package declaration appeared since this review")), JSON.stringify(availGainResult));
-	assert(availGainResult.lines.some((line) => line.includes("No files were changed.")), JSON.stringify(availGainResult));
+	assert.equal(availGainResult.confirmAction, undefined, "refused install must not offer reload");
 	assert.equal(settings(availGain), beforeGain, "pre-install declaration refusal must not write or install");
 
-	// 18) Available policy added during install/re-resolve with the SAME enabled resources: installed without reviewed filters.
-	const availPolicyDir = join(tmp, "pkg-avail-policy");
-	makePackage(availPolicyDir, "pkg-avail-policy", ["extensions/x.ts", "extensions/y.ts"]);
-	const availPolicy = join(tmp, "proj-avail-policy");
-	makeProject(availPolicy, []);
-	makeCatalog(process.env.HOME, { items: [{ id: "pkg-avail-policy", kind: "package", source: availPolicyDir }], profiles: [] });
-	let injectPolicy = false;
-	let policyInjected = false;
-	const availPolicyCtx = makeCtx(availPolicy, () => {
-		if (injectPolicy && !policyInjected) {
-			const data = JSON.parse(settings(availPolicy));
-			if (Array.isArray(data.packages) && data.packages.length > 0) {
-				policyInjected = true;
-				const source = typeof data.packages[0] === "string" ? data.packages[0] : data.packages[0].source;
-				data.packages[0] = { source, extensions: ["extensions/x.ts", "extensions/y.ts"] };
-				backupSettings(availPolicy);
-				writeFileSync(settingsPath(availPolicy), JSON.stringify(data, null, 2) + "\n");
-			}
-		}
-		return true;
-	});
-	const availPolicyCaptured = await openDashboard(availPolicy, availPolicyCtx);
-	const availPolicyParent = parentOfValue(availPolicyCaptured, "extensions/x.ts");
-	const availPolicyChildren = childrenByValue(availPolicyCaptured, availPolicyParent.id);
-	const availPolicyResult = await submit(availPolicyCaptured, [availPolicyParent.id, ...availPolicyChildren.map((c) => c.id)], availPolicyChildren.map((c) => c.id), () => {
-		injectPolicy = true;
-	});
-	assert.equal(availPolicyResult.title, "Installed without reviewed filters", JSON.stringify(availPolicyResult));
-	assert(availPolicyResult.lines.some((line) => line.includes("partial filters")), JSON.stringify(availPolicyResult));
-	assert(policyInjected, "policy injection must have run after install");
-	assert.equal(availPolicyResult.confirmAction, "reload", "install requires reload");
-
-	// 19) Trust revoked immediately after install, before inspection: installed without reviewed filters, reload kept.
+	// 18) Trust revoked after review but before submit refuses the install preflight with no mutation.
 	const availTrustDir = join(tmp, "pkg-avail-trust");
 	makePackage(availTrustDir, "pkg-avail-trust", ["extensions/x.ts", "extensions/y.ts"]);
 	const availTrust = join(tmp, "proj-avail-trust");
 	makeProject(availTrust, []);
 	makeCatalog(process.env.HOME, { items: [{ id: "pkg-avail-trust", kind: "package", source: availTrustDir }], profiles: [] });
-	let revokeAfterInstall = false;
-	const availTrustCtx = makeCtx(availTrust, () => {
-		if (revokeAfterInstall) {
-			const data = JSON.parse(settings(availTrust));
-			if (Array.isArray(data.packages) && data.packages.length > 0) return false;
-		}
-		return true;
-	});
+	let installTrust = true;
+	const availTrustCtx = makeCtx(availTrust, () => installTrust);
 	const availTrustCaptured = await openDashboard(availTrust, availTrustCtx);
 	const availTrustParent = parentOfValue(availTrustCaptured, "extensions/x.ts");
-	const availTrustChildren = childrenByValue(availTrustCaptured, availTrustParent.id);
-	const availTrustResult = await submit(availTrustCaptured, [availTrustParent.id, ...availTrustChildren.map((c) => c.id)], availTrustChildren.map((c) => c.id), () => {
-		revokeAfterInstall = true;
-	});
-	assert.equal(availTrustResult.title, "Installed without reviewed filters", JSON.stringify(availTrustResult));
-	assert(availTrustResult.lines.some((line) => line.includes("project is no longer trusted")), JSON.stringify(availTrustResult));
-	assert.equal(availTrustResult.confirmAction, "reload", "install requires reload");
-	const availTrustSettings = JSON.parse(settings(availTrust));
-	assert.equal(availTrustSettings.packages.length, 1, "install must have happened");
-	assert.equal(typeof availTrustSettings.packages[0] === "string" ? undefined : availTrustSettings.packages[0].extensions, undefined, "no filters written after trust was revoked");
+	const beforeTrust = settings(availTrust);
+	installTrust = false;
+	const availTrustResult = await submit(availTrustCaptured, [availTrustParent.id], []);
+	assert(availTrustResult.lines.some((line) => /no longer trusted/i.test(line)), JSON.stringify(availTrustResult));
+	assert.equal(settings(availTrust), beforeTrust, "revoked trust must not install or write");
 
 	// 20) Absolute Construct metadata + equivalent relative declaration broad -> exact (same enabled) is refused.
 	const availMetaDir = join(tmp, "pkg-avail-meta");
@@ -492,33 +487,104 @@ try {
 	assert(metaResult.lines.some((line) => line.includes("declaration policy changed")), JSON.stringify(metaResult));
 	assert.equal(settings(metaProject), beforeMeta, "scope-aware declaration refusal must not write settings");
 
-	// 21) Abort after install before the write: installed without reviewed filters, reload kept.
+	// 21) A submit cancelled before the install step writes nothing and reports cancellation.
 	const availCancelDir = join(tmp, "pkg-avail-cancel");
 	makePackage(availCancelDir, "pkg-avail-cancel", ["extensions/x.ts", "extensions/y.ts"]);
 	const availCancel = join(tmp, "proj-avail-cancel");
 	makeProject(availCancel, []);
 	makeCatalog(process.env.HOME, { items: [{ id: "pkg-avail-cancel", kind: "package", source: availCancelDir }], profiles: [] });
 	const cancelController = new AbortController();
-	let abortAfterInstall = false;
-	const availCancelCtx = makeCtx(availCancel, () => {
-		if (abortAfterInstall) {
-			const data = JSON.parse(settings(availCancel));
-			if (Array.isArray(data.packages) && data.packages.length > 0) cancelController.abort();
-		}
-		return true;
-	});
-	const availCancelCaptured = await openDashboard(availCancel, availCancelCtx);
+	cancelController.abort();
+	const availCancelCaptured = await openDashboard(availCancel, makeCtx(availCancel, () => true));
 	const availCancelParent = parentOfValue(availCancelCaptured, "extensions/x.ts");
-	const availCancelChildren = childrenByValue(availCancelCaptured, availCancelParent.id);
-	const availCancelResult = await submit(availCancelCaptured, [availCancelParent.id, ...availCancelChildren.map((c) => c.id)], availCancelChildren.map((c) => c.id), () => {
-		abortAfterInstall = true;
-	}, cancelController);
-	assert.equal(availCancelResult.title, "Installed without reviewed filters", JSON.stringify(availCancelResult));
-	assert(availCancelResult.lines.some((line) => line.includes("cancelled before reviewed filters")), JSON.stringify(availCancelResult));
-	assert.equal(availCancelResult.confirmAction, "reload", "install requires reload");
-	const availCancelSettings = JSON.parse(settings(availCancel));
-	assert.equal(availCancelSettings.packages.length, 1, "install must have happened");
-	assert.equal(typeof availCancelSettings.packages[0] === "string" ? undefined : availCancelSettings.packages[0].extensions, undefined, "no filters written after cancellation");
+	const beforeCancel = settings(availCancel);
+	const availCancelResult = await submit(availCancelCaptured, [availCancelParent.id], [], () => {}, cancelController);
+	assert.equal(availCancelResult.title, "Construct Loadout cancelled", JSON.stringify(availCancelResult));
+	assert.equal(settings(availCancel), beforeCancel, "cancelled install must not write settings");
+
+	// 22) One unrelated declared Agent Skills carrier warning is reported once per submit even
+	// though the filter phase re-reads the project once per planned package.
+	const dedupProject = join(tmp, "proj-dedup");
+	const dedupSource = "git:github.com/example/dedup-carrier";
+	makeProject(dedupProject, [pkgA, pkgC, dedupSource]);
+	const dedupCheckout = join(dedupProject, ".pi", "git", "github.com", "example", "dedup-carrier");
+	mkdirSync(join(dedupCheckout, ".claude-plugin"), { recursive: true });
+	writeFileSync(join(dedupCheckout, ".claude-plugin", "marketplace.json"), JSON.stringify({ plugins: [{ source: "./one" }] }));
+	mkdirSync(join(dedupCheckout, "one"), { recursive: true });
+	writeFileSync(join(dedupCheckout, "one", "SKILL.md"), "---\nname: dedup-one\ndescription: Dedup skill.\n---\n# dedup\n");
+	const dedupCaptured = await openDashboard(dedupProject, makeCtx(dedupProject, () => true));
+	const dedupParentA = parentOfValue(dedupCaptured, "extensions/a.ts");
+	const dedupParentC = parentOfValue(dedupCaptured, "extensions/c.ts");
+	const dedupChildrenA = childrenByValue(dedupCaptured, dedupParentA.id);
+	const dedupChildrenC = childrenByValue(dedupCaptured, dedupParentC.id);
+	const dedupResult = await submit(
+		dedupCaptured,
+		[dedupParentA.id, ...dedupChildrenA.map((c) => c.id), dedupParentC.id, ...dedupChildrenC.map((c) => c.id)],
+		[...dedupChildrenA.map((c) => c.id), ...dedupChildrenC.map((c) => c.id)],
+	);
+	assert.equal(dedupResult.title, "Package resource filters applied", JSON.stringify(dedupResult));
+	const carrierWarningCount = dedupResult.lines.filter((line) => line.includes("ready to link")).length;
+	assert.equal(carrierWarningCount, 1, `carrier warning must be deduped: ${JSON.stringify(dedupResult)}`);
+
+	// 23) Two Available rows in one batch: trust revoked after the first install refuses the second
+	// without undoing the first.
+	const midTrustDirA = join(tmp, "pkg-mid-trust-a");
+	const midTrustDirB = join(tmp, "pkg-mid-trust-b");
+	makePackage(midTrustDirA, "pkg-mid-trust-a", ["extensions/a.ts", "extensions/b.ts"]);
+	makePackage(midTrustDirB, "pkg-mid-trust-b", ["extensions/c.ts", "extensions/d.ts"]);
+	const midTrustProject = join(tmp, "proj-mid-trust");
+	makeProject(midTrustProject, []);
+	makeCatalog(process.env.HOME, { items: [
+		{ id: "pkg-mid-trust-a", kind: "package", source: midTrustDirA },
+		{ id: "pkg-mid-trust-b", kind: "package", source: midTrustDirB },
+	], profiles: [] });
+	const midTrustCtx = makeCtx(midTrustProject, () => {
+		const data = JSON.parse(settings(midTrustProject));
+		return !(Array.isArray(data.packages) && data.packages.length > 0);
+	});
+	const midTrustCaptured = await openDashboard(midTrustProject, midTrustCtx);
+	const midTrustParentA = parentOfValue(midTrustCaptured, "extensions/a.ts");
+	const midTrustParentB = parentOfValue(midTrustCaptured, "extensions/c.ts");
+	const midTrustResult = await submit(midTrustCaptured, [midTrustParentA.id, midTrustParentB.id], []);
+	assert.equal(midTrustResult.title, "Construct Loadout applied with errors", JSON.stringify(midTrustResult));
+	assert(midTrustResult.lines.some((line) => line.includes("Installed into project: 1")), JSON.stringify(midTrustResult));
+	assert(midTrustResult.lines.some((line) => /pkg-mid-trust-b/.test(line) && /no longer trusted/.test(line)), JSON.stringify(midTrustResult));
+	assert.equal(midTrustResult.confirmAction, undefined, "partial install must not offer automatic reload");
+	const midTrustSettings = JSON.parse(settings(midTrustProject));
+	assert.equal(midTrustSettings.packages.length, 1, "first install must remain; second is refused");
+	assert(String(midTrustSettings.packages[0]).includes("pkg-mid-trust-a"), JSON.stringify(midTrustSettings));
+
+	// 24) Two Available rows in one batch: a declaration for the second source appearing mid-batch
+	// refuses the second install without undoing the first.
+	const midDeclDirA = join(tmp, "pkg-mid-decl-a");
+	const midDeclDirB = join(tmp, "pkg-mid-decl-b");
+	makePackage(midDeclDirA, "pkg-mid-decl-a", ["extensions/a.ts", "extensions/b.ts"]);
+	makePackage(midDeclDirB, "pkg-mid-decl-b", ["extensions/c.ts", "extensions/d.ts"]);
+	const midDecl = join(tmp, "proj-mid-decl");
+	makeProject(midDecl, []);
+	makeCatalog(process.env.HOME, { items: [
+		{ id: "pkg-mid-decl-a", kind: "package", source: midDeclDirA },
+		{ id: "pkg-mid-decl-b", kind: "package", source: midDeclDirB },
+	], profiles: [] });
+	const midDeclCaptured = await openDashboard(midDecl, makeCtx(midDecl, () => true));
+	const midDeclParentA = parentOfValue(midDeclCaptured, "extensions/a.ts");
+	const midDeclParentB = parentOfValue(midDeclCaptured, "extensions/c.ts");
+	let declaredSecond = false;
+	const midDeclResult = await submit(midDeclCaptured, [midDeclParentA.id, midDeclParentB.id], [], (_title, lines) => {
+		if (declaredSecond || !lines[0]?.startsWith("1/")) return;
+		declaredSecond = true;
+		const data = JSON.parse(settings(midDecl));
+		data.packages.push(midDeclDirB);
+		writeFileSync(settingsPath(midDecl), JSON.stringify(data, null, 2) + "\n");
+	});
+	assert.equal(declaredSecond, true, "mid-batch declaration injection must run after the first install");
+	assert.equal(midDeclResult.title, "Construct Loadout applied with errors", JSON.stringify(midDeclResult));
+	assert(midDeclResult.lines.some((line) => line.includes("Installed into project: 1")), JSON.stringify(midDeclResult));
+	assert(midDeclResult.lines.some((line) => /pkg-mid-decl-b/.test(line) && /a package declaration appeared since this review/.test(line)), JSON.stringify(midDeclResult));
+	assert.equal(midDeclResult.confirmAction, undefined, "partial install must not offer automatic reload");
+	const midDeclConstruct = JSON.parse(readFileSync(join(midDecl, ".pi", "construct.json"), "utf8")) as { items: Record<string, unknown> };
+	assert(Object.keys(midDeclConstruct.items).some((id) => id.includes("mid-decl-a")), "first install metadata must remain");
+	assert(!Object.keys(midDeclConstruct.items).some((id) => id.includes("mid-decl-b")), "refused second install must not write metadata");
 } finally {
 	rmSync(tmp, { recursive: true, force: true });
 }

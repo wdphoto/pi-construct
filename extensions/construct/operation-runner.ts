@@ -11,6 +11,7 @@ import {
 	type PackageOperationOptions,
 } from "./package-ops.js";
 import { progressStatus, setConstructStatus } from "./ui.js";
+import { matchingDeclaredPackage, matchingPiProjectOverride } from "./project-settings.js";
 
 export type ConstructOperationAction = "Install" | "Enable" | "Disable" | "Remove";
 export type ConstructOperationItem = {
@@ -42,6 +43,12 @@ export type ConstructOperationRunResult = {
 	lines: string[];
 	confirmHint?: string;
 	confirmAction?: "reload";
+	/**
+	 * True when changes need a manual `/reload` and automatic reload was intentionally suppressed
+	 * (for example an install that must be filtered from the reopened dashboard first). Print-mode
+	 * callers use this to avoid telling the user no reload is needed.
+	 */
+	manualReload?: boolean;
 };
 export type ProgressUpdate = (title: string, lines: string[]) => void;
 
@@ -62,6 +69,57 @@ export function operationProgressLines(steps: ConstructOperationStep[], complete
 	];
 }
 
+/**
+ * Shared pre-write guard for Install steps. Runs immediately before each Install mutation (after
+ * any earlier operations) and rechecks live trust plus whether the reviewed source is still
+ * undeclared, so a target that changed after review refuses without undoing earlier results.
+ * Returns undefined for non-install steps. `runConstructOperationSteps` runs this by default; an
+ * optional `beforeOperation` hook can only add a refusal, never clear a default refusal. Install
+ * steps refuse when no live session context is supplied rather than assuming trust.
+ */
+export async function installOperationPreflight(
+	ctx: Pick<ExtensionCommandContext, "isProjectTrusted"> | undefined,
+	paths: ConstructPaths,
+	step: ConstructOperationStep,
+): Promise<{ ok: boolean; error?: string } | undefined> {
+	if (step.action !== "Install") return undefined;
+	if (!ctx) return { ok: false, error: "no live session context; refusing to install." };
+	if (!ctx.isProjectTrusted()) {
+		return { ok: false, error: "project is no longer trusted by Pi; this install was not applied. Re-run after trust is restored." };
+	}
+	try {
+		const override = await matchingPiProjectOverride(paths, step.item.source);
+		if (override) return { ok: false, error: `${override} is a Pi project override (autoload:false); manage it with pi config -l.` };
+		const declared = await matchingDeclaredPackage(paths, step.item.source);
+		if (declared) return { ok: false, error: "a package declaration appeared since this review; reopen /construct to re-review install targets." };
+	} catch (error) {
+		return { ok: false, error: `could not verify the install target: ${error instanceof Error ? error.message : String(error)}` };
+	}
+	return { ok: true };
+}
+
+async function resolveOperationGate(
+	ctx: ExtensionCommandContext,
+	paths: ConstructPaths,
+	step: ConstructOperationStep,
+	beforeOperation?: (step: ConstructOperationStep) => Promise<{ ok: boolean; error?: string } | undefined>,
+): Promise<{ ok: boolean; error?: string } | undefined> {
+	let gate: { ok: boolean; error?: string } | undefined;
+	try {
+		gate = await installOperationPreflight(ctx, paths, step);
+		const custom = await beforeOperation?.(step);
+		// The optional hook may only add a refusal. A default preflight refusal (lost trust, newly
+		// declared source, autoload:false override) must never be cleared by a returning { ok: true }.
+		if (custom && !custom.ok) gate = custom;
+		else if (!gate) gate = custom;
+	} catch (error) {
+		// A preflight throw must become a structured failed step instead of escaping the generic UI
+		// and losing the outcome of earlier successful steps.
+		gate = { ok: false, error: `install preflight failed: ${error instanceof Error ? error.message : String(error)}` };
+	}
+	return gate;
+}
+
 async function applyOperation(paths: ConstructPaths, step: ConstructOperationStep, options: PackageOperationOptions = {}) {
 	if (step.item.direct) {
 		if (step.action === "Enable") return enableDirectResourceInProject(paths, step.item.direct, options);
@@ -80,7 +138,7 @@ async function applyOperation(paths: ConstructPaths, step: ConstructOperationSte
 }
 
 export async function runConstructOperationSteps(input: {
-	ctx?: ExtensionCommandContext;
+	ctx: ExtensionCommandContext;
 	paths: ConstructPaths;
 	steps: ConstructOperationStep[];
 	update?: ProgressUpdate;
@@ -89,10 +147,14 @@ export async function runConstructOperationSteps(input: {
 	completeLabel: string;
 	progressItemPrefix?: string;
 	statusKind?: string;
+	// Optional per-step gate run after earlier operations and immediately before this step's mutation.
+	// Callers can recheck live trust and reviewed declaration state for Install steps; returning
+	// { ok: false } refuses only this step and leaves earlier results intact. A hook can only add a
+	// refusal; it cannot clear a default install preflight refusal.
+	beforeOperation?: (step: ConstructOperationStep) => Promise<{ ok: boolean; error?: string } | undefined>;
 }): Promise<ConstructOperationOutcome> {
-	const { ctx, paths, steps, update, signal, progressTitle, completeLabel, progressItemPrefix = "", statusKind } = input;
-	const projectTrusted = ctx?.isProjectTrusted();
-	const operationOptions: PackageOperationOptions = { projectTrusted, quietPackageInstallOutput: ctx?.mode === "tui" };
+	const { ctx, paths, steps, update, signal, progressTitle, completeLabel, progressItemPrefix = "", statusKind, beforeOperation } = input;
+	const quietPackageInstallOutput = ctx.mode === "tui";
 	const completed: Array<{ action: ConstructOperationAction; item: ConstructOperationItem }> = [];
 	const partialRuntimeChanges: ConstructOperationPartialChange[] = [];
 	const failures: string[] = [];
@@ -104,7 +166,20 @@ export async function runConstructOperationSteps(input: {
 			if (signal?.aborted) break;
 			step.state = "running";
 			update?.(progressTitle, operationProgressLines(steps, completeLabel, progressItemPrefix));
-			if (ctx && statusKind) setConstructStatus(ctx, progressStatus(statusKind, completed.length + partialRuntimeChanges.length + failures.length + 1, steps.length, step.item.label));
+			if (statusKind) setConstructStatus(ctx, progressStatus(statusKind, completed.length + partialRuntimeChanges.length + failures.length + 1, steps.length, step.item.label));
+			const gate = await resolveOperationGate(ctx, paths, step, beforeOperation);
+			// A preflight may resolve after cancellation (e.g. a deferred callback); never mutate then.
+			if (signal?.aborted) break;
+			if (gate && !gate.ok) {
+				step.state = "failed";
+				step.error = gate.error ?? "refused";
+				failures.push(`${step.item.id}: ${step.error}`);
+				update?.(progressTitle, operationProgressLines(steps, completeLabel, progressItemPrefix));
+				continue;
+			}
+			// Re-read live trust immediately before each mutation so a lost grant/denial after an
+			// earlier step refuses this target instead of using the batch-start snapshot.
+			const operationOptions: PackageOperationOptions = { projectTrusted: ctx.isProjectTrusted(), quietPackageInstallOutput };
 			const result = await applyOperation(paths, step, operationOptions);
 			if (result.needsReload) needsReload = true;
 			if (result.ok) {
@@ -119,7 +194,7 @@ export async function runConstructOperationSteps(input: {
 			update?.(progressTitle, operationProgressLines(steps, completeLabel, progressItemPrefix));
 		}
 	} finally {
-		if (ctx && statusKind) setConstructStatus(ctx, undefined);
+		if (statusKind) setConstructStatus(ctx, undefined);
 	}
 
 	const appliedChanges = completed.length + partialRuntimeChanges.length;

@@ -1,5 +1,4 @@
 import type { DirectResourceKind } from "./types.js";
-import type { PackageResourceSummary } from "./package-resources.js";
 import { packageResourceFilterKeys, type PackageResourceFilterKey } from "./package-filters.js";
 
 export const packageFilterKeyForKind: Record<DirectResourceKind, PackageResourceFilterKey> = {
@@ -70,12 +69,4 @@ export function packageResourceStateDrift(baseline: Iterable<PackageResourceFilt
 	}
 	for (const key of currentState.keys()) if (!baselineState.has(key)) added.push(key);
 	return { missing, changed, added };
-}
-
-export function packageResourceSetsDiffer(a: Iterable<PackageResourceSummary>, b: Iterable<PackageResourceSummary>): boolean {
-	const aKeys = new Set([...a].map((resource) => packageResourceSelectionKey(resource.kind, resource.packageRelativePath)));
-	const bKeys = new Set([...b].map((resource) => packageResourceSelectionKey(resource.kind, resource.packageRelativePath)));
-	if (aKeys.size !== bKeys.size) return true;
-	for (const key of aKeys) if (!bKeys.has(key)) return true;
-	return false;
 }

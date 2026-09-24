@@ -402,6 +402,10 @@ async function runSavedLoadoutOperations(
 	const loaded = outcome.completed.filter((step) => step.action === "Install");
 	const enabled = outcome.completed.filter((step) => step.action === "Enable");
 	const hasErrors = outcome.failures.length > 0 || outcome.partialRuntimeChanges.length > 0;
+	// An install (or a metadata-only install failure that still wrote the declaration) must not offer
+	// automatic reload: Pi's defaults would load before the user can pick resources.
+	const loadedRuntimeChange = loaded.length > 0 || outcome.partialRuntimeChanges.some((change) => change.action === "Install");
+	const canAutoReload = outcome.needsReload && !loadedRuntimeChange;
 	return {
 		title: outcome.cancelled
 			? outcome.appliedChanges > 0
@@ -410,8 +414,9 @@ async function runSavedLoadoutOperations(
 			: hasErrors
 				? `Saved loadout ran with errors: ${currentProfile.id}`
 				: `Ran saved loadout: ${currentProfile.id}`,
-		confirmHint: outcome.needsReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
-		confirmAction: outcome.needsReload ? "reload" : undefined,
+		confirmHint: canAutoReload ? "Press Enter to reload Pi · Esc cancels reload" : "Press Enter/Esc to return to session",
+		confirmAction: canAutoReload ? "reload" : undefined,
+		manualReload: loadedRuntimeChange,
 		lines: [
 			outcome.cancelled ? "Cancelled before remaining resources." : undefined,
 			"Recipe mode: activate-only; no disable, remove, or exact-match actions are run.",
@@ -419,6 +424,8 @@ async function runSavedLoadoutOperations(
 			`Turned on: ${outcome.appliedChanges}/${steps.length}`,
 			loaded.length > 0 ? `Installed: ${loaded.length}` : undefined,
 			...loaded.map((step) => `+ ${step.item.label}: ${step.item.source}`),
+			loadedRuntimeChange ? "Installed package resources stay at Pi defaults (unfiltered) until you choose them; Construct did not reload Pi." : undefined,
+			loadedRuntimeChange ? "Reopen /construct (or run pi config -l) now to select the installed resources, then run /reload. Reload now instead if you want Pi's defaults." : undefined,
 			enabled.length > 0 ? `Enabled: ${enabled.length}` : undefined,
 			...enabled.map((step) => `+ ${step.item.label}: ${step.item.source}`),
 			...skippedSourceLines(skipped),
@@ -436,7 +443,11 @@ function runResultText(result: ConstructOperationRunResult): string {
 	return [
 		result.title,
 		...result.lines,
-		result.confirmAction === "reload" ? "Reload Pi resources with /reload when ready." : "No reload needed; no package settings changed.",
+		result.confirmAction === "reload"
+			? "Reload Pi resources with /reload when ready."
+			: result.manualReload
+				? "Reopen /construct or run pi config -l to choose the installed package resources, then run /reload."
+				: "No reload needed; no package settings changed.",
 	].join("\n");
 }
 
